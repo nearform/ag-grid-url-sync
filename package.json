@@ -2,18 +2,27 @@
   "name": "ag-grid-url-state-sync",
   "version": "0.0.1",
   "description": "AG Grid URL State Sync",
-  "main": "index.js",
+  "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "lint": "eslint .",
-    "test": "echo \"Error: no test specified\" && exit 0",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "build": "tsc",
+    "ci": "npm run build && npm run check-exports && npm run lint && npm run test",
+    "check-exports": "attw --pack . --ignore-rules=cjs-resolves-to-esm",
     "prepare": "husky"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nearform/ag-grid-url-state-sync.git"
   },
-  "keywords": ["ag-grid", "url", "state", "sync"],
+  "keywords": [
+    "ag-grid",
+    "url",
+    "state",
+    "sync"
+  ],
   "author": "NearForm",
   "license": "ISC",
   "bugs": {
@@ -24,6 +33,7 @@
   ],
   "homepage": "https://github.com/nearform/ag-grid-url-state-sync#readme",
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
     "@eslint/js": "^9.29.0",
@@ -33,7 +43,9 @@
     "globals": "^16.2.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.2",
-    "prettier": "^3.5.3"
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
   },
   "lint-staged": {
     "*.{js,jsx}": "eslint --cache --fix"

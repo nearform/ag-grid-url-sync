@@ -1,13 +1,15 @@
 {
-  "name": "ag-grid-url-state-sync",
-  "version": "0.0.1",
-  "description": "AG Grid URL State Sync",
+  "name": "ag-grid-url-sync",
+  "version": "0.1.0",
+  "description": "AG Grid URL Sync - Synchronize AG Grid text filters with URL parameters",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "build": "tsc",
     "ci": "npm run build && npm run check-exports && npm run lint && npm run test",
     "check-exports": "attw --pack . --ignore-rules=cjs-resolves-to-esm",
@@ -21,7 +23,10 @@
     "ag-grid",
     "url",
     "state",
-    "sync"
+    "sync",
+    "filter",
+    "share",
+    "typescript"
   ],
   "author": "NearForm",
   "license": "ISC",
@@ -37,17 +42,24 @@
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
     "@eslint/js": "^9.29.0",
+    "@types/jsdom": "^21.1.7",
+    "@vitest/coverage-v8": "^3.2.4",
+    "ag-grid-community": "^33.3.2",
     "eslint": "^9.29.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.0",
     "globals": "^16.2.0",
     "husky": "^9.1.7",
+    "jsdom": "^26.1.0",
     "lint-staged": "^16.1.2",
     "prettier": "^3.5.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
+  "peerDependencies": {
+    "ag-grid-community": ">=28.0.0"
+  },
   "lint-staged": {
-    "*.{js,jsx}": "eslint --cache --fix"
+    "*.{js,jsx,ts,tsx}": "eslint --cache --fix"
   }
 }

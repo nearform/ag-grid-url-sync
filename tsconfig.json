@@ -16,10 +16,10 @@
     "rootDir": "src",
     "sourceMap": true,
     "declaration": true,
-    "lib": ["es2022"]
+    "lib": ["es2022", "dom", "dom.iterable"]
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
   ],
   "exclude": [
     "node_modules",
@@ -27,6 +27,9 @@
     "eslint.config.js",
     "index.js",
     ".husky",
-    ".github"
+    ".github",
+    "**/*.test.ts",
+    "**/*.test.js",
+    "**/test-setup.ts"
   ]
 }

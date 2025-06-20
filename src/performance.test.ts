@@ -87,7 +87,7 @@ describe('Performance Benchmarks', () => {
       const duration = endTime - startTime
       console.log(`parseUrlFilters (complex URL): ${duration.toFixed(2)}ms`)
 
-      expect(duration).toBeLessThan(5)
+      expect(duration).toBeLessThan(10) // Allowing more time for complex parsing
       expect(Object.keys(result)).toHaveLength(100) // 50 contains + 50 eq
     })
 

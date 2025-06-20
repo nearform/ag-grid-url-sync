@@ -1,6 +1,7 @@
-export { AGGridUrlSync, createUrlSync } from './ag-grid-url-sync.js'
+// Export core functionality (vanilla JS)
+export { AGGridUrlSync, createUrlSync } from './core/ag-grid-url-sync.js'
 
-export * from './types.js'
+export * from './core/types.js'
 
 export {
   parseUrlFilters,
@@ -11,4 +12,4 @@ export {
   validateFilterValue,
   parseFilterParam,
   DEFAULT_CONFIG
-} from './utils.js'
+} from './core/utils.js'

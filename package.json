@@ -1,9 +1,23 @@
 {
   "name": "ag-grid-url-sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AG Grid URL Sync - Synchronize AG Grid text filters with URL parameters",
   "main": "dist/index.js",
   "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./react": "./dist/react/index.js"
+  },
+  "typesVersions": {
+    "*": {
+      ".": [
+        "dist/index.d.ts"
+      ],
+      "react": [
+        "dist/react/index.d.ts"
+      ]
+    }
+  },
   "scripts": {
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -31,7 +45,9 @@
     "sync",
     "filter",
     "share",
-    "typescript"
+    "typescript",
+    "react",
+    "hook"
   ],
   "author": "NearForm",
   "license": "ISC",
@@ -47,7 +63,9 @@
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
     "@eslint/js": "^9.29.0",
+    "@testing-library/react": "^14.0.0",
     "@types/jsdom": "^21.1.7",
+    "@types/react": "^18.0.0",
     "@vitest/coverage-v8": "^3.2.4",
     "ag-grid-community": "^33.3.2",
     "bundlesize": "^0.18.2",
@@ -59,12 +77,19 @@
     "jsdom": "^26.1.0",
     "lint-staged": "^16.1.2",
     "prettier": "^3.5.3",
+    "react": "^18.0.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
-    "ag-grid-community": ">=28.0.0"
+    "ag-grid-community": ">=28.0.0",
+    "react": ">=16.8.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": "eslint --cache --fix"
@@ -75,12 +100,16 @@
       "maxSize": "5KB"
     },
     {
-      "path": "./dist/ag-grid-url-sync.js",
+      "path": "./dist/core/ag-grid-url-sync.js",
       "maxSize": "4KB"
     },
     {
-      "path": "./dist/utils.js",
+      "path": "./dist/core/utils.js",
       "maxSize": "4KB"
+    },
+    {
+      "path": "./dist/react/index.js",
+      "maxSize": "7KB"
     }
   ]
 }

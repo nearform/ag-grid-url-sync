@@ -20,10 +20,11 @@
     "rootDir": "src",
     "sourceMap": true,
     "declaration": true,
+    "jsx": "react-jsx",
     "lib": ["es2022", "dom", "dom.iterable"]
   },
   "include": [
-    "src/**/*",
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
@@ -33,6 +34,7 @@
     ".husky",
     ".github",
     "**/*.test.ts",
+    "**/*.test.tsx",
     "**/*.test.js",
     "**/test-setup.ts"
   ]

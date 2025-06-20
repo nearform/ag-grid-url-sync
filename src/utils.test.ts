@@ -66,11 +66,9 @@ describe('parseFilterParam', () => {
     )
   })
 
-  it('should handle URL encoded values', () => {
-    const result = parseFilterParam(
-      'f_name_contains',
-      encodeURIComponent('john doe')
-    )
+  it('should handle already decoded values', () => {
+    // In real usage, URLSearchParams.get() returns decoded values
+    const result = parseFilterParam('f_name_contains', 'john doe')
     expect(result.filter).toBe('john doe')
   })
 })

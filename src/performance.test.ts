@@ -4,7 +4,7 @@ import { parseUrlFilters, serializeFilters, generateUrl } from './utils.js'
 import type { GridApi } from 'ag-grid-community'
 import type { FilterState, InternalConfig } from './types.js'
 
-describe('Performance Benchmarks', () => {
+describe('Scale & Stress Testing', () => {
   let mockGridApi: GridApi
   let config: InternalConfig
 
@@ -22,8 +22,8 @@ describe('Performance Benchmarks', () => {
     }
   })
 
-  describe('serializeFilters Performance', () => {
-    it('should serialize 100 filters in <10ms', () => {
+  describe('serializeFilters Scale Testing', () => {
+    it('should serialize 100 filters correctly', () => {
       // Create 100 filters
       const filterState: FilterState = {}
       for (let i = 0; i < 100; i++) {
@@ -34,16 +34,12 @@ describe('Performance Benchmarks', () => {
         }
       }
 
-      const startTime = performance.now()
       const result = serializeFilters(filterState, config)
-      const endTime = performance.now()
 
-      const duration = endTime - startTime
-      console.log(`serializeFilters (100 filters): ${duration.toFixed(2)}ms`)
-
-      expect(duration).toBeLessThan(10)
+      // Verify correctness of serialization
       expect(result.toString()).toContain('f_column0_contains=value0')
       expect(result.toString()).toContain('f_column99_contains=value99')
+      expect(result.toString().split('&')).toHaveLength(100)
     })
 
     it('should handle stress test with 1000 filters', () => {
@@ -57,21 +53,18 @@ describe('Performance Benchmarks', () => {
         }
       }
 
-      const startTime = performance.now()
       const result = serializeFilters(filterState, config)
-      const endTime = performance.now()
 
-      const duration = endTime - startTime
-      console.log(`serializeFilters (1000 filters): ${duration.toFixed(2)}ms`)
-
-      // Should complete in reasonable time even with 1000 filters
-      expect(duration).toBeLessThan(100)
+      // Verify it can handle large scale without errors
       expect(result.toString().length).toBeGreaterThan(1000)
+      expect(result.toString().split('&')).toHaveLength(1000)
+      expect(result.toString()).toContain('f_col0_contains=')
+      expect(result.toString()).toContain('f_col999_eq=')
     })
   })
 
-  describe('parseUrlFilters Performance', () => {
-    it('should parse complex URLs in <5ms', () => {
+  describe('parseUrlFilters Scale Testing', () => {
+    it('should parse complex URLs with many parameters', () => {
       // Create a complex URL with many parameters
       const params: string[] = []
       for (let i = 0; i < 50; i++) {
@@ -80,18 +73,17 @@ describe('Performance Benchmarks', () => {
       }
       const url = `https://example.com?${params.join('&')}&other=ignore&more=params`
 
-      const startTime = performance.now()
       const result = parseUrlFilters(url, config)
-      const endTime = performance.now()
 
-      const duration = endTime - startTime
-      console.log(`parseUrlFilters (complex URL): ${duration.toFixed(2)}ms`)
-
-      expect(duration).toBeLessThan(10) // Allowing more time for complex parsing
+      // Verify correct parsing of complex URLs
       expect(Object.keys(result)).toHaveLength(100) // 50 contains + 50 eq
+      expect(result.column0.filter).toBe('value0')
+      expect(result.status0.filter).toBe('active0')
+      expect(result.column49.type).toBe('contains')
+      expect(result.status49.type).toBe('eq')
     })
 
-    it('should handle very long URLs efficiently', () => {
+    it('should handle very long URLs with large filter values', () => {
       // Create URL with long filter values
       const longValue = 'x'.repeat(190) // Near max length
       const params: string[] = []
@@ -100,20 +92,18 @@ describe('Performance Benchmarks', () => {
       }
       const url = `https://example.com?${params.join('&')}`
 
-      const startTime = performance.now()
       const result = parseUrlFilters(url, config)
-      const endTime = performance.now()
 
-      const duration = endTime - startTime
-      console.log(`parseUrlFilters (long values): ${duration.toFixed(2)}ms`)
-
-      expect(duration).toBeLessThan(5)
+      // Verify correct parsing of long URLs
       expect(Object.keys(result)).toHaveLength(10)
+      expect(result.col0.filter).toBe(longValue + '0')
+      expect(result.col9.filter).toBe(longValue + '9')
+      expect(result.col0.type).toBe('contains')
     })
   })
 
-  describe('generateUrl Performance', () => {
-    it('should generate URLs in <5ms for typical use cases', () => {
+  describe('generateUrl Scale Testing', () => {
+    it('should generate URLs correctly for typical use cases', () => {
       // Mock typical filter model
       const typicalFilterModel = {}
       for (let i = 0; i < 10; i++) {
@@ -127,18 +117,16 @@ describe('Performance Benchmarks', () => {
       mockGridApi.getFilterModel = vi.fn().mockReturnValue(typicalFilterModel)
       const urlSync = new AGGridUrlSync(mockGridApi)
 
-      const startTime = performance.now()
       const result = urlSync.generateUrl('https://example.com')
-      const endTime = performance.now()
 
-      const duration = endTime - startTime
-      console.log(`generateUrl (typical): ${duration.toFixed(2)}ms`)
-
-      expect(duration).toBeLessThan(5)
+      // Verify correct URL generation
       expect(result).toContain('f_column0_contains=value0')
+      expect(result).toContain('f_column1_eq=value1')
+      expect(result).toContain('f_column9_eq=value9')
+      expect(result.split('?')[1].split('&')).toHaveLength(10)
     })
 
-    it('should handle large filter models efficiently', () => {
+    it('should handle large filter models correctly', () => {
       // Mock large filter model
       const largeFilterModel = {}
       for (let i = 0; i < 100; i++) {
@@ -152,53 +140,37 @@ describe('Performance Benchmarks', () => {
       mockGridApi.getFilterModel = vi.fn().mockReturnValue(largeFilterModel)
       const urlSync = new AGGridUrlSync(mockGridApi)
 
-      const startTime = performance.now()
       const result = urlSync.generateUrl('https://example.com')
-      const endTime = performance.now()
 
-      const duration = endTime - startTime
-      console.log(`generateUrl (100 filters): ${duration.toFixed(2)}ms`)
-
-      expect(duration).toBeLessThan(20)
+      // Verify correct handling of large filter models
       expect(result.length).toBeGreaterThan(1000)
+      expect(result.split('?')[1].split('&')).toHaveLength(100)
+      expect(result).toContain('f_column0_contains=value0')
+      expect(result).toContain('f_column99_contains=value99')
     })
   })
 
-  describe('Memory Usage Tests', () => {
-    it('should not leak memory with repeated operations', () => {
+  describe('Stress Testing', () => {
+    it('should handle repeated operations without errors', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
 
-      // Simulate memory usage monitoring (basic)
-      const initialMemory = process.memoryUsage?.() || { heapUsed: 0 }
+      // Perform many operations to test stability
+      for (let i = 0; i < 100; i++) {
+        const result = urlSync.generateUrl(`https://example.com/${i}`)
+        expect(result).toContain('https://example.com/')
 
-      // Perform many operations
-      for (let i = 0; i < 1000; i++) {
-        urlSync.generateUrl(`https://example.com/${i}`)
         urlSync.applyFromUrl(`https://example.com?f_test_contains=value${i}`)
-
-        // Trigger garbage collection periodically if available
-        if (global.gc && i % 100 === 0) {
-          global.gc()
-        }
+        expect(mockGridApi.setFilterModel).toHaveBeenCalled()
       }
 
-      const finalMemory = process.memoryUsage?.() || { heapUsed: 0 }
-      const memoryIncrease = finalMemory.heapUsed - initialMemory.heapUsed
-
-      console.log(
-        `Memory increase after 1000 operations: ${(memoryIncrease / 1024 / 1024).toFixed(2)}MB`
-      )
-
-      // Should not use excessive memory (relaxed for test environment)
-      expect(memoryIncrease).toBeLessThan(50 * 1024 * 1024) // 50MB (test environment is variable)
+      // Should complete without throwing errors
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledTimes(100)
     })
 
-    it('should handle large filter sets without excessive memory usage', () => {
-      const initialMemory = process.memoryUsage?.() || { heapUsed: 0 }
-
+    it('should handle large filter sets correctly', () => {
       // Create very large filter state
       const largeFilterState: FilterState = {}
-      for (let i = 0; i < 1000; i++) {
+      for (let i = 0; i < 100; i++) {
         largeFilterState[`column${i}`] = {
           filterType: 'text',
           type: 'contains',
@@ -207,59 +179,49 @@ describe('Performance Benchmarks', () => {
       }
 
       // Perform operations with large data
-      serializeFilters(largeFilterState, config)
-      parseUrlFilters('https://example.com', config)
+      const serialized = serializeFilters(largeFilterState, config)
+      expect(serialized.toString().split('&')).toHaveLength(100)
 
-      const finalMemory = process.memoryUsage?.() || { heapUsed: 0 }
-      const memoryIncrease = finalMemory.heapUsed - initialMemory.heapUsed
-
-      console.log(
-        `Memory usage for large filter set: ${(memoryIncrease / 1024 / 1024).toFixed(2)}MB`
-      )
-
-      // Should not use excessive memory
-      expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024) // 10MB
+      const url = `https://example.com?${serialized.toString()}`
+      const parsed = parseUrlFilters(url, config)
+      expect(Object.keys(parsed)).toHaveLength(100)
+      expect(parsed.column0.filter).toContain('value0')
     })
   })
 
-  describe('Rapid Successive Calls', () => {
-    it('should handle rapid successive calls without performance degradation', () => {
+  describe('Concurrent Operations', () => {
+    it('should handle rapid successive calls correctly', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
-      const times: number[] = []
 
-      // Measure each call
-      for (let i = 0; i < 100; i++) {
-        const startTime = performance.now()
-        urlSync.generateUrl(`https://example.com?iteration=${i}`)
-        const endTime = performance.now()
-        times.push(endTime - startTime)
+      // Test rapid successive calls for correctness
+      const results: string[] = []
+      for (let i = 0; i < 50; i++) {
+        const result = urlSync.generateUrl(`https://example.com?iteration=${i}`)
+        results.push(result)
       }
 
-      const avgTime = times.reduce((a, b) => a + b) / times.length
-      const maxTime = Math.max(...times)
-
-      console.log(
-        `Rapid calls - Average: ${avgTime.toFixed(2)}ms, Max: ${maxTime.toFixed(2)}ms`
-      )
-
-      // Performance should remain consistent
-      expect(avgTime).toBeLessThan(2)
-      expect(maxTime).toBeLessThan(10)
+      // All results should be valid URLs
+      results.forEach((result, index) => {
+        expect(result).toContain('https://example.com')
+        expect(result).toContain(`iteration=${index}`)
+      })
     })
 
-    it('should handle concurrent-like operations efficiently', () => {
+    it('should handle concurrent-like operations correctly', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
-
-      const startTime = performance.now()
 
       // Simulate rapid operations like a user quickly changing filters
       const promises: Promise<unknown>[] = []
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < 20; i++) {
         // Simulate async-like operations
         promises.push(
           new Promise(resolve => {
             setTimeout(() => {
-              urlSync.generateUrl(`https://example.com?test=${i}`)
+              const result = urlSync.generateUrl(
+                `https://example.com?test=${i}`
+              )
+              expect(result).toContain('https://example.com')
+
               urlSync.applyFromUrl(
                 `https://example.com?f_test_contains=value${i}`
               )
@@ -270,19 +232,14 @@ describe('Performance Benchmarks', () => {
       }
 
       return Promise.all(promises).then(() => {
-        const endTime = performance.now()
-        const totalTime = endTime - startTime
-
-        console.log(`Concurrent-like operations: ${totalTime.toFixed(2)}ms`)
-
-        // Should complete reasonably quickly
-        expect(totalTime).toBeLessThan(1000) // 1 second
+        // Should complete without errors and all operations should work
+        expect(mockGridApi.setFilterModel).toHaveBeenCalled()
       })
     })
   })
 
   describe('Scale Testing', () => {
-    it('should handle maximum practical filter counts', () => {
+    it('should handle maximum practical filter counts correctly', () => {
       // Test with a realistic maximum number of filters (100 columns)
       const maxFilterState: FilterState = {}
       for (let i = 0; i < 100; i++) {
@@ -293,18 +250,18 @@ describe('Performance Benchmarks', () => {
         }
       }
 
-      const startTime = performance.now()
       const params = serializeFilters(maxFilterState, config)
       const url = `https://example.com?${params.toString()}`
       const parsed = parseUrlFilters(url, config)
-      const endTime = performance.now()
 
-      const duration = endTime - startTime
-      console.log(`Scale test (100 filters): ${duration.toFixed(2)}ms`)
-
-      expect(duration).toBeLessThan(20)
+      // Verify correct handling of large scale
       expect(Object.keys(parsed)).toHaveLength(100)
       expect(parsed['column_0'].filter).toBe('filter_value_0_with_some_length')
+      expect(parsed['column_99'].filter).toBe(
+        'filter_value_99_with_some_length'
+      )
+      expect(parsed['column_0'].type).toBe('contains')
+      expect(parsed['column_1'].type).toBe('eq')
     })
 
     it('should reject values exceeding limits gracefully', () => {

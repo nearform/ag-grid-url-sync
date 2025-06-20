@@ -2,21 +2,22 @@
 
 # AG Grid URL Sync
 
-A lightweight TypeScript library for synchronizing AG Grid text filters with URL parameters, enabling shareable filter states through clean, human-readable URLs.
+A lightweight TypeScript library for synchronizing AG Grid text filters with URL parameters, enabling shareable filter states through clean, human-readable URLs. Now with native React integration!
 
 ## Features
 
 - 🔍 Text filter synchronization (`contains` and `equals` operations)
+- ⚛️ **NEW**: Native React hook integration
 - 🔗 Manual URL generation for sharing filter states
 - ↔️ Bidirectional sync between grid and URL
-- 🛠️ Framework agnostic - works with any AG Grid setup
+- 🛠️ Framework agnostic core + React-specific integration
 - 📝 Full TypeScript support with strict mode compliance
 - 🚦 Graceful error handling with configurable error callbacks
 - 🧹 Clean, human-readable URL format
 - ⚡ High performance - handles 100+ filters efficiently (<20ms)
 - 🔧 Configurable URL prefixes for multi-grid scenarios
 - 🛡️ Robust edge case handling (special characters, malformed URLs)
-- 📦 Lightweight bundle size (~3KB gzipped)
+- 📦 Lightweight bundle size (~5KB core + ~2KB React integration)
 
 ## Installation
 
@@ -24,9 +25,15 @@ A lightweight TypeScript library for synchronizing AG Grid text filters with URL
 npm install ag-grid-url-sync
 ```
 
-## Usage
+For React integration, also install React as a peer dependency:
 
-### Basic Example
+```bash
+npm install react ag-grid-react
+```
+
+## Quick Start
+
+### Vanilla JavaScript/TypeScript
 
 ```typescript
 import { createUrlSync } from 'ag-grid-url-sync'
@@ -44,46 +51,110 @@ urlSync.applyFromUrl()
 urlSync.clearFilters()
 ```
 
-### React Integration
+### React Hook (NEW in v0.2)
 
 ```tsx
-import { createUrlSync } from 'ag-grid-url-sync'
-import { useCallback, useMemo } from 'react'
+import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+import { AgGridReact } from 'ag-grid-react'
 
-function useGridUrlSync(gridApi) {
-  const urlSync = useMemo(
-    () => (gridApi ? createUrlSync(gridApi) : null),
-    [gridApi]
-  )
-
-  const shareUrl = useCallback(() => urlSync?.generateUrl() || '', [urlSync])
-
-  const applyUrlFilters = useCallback(() => urlSync?.applyFromUrl(), [urlSync])
-
-  return { shareUrl, applyUrlFilters }
-}
-
-// In your component
 function GridComponent() {
-  const { shareUrl, applyUrlFilters } = useGridUrlSync(gridApi)
+  const [gridApi, setGridApi] = useState(null)
+
+  const { shareUrl, applyUrlFilters, clearFilters, hasFilters, isReady } =
+    useAGGridUrlSync(gridApi, {
+      autoApplyOnMount: true
+    })
+
+  const handleShare = async () => {
+    const url = shareUrl()
+    await navigator.clipboard.writeText(url)
+    alert('Filter URL copied!')
+  }
 
   return (
     <div>
-      <button
-        onClick={() => {
-          const url = shareUrl()
-          navigator.clipboard.writeText(url)
+      <div>
+        <button onClick={handleShare} disabled={!isReady}>
+          📋 Share Filters
+        </button>
+        <button onClick={clearFilters} disabled={!hasFilters}>
+          🗑️ Clear Filters
+        </button>
+      </div>
+
+      <AgGridReact
+        onGridReady={params => setGridApi(params.api)}
+        // ... other props
+        defaultColDef={{
+          filter: 'agTextColumnFilter',
+          floatingFilter: true
         }}
-      >
-        Share Filters
-      </button>
-      <button onClick={applyUrlFilters}>Apply URL Filters</button>
+      />
     </div>
   )
 }
 ```
 
-### URL Format
+## React Router Integration
+
+```tsx
+import { useNavigate, useLocation } from 'react-router-dom'
+import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+
+function RouterGrid() {
+  const [gridApi, setGridApi] = useState(null)
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const { shareUrl, clearFilters, hasFilters } = useAGGridUrlSync(gridApi, {
+    autoApplyOnMount: true
+  })
+
+  // Update browser URL with filters (user controls when)
+  const updateUrlWithFilters = () => {
+    const url = shareUrl()
+    const urlParams = new URL(url).searchParams
+    const currentParams = new URLSearchParams(location.search)
+
+    // Clear existing grid params and add current ones
+    for (const [key] of currentParams) {
+      if (key.startsWith('f_')) currentParams.delete(key)
+    }
+    for (const [key, value] of urlParams) {
+      currentParams.set(key, value)
+    }
+
+    navigate(`${location.pathname}?${currentParams.toString()}`, {
+      replace: true
+    })
+  }
+
+  return (
+    <div>
+      <button onClick={updateUrlWithFilters}>🔗 Update URL with Filters</button>
+      {/* ... grid component */}
+    </div>
+  )
+}
+```
+
+## Import Structure
+
+AG Grid URL Sync v0.2 provides two import paths:
+
+```typescript
+// Core vanilla JS library (unchanged from v0.1)
+import { createUrlSync, AGGridUrlSync } from 'ag-grid-url-sync'
+
+// React integration (new in v0.2)
+import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+
+// Types (available from both paths)
+import type { FilterState, AGGridUrlSyncConfig } from 'ag-grid-url-sync'
+import type { UseAGGridUrlSyncOptions } from 'ag-grid-url-sync/react'
+```
+
+## URL Format
 
 The library generates clean, human-readable URLs:
 
@@ -94,13 +165,12 @@ With filters: https://app.com/page?f_name_contains=john&f_status_eq=active
 
 Parameter structure:
 
-- Prefix: `f_` (configurable - useful for multi-grid scenarios)
+- Prefix: `f_` (configurable)
 - Format: `f_{columnName}_{operation}={value}`
 - Operations: `contains`, `eq` (equals)
 - Standard URL encoding for special characters
-- Supports column names with underscores (e.g., `user_id`, `created_date`)
 
-## API Reference
+## Core API Reference
 
 ### `createUrlSync(gridApi, config?)`
 
@@ -110,128 +180,136 @@ Factory function to create a new AGGridUrlSync instance.
 import { createUrlSync } from 'ag-grid-url-sync'
 
 const urlSync = createUrlSync(gridApi, {
-  paramPrefix: 'f_', // Default: 'f_'
-  maxValueLength: 200, // Default: 200
+  paramPrefix: 'f_',
+  maxValueLength: 200,
   onParseError: err => console.warn(err)
 })
 ```
 
 ### `AGGridUrlSync` Class
 
-#### Constructor
-
-```typescript
-new AGGridUrlSync(gridApi: GridApi, config?: AGGridUrlSyncConfig)
-```
-
 #### Methods
 
-##### `generateUrl(baseUrl?: string): string`
+- `generateUrl(baseUrl?: string): string` - Generate URL with current filters
+- `getQueryParams(): string` - Get query parameters for current filters
+- `applyFromUrl(url?: string): void` - Apply filters from URL
+- `applyFilters(filterState: FilterState): void` - Apply filter state object
+- `clearFilters(): void` - Clear all text filters
+- `destroy(): void` - Clean up resources
 
-Generates a URL with the current filter state.
+## React Hook API Reference
 
-```typescript
-const url = urlSync.generateUrl('https://app.com/page')
-// https://app.com/page?f_name_contains=john
-```
+### `useAGGridUrlSync(gridApi, options?)`
 
-##### `getQueryParams(): string`
-
-Gets the current filter state as URL query parameters.
-
-```typescript
-const params = urlSync.getQueryParams()
-// ?f_name_contains=john
-```
-
-##### `applyFromUrl(url?: string): void`
-
-Applies filters from a URL to the grid.
+React hook for AG Grid URL synchronization.
 
 ```typescript
-urlSync.applyFromUrl('https://app.com/page?f_name_contains=john')
+function useAGGridUrlSync(
+  gridApi: GridApi | null,
+  options?: UseAGGridUrlSyncOptions
+): UseAGGridUrlSyncReturn
 ```
 
-##### `applyFilters(filterState: FilterState): void`
-
-Applies a filter state object to the grid.
+#### Options
 
 ```typescript
-urlSync.applyFilters({
-  name: {
-    filterType: 'text',
-    type: 'contains',
-    filter: 'john'
-  }
-})
+interface UseAGGridUrlSyncOptions {
+  // Core library options
+  paramPrefix?: string // Default: 'f_'
+  maxValueLength?: number // Default: 200
+  onParseError?: (error: Error) => void
+
+  // React-specific options
+  autoApplyOnMount?: boolean // Default: false
+  enabledWhenReady?: boolean // Default: true
+}
 ```
 
-##### `clearFilters(): void`
-
-Clears all text filters from the grid.
+#### Return Value
 
 ```typescript
-urlSync.clearFilters()
+interface UseAGGridUrlSyncReturn {
+  // URL generation
+  shareUrl: (baseUrl?: string) => string
+  getQueryParams: () => string
+
+  // Filter management
+  applyUrlFilters: (url?: string) => void
+  clearFilters: () => void
+
+  // State information
+  isReady: boolean // Grid API is available
+  currentUrl: string // Current generated URL
+  hasFilters: boolean // Grid has active text filters
+
+  // Advanced methods
+  parseUrlFilters: (url: string) => FilterState
+  applyFilters: (filters: FilterState) => void
+}
 ```
 
-##### `destroy(): void`
+## Configuration
 
-Cleans up any resources or event listeners.
-
-```typescript
-urlSync.destroy()
-```
-
-### Configuration
+### Core Configuration
 
 ```typescript
 interface AGGridUrlSyncConfig {
-  // Prefix for URL parameters (default: 'f_')
-  // Useful for multi-grid scenarios: 'emp_', 'proj_', etc.
-  paramPrefix?: string
+  paramPrefix?: string // URL parameter prefix (default: 'f_')
+  maxValueLength?: number // Max filter value length (default: 200)
+  onParseError?: (error: Error) => void // Error handler
+}
+```
 
-  // Maximum length for filter values (default: 200)
-  maxValueLength?: number
+### React Hook Configuration
 
-  // Optional error handler for parsing errors
-  // Called when URLs contain invalid filter parameters
-  onParseError?: (error: Error) => void
+Extends core configuration with React-specific options:
+
+```typescript
+interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
+  autoApplyOnMount?: boolean // Auto-apply URL filters on mount
+  enabledWhenReady?: boolean // Enable when grid API is ready
 }
 ```
 
 ## Examples
 
-Check out the [examples](./examples) directory for comprehensive working demos:
+The library includes comprehensive examples:
 
-### 📝 [Basic Example](./examples/basic-example.html)
+### Vanilla JavaScript Examples
 
-Simple HTML/JS implementation showing core functionality:
+- **Basic Example** (`examples/vanilla-js/basic-example.html`) - Simple filter sharing
+- **Advanced Demo** (`examples/vanilla-js/advanced-demo.html`) - Complex scenarios
 
-- Initialize URL sync with AG Grid
-- Generate shareable URLs
-- Apply filters from URLs
-- Handle filter changes
+### React Examples
 
-### 🚀 [Advanced Demo](./examples/advanced-demo.html)
+- **Basic React** (`examples/react-basic/`) - Simple React integration
+- **React Router** (`examples/react-router/`) - URL synchronization with routing
 
-Feature-rich demonstration including:
+## Browser Support
 
-- Performance monitoring and benchmarks
-- Multiple filter scenarios (Sales, Engineering, Executive views)
-- URL sharing workflow with copy/email/Slack functionality
-- Error testing with malformed URLs and invalid filters
-- Memory and stress testing capabilities
+- Chrome 63+
+- Firefox 67+
+- Safari 12+
+- Edge 79+
 
-### 🔗 [Multi-Grid Demo](./examples/multi-grid-demo.html)
+## TypeScript
 
-Complex example with multiple independent grids:
+Full TypeScript support with strict mode compliance. All types are exported:
 
-- Four separate grids (Employees, Projects, Departments, Metrics)
-- Individual URL namespacing with different prefixes
-- Combined URL generation merging all grid states
-- Independent grid controls and clearing functions
+```typescript
+import type {
+  AGGridUrlSyncConfig,
+  FilterState,
+  ColumnFilter,
+  FilterOperation,
+  GridApi
+} from 'ag-grid-url-sync'
 
-All examples work out-of-the-box by opening the HTML files in your browser.
+import type {
+  UseAGGridUrlSyncOptions,
+  UseAGGridUrlSyncReturn
+} from 'ag-grid-url-sync/react'
+```
 
 ## Contributing
 

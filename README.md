@@ -235,15 +235,6 @@ Complex example with multiple independent grids:
 
 All examples work out-of-the-box by opening the HTML files in your browser.
 
-## Testing
-
-This library includes a comprehensive test suite to ensure reliability:
-
-- **60+ tests** covering core functionality, edge cases, and performance scenarios
-- **Edge case handling** for malformed URLs, special characters, and invalid data
-- **TypeScript strict mode** compliance with all strict compiler flags
-- **Cross-browser compatibility** testing
-
 ## Contributing
 
 1. Fork the repository

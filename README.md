@@ -1,19 +1,8 @@
-<!-- ![CI](https://github.com/nearform/hub-template/actions/workflows/ci.yml/badge.svg?event=push)
-
-# Hub Template
-
-A feature-packed template to start a new repository on the hub, including:
-
-- code linting with [ESlint](https://eslint.org) and [prettier](https://prettier.io)
-- pre-commit code linting and commit message linting with [husky](https://www.npmjs.com/package/husky) and [commitlint](https://commitlint.js.org/)
-- dependabot setup with automatic merging thanks to ["merge dependabot" GitHub action](https://github.com/fastify/github-action-merge-dependabot)
-- notifications about commits waiting to be released thanks to ["notify release" GitHub action](https://github.com/nearform/github-action-notify-release)
-- PRs' linked issues check with ["check linked issues" GitHub action](https://github.com/nearform/github-action-check-linked-issues)
-- Continuous Integration GitHub workflow
-
-[![banner](https://raw.githubusercontent.com/nearform/.github/refs/heads/master/assets/os-banner-green.svg)](https://www.nearform.com/contact/?utm_source=open-source&utm_medium=banner&utm_campaign=os-project-pages) -->
+![CI](https://github.com/nearform/hub-template/actions/workflows/ci.yml/badge.svg?event=push)
 
 # AG Grid URL Sync
+
+[![banner](https://raw.githubusercontent.com/nearform/.github/refs/heads/master/assets/os-banner-green.svg)](https://www.nearform.com/contact/?utm_source=open-source&utm_medium=banner&utm_campaign=os-project-pages)
 
 A lightweight TypeScript library for synchronizing AG Grid text filters with URL parameters, enabling shareable filter states through clean, human-readable URLs.
 
@@ -255,20 +244,13 @@ This library includes a comprehensive test suite to ensure reliability:
 - **TypeScript strict mode** compliance with all strict compiler flags
 - **Cross-browser compatibility** testing
 
-<!-- ## Browser Support
-
-- Chrome 90+
-- Firefox 88+
-- Safari 14+
-- Edge 90+
-
 ## Contributing
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request -->
+5. Open a Pull Request
 
 ## License
 

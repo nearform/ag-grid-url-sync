@@ -38,21 +38,20 @@ export function validateFilterValue(
 }
 
 /**
- * Parses a URL parameter into a column filter
+ * Extracts column name and operation from a filter parameter
  */
-export function parseFilterParam(
+function extractColumnAndOperation(
   param: string,
-  value: string,
   expectedPrefix?: string
-): ColumnFilter {
+): { column: string; operation: string } {
   const ensureTrailingUnderscore = (prefix: string): string =>
-    prefix.endsWith('_') ? prefix : prefix + '_';
+    prefix.endsWith('_') ? prefix : prefix + '_'
 
   const sanitizedPrefix = expectedPrefix
     ? ensureTrailingUnderscore(expectedPrefix)
-    : ensureTrailingUnderscore(DEFAULT_CONFIG.paramPrefix);
+    : ensureTrailingUnderscore(DEFAULT_CONFIG.paramPrefix)
 
-  const prefixToCheck = sanitizedPrefix.slice(0, -1);
+  const prefixToCheck = sanitizedPrefix.slice(0, -1)
   if (!param.startsWith(prefixToCheck + '_')) {
     throw new InvalidFilterError(`Invalid filter prefix in parameter: ${param}`)
   }
@@ -71,6 +70,19 @@ export function parseFilterParam(
   if (!column.trim()) {
     throw new InvalidFilterError(`Empty column name in parameter: ${param}`)
   }
+
+  return { column, operation }
+}
+
+/**
+ * Parses a URL parameter into a column filter
+ */
+export function parseFilterParam(
+  param: string,
+  value: string,
+  expectedPrefix?: string
+): ColumnFilter {
+  const { operation } = extractColumnAndOperation(param, expectedPrefix)
 
   const filterOp = OPERATION_MAP[operation as keyof typeof OPERATION_MAP]
   if (!filterOp) {
@@ -99,19 +111,12 @@ export function parseUrlFilters(
       if (!param.startsWith(config.paramPrefix)) continue
 
       try {
-        // Extract column name from the parsed parameter
+        // Extract column name and parse the filter parameter
+        const { column: columnName } = extractColumnAndOperation(
+          param,
+          config.paramPrefix
+        )
         const filterParam = parseFilterParam(param, value, config.paramPrefix)
-
-        // Get column name by removing prefix and operation
-        const withoutPrefix = param.substring(config.paramPrefix.length)
-        const lastUnderscoreIndex = withoutPrefix.lastIndexOf('_')
-        const columnName = withoutPrefix.substring(0, lastUnderscoreIndex)
-
-        if (!columnName) {
-          throw new InvalidFilterError(
-            `Missing column name in parameter: ${param}`
-          )
-        }
 
         const validatedValue = validateFilterValue(value, config)
         filterState[columnName] = {

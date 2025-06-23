@@ -45,10 +45,14 @@ export function parseFilterParam(
   value: string,
   expectedPrefix?: string
 ): ColumnFilter {
-  const prefixToCheck = expectedPrefix
-    ? expectedPrefix.slice(0, -1)
-    : DEFAULT_CONFIG.paramPrefix.slice(0, -1)
+  const ensureTrailingUnderscore = (prefix: string): string =>
+    prefix.endsWith('_') ? prefix : prefix + '_';
 
+  const sanitizedPrefix = expectedPrefix
+    ? ensureTrailingUnderscore(expectedPrefix)
+    : ensureTrailingUnderscore(DEFAULT_CONFIG.paramPrefix);
+
+  const prefixToCheck = sanitizedPrefix.slice(0, -1);
   if (!param.startsWith(prefixToCheck + '_')) {
     throw new InvalidFilterError(`Invalid filter prefix in parameter: ${param}`)
   }

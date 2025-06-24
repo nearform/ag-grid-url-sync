@@ -20,6 +20,7 @@
     "rootDir": "src",
     "sourceMap": true,
     "declaration": true,
+    "removeComments": true,
     "jsx": "react-jsx",
     "lib": ["es2022", "dom", "dom.iterable"]
   },

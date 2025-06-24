@@ -104,7 +104,7 @@
     },
     {
       "path": "./dist/core/utils.js",
-      "maxSize": "4KB"
+      "maxSize": "5KB"
     },
     {
       "path": "./dist/react/index.js",

@@ -1,450 +1,698 @@
-# ag-grid-url-sync v1.0 🚀
+![CI](https://github.com/nearform/ag-grid-url-sync/actions/workflows/ci.yml/badge.svg?event=push)
 
-[![npm version](https://badge.fury.io/js/ag-grid-url-sync.svg)](https://badge.fury.io/js/ag-grid-url-sync)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+# AG Grid URL Sync
 
-> **v1.0.0** - Complete filter state synchronization for AG Grid with comprehensive filter support
+A comprehensive TypeScript library for synchronizing AG Grid filter states with URL parameters, enabling shareable filter views through clean, human-readable URLs with advanced filter support and intelligent type detection.
 
-## 🔥 Major Release: v1.0.0
+## Features
 
-This is a **complete rewrite** that transforms ag-grid-url-sync from basic text filtering to comprehensive filter state management. **All v0.2 functionality is included and enhanced** with backward compatibility for migration.
+- 🔍 **Comprehensive Filter Support** - Text, number, date, and set filters with automatic type detection
+- 🔗 **Manual URL Generation** - Create shareable URLs for specific filter states
+- ↔️ **Bidirectional Sync** - Seamless synchronization between grid and URL
+- 🛠️ **Framework Agnostic** - Core functionality works with any AG Grid setup
+- ⚛️ **Enhanced React Hook** - Dedicated `useAGGridUrlSync` with comprehensive state management
+- 📝 **Full TypeScript Support** - Strict mode compliance with comprehensive type definitions
+- 🚦 **Robust Error Handling** - Configurable error callbacks with graceful fallbacks
+- 🧹 **Clean URL Format** - Human-readable URLs with configurable prefixes
+- ⚡ **High Performance** - Optimized for 100+ filters with intelligent caching (<20ms)
+- 📊 **Smart Type Detection** - Automatic filter type detection with hierarchical analysis
+- 🗜️ **URL Compression** - Automatic compression for complex filter states
+- 🔧 **Configurable Behavior** - Extensive configuration options for different use cases
+- 🛡️ **Robust Edge Case Handling** - Special characters, malformed URLs, and validation
+- 📦 **Lightweight Bundle** - Optimized bundle size (~5KB gzipped)
 
-### 🚨 Breaking Changes from v0.2
+## Supported Filter Types
 
-While all core functionality is preserved, some configuration properties and method names have changed. See the [Migration Guide](#-migration-from-v02) below.
+The library provides comprehensive support for all major AG Grid filter types with intelligent type detection:
 
-Transform your AG Grid from basic text filtering to **comprehensive filter state management** with URL synchronization. v0.3 is a ground-up rewrite that expands beyond text filters to support **number**, **date**, and **set filters** with intelligent type detection and enhanced developer experience.
+| Filter Type | Operations                                                  | URL Format                                                                                         | Example                                                                                               |
+| ----------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Text**    | `contains`, `equals`                                        | `f_column_contains=value`<br>`f_column_eq=value`                                                   | `f_name_contains=john`<br>`f_status_eq=active`                                                        |
+| **Number**  | `equals`, `notEquals`, `greaterThan`, `lessThan`, `inRange` | `f_column_eq=123`<br>`f_column_gt=100`<br>`f_column_range=10,50`                                   | `f_price_eq=99.99`<br>`f_age_gt=18`<br>`f_score_range=80,100`                                         |
+| **Date**    | `equals`, `notEquals`, `before`, `after`, `inRange`         | `f_column_eq=2024-01-15`<br>`f_column_before=2024-12-31`<br>`f_column_range=2024-01-01,2024-12-31` | `f_created_eq=2024-01-15`<br>`f_deadline_before=2024-12-31`<br>`f_period_range=2024-01-01,2024-12-31` |
+| **Set**     | `in`                                                        | `f_column_in=value1,value2,value3`                                                                 | `f_category_in=tech,finance,marketing`                                                                |
 
-## 🎯 What's New in v1.0
+### Intelligent Type Detection
 
-### 📊 Comprehensive Filter Support
+The library automatically detects the appropriate filter type using a hierarchical approach:
 
-- **Number Filters**: `equals`, `notEquals`, `greaterThan`, `lessThan`, `inRange`
-- **Date Filters**: `equals`, `notEquals`, `before`, `after`, `inRange` (ISO format)
-- **Set Filters**: Basic value list support (`in` operation)
-- **Text Filters**: Enhanced version of v0.2 functionality
+1. **User-defined columnTypes** (highest priority)
+2. **User-provided typeHints** (dateColumns, numberColumns, setColumns)
+3. **AG Grid column filter configuration** (agNumberColumnFilter, agDateColumnFilter, etc.)
+4. **AG Grid cell data type analysis** (cellDataType property)
+5. **Smart value analysis** (optional, analyzes actual data values)
+6. **Default to text filter** (most permissive)
 
-### 🧠 Smart Type Detection System
+### URL Compression
 
-Automatic column type inference with hierarchical detection:
+For complex filter states, the library automatically compresses URLs using multiple algorithms:
 
-1. **User Configuration** (highest priority)
-2. **Type Hints** (manual column classification)
-3. **AG Grid Configuration** (filter types, cellDataType)
-4. **Smart Data Analysis** (automatic detection from data)
-5. **Default Fallback** (text filter)
+- **Automatic compression** when URLs exceed configurable thresholds
+- **Multiple compression algorithms** (LZ-style, gzip, base64) with best-result selection
+- **URL-safe encoding** for all compressed data
+- **Transparent decompression** when loading filters from URLs
 
-### 🔗 Enhanced URL Capabilities
+### URL Examples
 
-```typescript
-// v0.2 (text only)
-?f_name_contains=john&f_status_eq=active
+- **Simple text filter**: `https://app.com/data?f_name_contains=john`
+- **Multiple filters**: `https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_salary_gt=50000`
+- **Date range**: `https://app.com/data?f_created_range=2024-01-01,2024-12-31`
+- **Set filter**: `https://app.com/data?f_category_in=tech,finance,marketing`
+- **Compressed**: `https://app.com/data?_c=lz:H4sIAAAAAAAAA...` (automatic for complex states)
 
-// v1.0 (comprehensive)
-?f_name_contains=john&f_age_range=25,65&f_created_after=2024-01-01&f_dept_in=Engineering,Sales
-```
-
-### ⚡ Performance & Developer Experience
-
-- **Fast parsing**: Optimized for page load scenarios (<50ms for 20+ filters)
-- **Type safety**: Full TypeScript support with comprehensive type definitions
-- **Error handling**: Enhanced error reporting with debug modes
-- **React integration**: Automatic inheritance of all new features
-- **Performance monitoring**: Built-in timing and optimization insights
-
-## 🚀 Quick Start
-
-### Installation
+## Installation
 
 ```bash
 npm install ag-grid-url-sync
 ```
 
-### Basic Usage
+## Usage
+
+### Importing the Library
+
+The library provides two main entry points:
 
 ```typescript
-import { AGGridUrlSync } from 'ag-grid-url-sync'
+// Core functionality - works with any framework
+import { createUrlSync } from 'ag-grid-url-sync'
 
-// v1.0 with enhanced configuration
-const urlSync = new AGGridUrlSync(gridApi, {
+// React hook - for React applications
+import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+
+// TypeScript types (available from both imports)
+import type { FilterState, AGGridUrlSyncConfig } from 'ag-grid-url-sync'
+```
+
+### Basic Example
+
+```typescript
+import { createUrlSync } from 'ag-grid-url-sync'
+
+// Initialize with AG Grid API
+const urlSync = createUrlSync(gridApi, {
   prefix: 'f_',
-  typeDetection: 'smart', // 'smart' | 'strict' | 'off'
-  compression: 'auto', // 'auto' | 'always' | 'never'
-  limits: {
-    valueLength: 200,
-    urlLength: 2000,
-    setValues: 50
-  },
-  debug: true,
-  performanceMonitoring: true
+  compression: 'auto',
+  typeDetection: 'smart'
 })
 
-// Generate URL with current filters (async when using compression)
+// Generate shareable URL with current filters
 const shareableUrl = await urlSync.toUrl()
 
 // Apply filters from URL
-await urlSync.fromUrl(
-  'https://app.com/data?f_price_range=100,500&f_category_in=Electronics,Books'
-)
+await urlSync.fromUrl()
 
-// Get comprehensive URL information
-const urlInfo = urlSync.getUrlInfo()
-console.log(urlInfo.filterCount, urlInfo.types, urlInfo.length)
+// Clear all filters
+urlSync.clearFilters()
+
+// Get detailed URL information
+const urlInfo = await urlSync.getUrlInfo()
+console.log(
+  `URL has ${urlInfo.filterCount} filters, compressed: ${urlInfo.compressed}`
+)
 ```
 
-### React Hook (Enhanced)
+## React Integration
 
-```typescript
+For React applications, use the enhanced `useAGGridUrlSync` hook that provides comprehensive state management and React-specific features.
+
+### Basic React Usage
+
+```tsx
+import React, { useState } from 'react'
+import { AgGridReact } from 'ag-grid-react'
 import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
 
-function DataGrid() {
-  const [gridApi, setGridApi] = useState<GridApi | null>(null)
+function GridComponent() {
+  const [gridApi, setGridApi] = useState(null)
 
   const {
-    // Primary API
     shareUrl,
     applyUrlFilters,
     clearFilters,
-
-    // Status
-    isReady,
     hasFilters,
-    error,
-
-    // v1.0 capabilities
+    isReady,
     urlInfo,
-    columnTypes,
-    validateUrl,
-
-    // Organized API surface
-    url: { share, current, info, validate },
-    filters: { apply, clear, count, types },
-    status: { ready, loading, error: err, hasFilters: active }
+    error,
+    isLoading
   } = useAGGridUrlSync(gridApi, {
     autoApplyOnMount: true,
-    typeDetection: 'smart',
+    prefix: 'filter_',
     compression: 'auto',
-    debug: true
+    typeDetection: 'smart'
   })
+
+  const handleShare = async () => {
+    const url = await shareUrl()
+    await navigator.clipboard.writeText(url)
+    alert('Filter URL copied!')
+  }
+
+  if (error) {
+    console.error('URL sync error:', error)
+  }
 
   return (
     <div>
-      <button onClick={() => navigator.clipboard.writeText(shareUrl())}>
-        Share Filters ({urlInfo.filterCount} active)
-      </button>
+      <div style={{ marginBottom: '10px' }}>
+        <button onClick={handleShare} disabled={!isReady || isLoading}>
+          📋 Share Filters ({urlInfo.filterCount})
+        </button>
+        <button onClick={clearFilters} disabled={!hasFilters}>
+          🗑️ Clear Filters
+        </button>
+        <button onClick={applyUrlFilters}>🔄 Apply URL Filters</button>
+        {urlInfo.compressed && (
+          <span style={{ color: 'green' }}>🗜️ Compressed URL</span>
+        )}
+      </div>
 
-      <AgGridReact
-        onGridReady={params => setGridApi(params.api)}
-        // ... other props
-      />
+      <div className="ag-theme-alpine" style={{ height: 400, width: '100%' }}>
+        <AgGridReact
+          onGridReady={params => setGridApi(params.api)}
+          rowData={rowData}
+          columnDefs={columnDefs}
+          defaultColDef={{
+            filter: true, // Enables automatic type detection
+            floatingFilter: true
+          }}
+        />
+      </div>
     </div>
   )
 }
 ```
 
-## 📖 Comprehensive Examples
+### Advanced React Usage with Type Configuration
 
-### Number Filters
+```tsx
+import React, { useState } from 'react'
+import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
 
-```typescript
-// Age range: 25 to 65
-?f_age_range=25,65
+function AdvancedGridComponent() {
+  const [gridApi, setGridApi] = useState(null)
 
-// Salary greater than 50000
-?f_salary_gt=50000
+  const {
+    shareUrl,
+    applyUrlFilters,
+    clearFilters,
+    validateUrl,
+    urlInfo,
+    columnTypes,
+    isReady,
+    error,
+    // Organized API access
+    url,
+    filters,
+    status
+  } = useAGGridUrlSync(gridApi, {
+    autoApplyOnMount: true,
+    prefix: 'emp_',
 
-// Score exactly 95.5
-?f_score_eq=95.5
-
-// Price not equal to 0
-?f_price_neq=0
-```
-
-### Date Filters
-
-```typescript
-// Created after January 1, 2024
-?f_created_after=2024-01-01
-
-// Date range: Q1 2024
-?f_quarter_range=2024-01-01,2024-03-31
-
-// Exactly March 15, 2024
-?f_deadline_eq=2024-03-15
-```
-
-### Set Filters
-
-```typescript
-// Multiple departments
-?f_department_in=Engineering,Sales,Marketing
-
-// Multiple statuses (URL-encoded commas)
-?f_status_in=Active,Pending,Review
-```
-
-### Advanced Configuration
-
-```typescript
-const urlSync = new AGGridUrlSync(gridApi, {
-  // Custom prefix and limits
-  prefix: 'filter_',
-  limits: {
-    valueLength: 300,
-    urlLength: 3000,
-    setValues: 100
-  },
-
-  // Type detection configuration
-  typeDetection: 'smart',
-  columnTypes: {
-    // Force specific types
-    userId: 'number',
-    createdAt: 'date',
-    tags: 'set'
-  },
-  typeHints: {
-    // Hint at types for better detection
-    numberColumns: ['id', 'count', 'amount'],
-    dateColumns: ['created', 'updated', 'deadline'],
-    setColumns: ['categories', 'tags', 'assignees']
-  },
-
-  // Enhanced error handling
-  onError: {
-    parsing: (error, context) => {
-      console.warn('Filter parsing failed:', error.message, context)
+    // Configure type detection
+    typeDetection: 'smart',
+    columnTypes: {
+      employee_id: 'number',
+      hire_date: 'date',
+      department: 'set'
     },
-    typeDetection: (error, column) => {
-      console.warn(`Type detection failed for column '${column}':`, error)
+    typeHints: {
+      dateColumns: ['created_at', 'updated_at'],
+      numberColumns: ['salary', 'age'],
+      setColumns: ['skills', 'certifications']
     },
-    urlLength: info => {
-      if (info.originalLength > 2000) {
-        console.warn('URL is getting long, consider compression')
+
+    // Configure compression
+    compression: {
+      strategy: 'auto',
+      threshold: 1500,
+      algorithms: ['lz', 'gzip', 'base64']
+    },
+
+    // Configure limits
+    limits: {
+      valueLength: 100,
+      urlLength: 2000,
+      setValues: 25
+    },
+
+    // Error handling
+    onError: {
+      parsing: (error, context) => {
+        console.warn('Parsing error:', error.message, context)
+      },
+      validation: (error, filter) => {
+        console.warn('Validation error:', error.message, filter)
       }
     },
-    validation: (error, filter) => {
-      console.error('Filter validation failed:', error, filter)
-    }
-  },
 
-  // Performance and debugging
-  debug: true,
-  performanceMonitoring: true,
-  validateOnApply: true
-})
+    debug: true
+  })
+
+  const handleValidateUrl = async () => {
+    const url = prompt('Enter URL to validate:')
+    if (url) {
+      const result = await validateUrl(url)
+      if (result.valid) {
+        alert('URL is valid!')
+      } else {
+        alert(`Invalid URL: ${result.errors.join(', ')}`)
+      }
+    }
+  }
+
+  const handleShareViaEmail = async () => {
+    const shareableUrl = await shareUrl()
+    const subject = 'Filtered Data View'
+    const body = `Check out this filtered data: ${shareableUrl}`
+    window.open(
+      `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    )
+  }
+
+  return (
+    <div>
+      <div className="controls">
+        <button onClick={handleShareViaEmail} disabled={!isReady}>
+          📧 Share via Email
+        </button>
+        <button onClick={handleValidateUrl}>🔍 Validate URL</button>
+        <button onClick={clearFilters} disabled={!hasFilters}>
+          Clear ({filters.count} filters)
+        </button>
+      </div>
+
+      <div className="info">
+        <p>Status: {status.ready ? 'Ready' : 'Loading'}</p>
+        <p>Filters: {filters.count} active</p>
+        <p>URL Length: {url.info.length} chars</p>
+        {url.info.compressed && (
+          <p>Compression: {url.info.compressionRatio?.toFixed(2)}x ratio</p>
+        )}
+      </div>
+
+      {error && <div className="error">Error: {error.message}</div>}
+
+      {/* Grid component */}
+    </div>
+  )
+}
 ```
 
-## 🔧 API Reference
+### React Router Integration
 
-### Core Class Methods
+```tsx
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
 
-```typescript
-class AGGridUrlSync {
-  // URL Generation
-  toUrl(baseUrl?: string, options?: { compress?: boolean }): string
-  toParams(options?: { compress?: boolean }): string
+function RouterGridComponent() {
+  const [gridApi, setGridApi] = useState(null)
+  const navigate = useNavigate()
+  const location = useLocation()
 
-  // Filter Application
-  fromUrl(url?: string): void
-  fromFilters(filterState: FilterState): void
-  clearFilters(): void
+  const { shareUrl, clearFilters, hasFilters, isReady, urlInfo } =
+    useAGGridUrlSync(gridApi, {
+      autoApplyOnMount: true,
+      prefix: 'f_',
+      compression: 'auto'
+    })
 
-  // Information & Validation
-  getUrlInfo(): UrlInfo
-  getColumnTypes(): Record<string, FilterType>
-  validateUrl(url: string): ValidationResult
+  // Sync filters with browser URL
+  useEffect(() => {
+    const updateBrowserUrl = async () => {
+      if (!isReady) return
 
-  // Configuration
-  updateConfig(newConfig: AGGridUrlSyncConfig): void
-  destroy(): void
+      const filterUrl = await shareUrl(
+        window.location.origin + location.pathname
+      )
+      const urlParams = new URL(filterUrl).searchParams
+      const currentParams = new URLSearchParams(location.search)
+
+      // Clear existing filter params
+      for (const [key] of currentParams) {
+        if (key.startsWith('f_')) {
+          currentParams.delete(key)
+        }
+      }
+
+      // Add current filter params
+      for (const [key, value] of urlParams) {
+        if (key.startsWith('f_')) {
+          currentParams.set(key, value)
+        }
+      }
+
+      const newSearch = currentParams.toString()
+      if (newSearch !== location.search.substring(1)) {
+        navigate(`${location.pathname}?${newSearch}`, { replace: true })
+      }
+    }
+
+    updateBrowserUrl()
+  }, [urlInfo.filterCount, isReady, shareUrl, location.pathname, navigate])
+
+  return (
+    <div>
+      <button onClick={clearFilters} disabled={!hasFilters}>
+        Clear Filters
+      </button>
+      {/* Grid component */}
+    </div>
+  )
 }
 ```
 
 ### React Hook API
 
-```typescript
-interface UseAGGridUrlSyncReturn {
-  // Primary API
-  shareUrl: (baseUrl?: string, options?: { compress?: boolean }) => string
-  applyUrlFilters: (url?: string) => void
-  clearFilters: () => void
+#### `useAGGridUrlSync(gridApi, options?)`
 
-  // Status
-  isReady: boolean
-  hasFilters: boolean
-  isLoading: boolean
-  error: Error | null
+```tsx
+import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
 
-  // v0.3 Capabilities
-  urlInfo: UrlInfo
-  columnTypes: Record<string, FilterType>
-  validateUrl: (url: string) => ValidationResult
-  applyFilters: (filterState: FilterState) => void
-  getQueryParams: (options?: { compress?: boolean }) => string
+const {
+  shareUrl,
+  applyUrlFilters,
+  clearFilters,
+  isReady,
+  hasFilters,
+  isLoading,
+  error,
+  urlInfo,
+  columnTypes,
+  validateUrl,
+  applyFilters,
+  getQueryParams,
+  refresh,
+  // Organized API access
+  url,
+  filters,
+  status
+} = useAGGridUrlSync(gridApi, options)
+```
 
-  // Organized API Surface
-  url: { share; current; info; validate }
-  filters: { apply; applyState; clear; count; types }
-  status: { ready; loading; error; hasFilters }
+#### Hook Options
+
+```tsx
+interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
+  // React-specific options
+  autoApplyOnMount?: boolean // Default: false
+  enabledWhenReady?: boolean // Default: true
+
+  // Core options
+  prefix?: string // Default: 'f_'
+  typeDetection?: 'smart' | 'strict' | 'disabled' // Default: 'smart'
+  compression?: CompressionStrategy | CompressionConfig // Default: 'auto'
+
+  // Limits configuration
+  limits?: {
+    valueLength?: number // Default: 200
+    urlLength?: number // Default: 2000
+    setValues?: number // Default: 50
+  }
+
+  // Type detection configuration
+  columnTypes?: Record<string, FilterType>
+  typeHints?: {
+    dateColumns?: string[]
+    numberColumns?: string[]
+    setColumns?: string[]
+  }
+
+  // Error handling
+  onError?: {
+    parsing?: (error: Error, context: ParseContext) => void
+    typeDetection?: (error: Error, column: string) => void
+    urlLength?: (info: UrlLengthInfo) => void
+    validation?: (error: Error, filter: FilterInfo) => void
+    compression?: (error: Error, data: CompressionContext) => void
+  }
+
+  // Debug options
+  debug?: boolean
+  validateOnApply?: boolean
+  performanceMonitoring?: boolean
 }
 ```
 
-## 🏗️ Architecture
+#### Hook Return Values
 
-### Type Detection Engine
+| Property          | Type                                                                      | Description                                     |
+| ----------------- | ------------------------------------------------------------------------- | ----------------------------------------------- |
+| `shareUrl`        | `(baseUrl?: string, options?: { compress?: boolean }) => Promise<string>` | Generate shareable URL with current filters     |
+| `applyUrlFilters` | `(url?: string) => Promise<void>`                                         | Apply filters from URL to grid                  |
+| `clearFilters`    | `() => Promise<void>`                                                     | Clear all filters                               |
+| `isReady`         | `boolean`                                                                 | Whether grid API is available and hook is ready |
+| `hasFilters`      | `boolean`                                                                 | Whether grid has any active filters             |
+| `isLoading`       | `boolean`                                                                 | Whether hook is currently processing            |
+| `error`           | `Error \| null`                                                           | Current error state                             |
+| `urlInfo`         | `UrlInfo`                                                                 | Comprehensive URL information and statistics    |
+| `columnTypes`     | `Record<string, FilterType>`                                              | Detected column types                           |
+| `validateUrl`     | `(url: string) => Promise<ValidationResult>`                              | Validate URL format                             |
+| `applyFilters`    | `(filters: FilterState) => Promise<void>`                                 | Apply filter state object                       |
+| `getQueryParams`  | `(options?: { compress?: boolean }) => Promise<string>`                   | Get query parameters                            |
+| `refresh`         | `() => Promise<void>`                                                     | Manually refresh hook state                     |
+| `url`             | `object`                                                                  | Organized URL operations                        |
+| `filters`         | `object`                                                                  | Organized filter operations                     |
+| `status`          | `object`                                                                  | Organized status information                    |
 
-v0.3 includes a sophisticated type detection system that automatically determines the appropriate filter type for each column:
+## API Reference
 
-```typescript
-const engine = createTypeDetectionEngine(gridApi, config)
-const result = engine.detectColumnType('age')
-// { type: 'number', confidence: 'high', source: 'grid' }
-```
+### `createUrlSync(gridApi, config?)`
 
-### Filter Operations Map
-
-Comprehensive mapping between URL operations and AG Grid filter types:
-
-```typescript
-const OPERATION_MAP = {
-  eq: 'equals',
-  neq: 'notEquals',
-  gt: 'greaterThan',
-  lt: 'lessThan',
-  range: 'inRange',
-  before: 'before',
-  after: 'after',
-  in: 'in',
-  contains: 'contains'
-}
-```
-
-## 📊 Migration from v0.2
-
-v1.0 maintains backward compatibility for basic text filtering while adding comprehensive new capabilities:
-
-### 🔄 Configuration Changes
-
-| v0.2 Property    | v1.0 Property        | Migration            |
-| ---------------- | -------------------- | -------------------- |
-| `paramPrefix`    | `prefix`             | Automatically mapped |
-| `maxValueLength` | `limits.valueLength` | Automatically mapped |
-| _(new)_          | `typeDetection`      | Optional new feature |
-| _(new)_          | `compression`        | Optional new feature |
-
-### 🚀 Automatic Migration
+Factory function to create a new AGGridUrlSync instance with comprehensive configuration.
 
 ```typescript
-// v0.2 code continues to work
-const urlSync = new AGGridUrlSync(gridApi, {
-  paramPrefix: 'f_', // ✅ Automatically mapped to 'prefix'
-  maxValueLength: 200 // ✅ Automatically mapped to 'limits.valueLength'
-})
+import { createUrlSync } from 'ag-grid-url-sync'
 
-// All v0.2 methods continue working
-urlSync.generateUrl() // ✅ Works (internally calls toUrl())
-urlSync.getQueryParams() // ✅ Works (internally calls toParams())
-urlSync.applyFromUrl(url) // ✅ Works (internally calls fromUrl())
-```
-
-### 🎯 Enhanced Features Available
-
-```typescript
-// Upgrade to v1.0 features gradually
-const urlSync = new AGGridUrlSync(gridApi, {
-  // Keep existing config (auto-migrated)
+const urlSync = createUrlSync(gridApi, {
   prefix: 'f_',
-  limits: { valueLength: 200 },
-
-  // Add new v1.0 capabilities
-  typeDetection: 'smart', // Enable number/date/set filters
-  compression: 'auto', // Enable URL compression
-  debug: true,
-  performanceMonitoring: true
+  typeDetection: 'smart',
+  compression: 'auto',
+  columnTypes: {
+    id: 'number',
+    created_date: 'date',
+    categories: 'set'
+  },
+  limits: {
+    valueLength: 200,
+    urlLength: 2000,
+    setValues: 50
+  },
+  onError: {
+    parsing: (err, context) => console.warn('Parse error:', err, context),
+    validation: (err, filter) => console.warn('Validation error:', err, filter)
+  }
 })
-
-// New v1.0 methods available
-const shareableUrl = await urlSync.toUrl() // Enhanced with compression
-const info = urlSync.getUrlInfo() // New: comprehensive URL analysis
-const types = urlSync.getColumnTypes() // New: detected column types
 ```
 
-### ⚠️ Breaking Changes
+### `AGGridUrlSync` Class
 
-- **Async Methods**: `toUrl()`, `toParams()`, `fromUrl()` are now async when using compression
-- **Configuration**: Some internal properties restructured (but legacy configs auto-migrate)
-- **Peer Dependencies**: Minimum AG Grid version 28.0.0
+#### Methods
 
-## 🧪 Testing
+##### `toUrl(baseUrl?: string, options?: { compress?: boolean }): Promise<string>`
 
-Comprehensive test suite covering all v0.3 features:
+Generates a complete URL with current filter state.
 
-```bash
-npm test                    # Run all tests
-npm run test:unit          # Unit tests only
-npm run test:integration   # Integration tests
-npm run test:performance   # Performance benchmarks
+```typescript
+const url = await urlSync.toUrl('https://app.com/page')
+// https://app.com/page?f_name_contains=john&f_age_gt=25
+
+// Force compression
+const compressedUrl = await urlSync.toUrl(undefined, { compress: true })
 ```
 
-## 🚧 Development Status
+##### `toParams(options?: { compress?: boolean }): Promise<string>`
 
-### ✅ v1.0 Complete - Production Ready
+Gets the current filter state as URL query parameters.
 
-- ✅ **Complete Filter Support**: Text, Number, Date, Set filters
-- ✅ **Smart Type Detection**: 5-level hierarchical detection system
-- ✅ **URL Compression**: Multi-algorithm compression engine
-- ✅ **Performance Optimized**: Sub-ms cached operations
-- ✅ **React Integration**: Enhanced hooks with comprehensive API
-- ✅ **Backward Compatible**: Full v0.2 API support with migration
-- ✅ **Production Testing**: 73/73 tests passing (100% coverage)
-- ✅ **TypeScript Ready**: Complete type safety and intellisense
-
-### 📋 Planned (v1.1+)
-
-- 🔄 **Server-side Integration**: Node.js utilities for SSR
-- 🔄 **Advanced Debugging**: Visual filter state debugging tools
-- 🔄 **Enterprise Features**: AG Grid Enterprise filter compatibility
-- 🔄 **Multi-condition Filters**: AND/OR logic between filters
-
-## 🤝 Contributing
-
-We welcome contributions! v1.0 is a major evolution and we're looking for feedback, bug reports, and feature requests.
-
-### Development Setup
-
-```bash
-git clone https://github.com/your-org/ag-grid-url-sync.git
-cd ag-grid-url-sync
-npm install
-npm run dev
+```typescript
+const params = await urlSync.toParams()
+// ?f_name_contains=john&f_age_gt=25
 ```
 
-### Running Examples
+##### `fromUrl(url?: string): Promise<void>`
 
-```bash
-npm run example:react      # React example
-npm run example:vanilla    # Vanilla JS example
-npm run example:advanced   # Advanced features demo
+Applies filters from a URL to the grid with automatic decompression.
+
+```typescript
+await urlSync.fromUrl('https://app.com/page?f_name_contains=john')
 ```
 
-## 📄 License
+##### `fromFilters(filterState: FilterState): void`
 
-MIT © [Your Organization]
+Applies a filter state object directly to the grid.
 
-## 🙏 Acknowledgments
-
-- AG Grid team for the excellent grid component
-- TypeScript team for making complex APIs type-safe
-- React team for the hooks paradigm that inspired our API design
-
----
-
-**Ready to transform your AG Grid filtering experience?**
-
-```bash
-npm install ag-grid-url-sync
+```typescript
+await urlSync.fromFilters({
+  name: {
+    filterType: 'text',
+    type: 'contains',
+    filter: 'john'
+  },
+  age: {
+    filterType: 'number',
+    type: 'greaterThan',
+    filter: 25
+  }
+})
 ```
 
-[📚 Full Documentation](https://docs.ag-grid-url-sync.com) | [🎮 Live Demo](https://demo.ag-grid-url-sync.com) | [💬 Discord](https://discord.gg/ag-grid-url-sync)
+##### `getUrlInfo(): Promise<UrlInfo>`
+
+Gets comprehensive information about the current URL state.
+
+```typescript
+const info = await urlSync.getUrlInfo()
+console.log({
+  length: info.length,
+  filterCount: info.filterCount,
+  compressed: info.compressed,
+  compressionRatio: info.compressionRatio,
+  types: info.types
+})
+```
+
+##### `validateUrl(url: string): Promise<ValidationResult>`
+
+Validates a URL for proper filter format.
+
+```typescript
+const result = await urlSync.validateUrl(url)
+if (!result.valid) {
+  console.error('Invalid URL:', result.errors)
+}
+```
+
+##### `clearFilters(): void`
+
+Clears all filters from the grid.
+
+```typescript
+urlSync.clearFilters()
+```
+
+##### `getColumnTypes(): Record<string, FilterType>`
+
+Gets the detected column types.
+
+```typescript
+const types = urlSync.getColumnTypes()
+// { name: 'text', age: 'number', created_date: 'date' }
+```
+
+### Configuration
+
+```typescript
+interface AGGridUrlSyncConfig {
+  // URL parameter prefix
+  prefix?: string // Default: 'f_'
+
+  // Type detection strategy
+  typeDetection?: 'smart' | 'strict' | 'disabled' // Default: 'smart'
+
+  // Compression configuration
+  compression?: CompressionStrategy | CompressionConfig // Default: 'auto'
+
+  // Value and URL limits
+  limits?: {
+    valueLength?: number // Default: 200
+    urlLength?: number // Default: 2000
+    setValues?: number // Default: 50
+  }
+
+  // Type detection hints
+  columnTypes?: Record<string, FilterType>
+  typeHints?: {
+    dateColumns?: string[]
+    numberColumns?: string[]
+    setColumns?: string[]
+  }
+
+  // Error handling
+  onError?: {
+    parsing?: (error: Error, context: ParseContext) => void
+    typeDetection?: (error: Error, column: string) => void
+    urlLength?: (info: UrlLengthInfo) => void
+    validation?: (error: Error, filter: FilterInfo) => void
+    compression?: (error: Error, data: CompressionContext) => void
+  }
+
+  // Debug and performance
+  debug?: boolean
+  validateOnApply?: boolean
+  performanceMonitoring?: boolean
+}
+```
+
+#### Compression Configuration
+
+```typescript
+interface CompressionConfig {
+  strategy: 'auto' | 'always' | 'never' | 'gzip' | 'lz'
+  threshold: number // Auto-compress threshold (default: 2000)
+  algorithms: ('gzip' | 'lz' | 'base64')[] // Algorithm preference
+  level: number // Compression level (default: 6)
+}
+```
+
+## Examples
+
+Check out the [examples](./examples) directory for comprehensive working demos:
+
+### Vanilla JavaScript Examples
+
+#### 📝 [Basic Example](./examples/vanilla-js/basic-example.html)
+
+Simple HTML/JS implementation showing core functionality with comprehensive filter support.
+
+#### 🚀 [Advanced Demo](./examples/vanilla-js/advanced-demo.html)
+
+Feature-rich demonstration including:
+
+- Performance monitoring and benchmarks
+- All filter types (text, number, date, set)
+- Compression and type detection
+- Multiple filter scenarios
+- Error testing and validation
+
+#### 🔗 [Multi-Grid Demo](./examples/vanilla-js/multi-grid-demo.html)
+
+Complex example with multiple independent grids:
+
+- Four separate grids with different filter types
+- Independent URL namespacing
+- Combined and individual filter management
+
+### React Examples
+
+#### ⚛️ [Basic React Grid](./examples/react-basic/basic-grid.tsx)
+
+Complete React component with the enhanced `useAGGridUrlSync` hook:
+
+- Comprehensive filter support
+- Error handling and loading states
+- URL compression and validation
+
+#### 🛣️ [React Router Integration](./examples/react-router/router-grid.tsx)
+
+Advanced React example with React Router:
+
+- Browser URL synchronization
+- Automatic filter restoration
+- Advanced state management
+
+All examples work out-of-the-box and demonstrate the full range of features including comprehensive filter support, type detection, and URL compression.
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+
+[![banner](https://raw.githubusercontent.com/nearform/.github/refs/heads/master/assets/os-banner-green.svg)](https://www.nearform.com/contact/?utm_source=open-source&utm_medium=banner&utm_campaign=os-project-pages)

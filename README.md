@@ -19,6 +19,28 @@ A lightweight TypeScript library for synchronizing AG Grid text filters with URL
 - 🛡️ Robust edge case handling (special characters, malformed URLs)
 - 📦 Lightweight bundle size (~3KB gzipped)
 
+## Supported Filter Types
+
+Currently supports **AG Grid text filters** with the following operations:
+
+| Filter Type | Operations | URL Format                | Example                |
+| ----------- | ---------- | ------------------------- | ---------------------- |
+| **Text**    | `contains` | `f_column_contains=value` | `f_name_contains=john` |
+| **Text**    | `equals`   | `f_column_eq=value`       | `f_status_eq=active`   |
+
+### Filter Detection
+
+The library automatically works with:
+
+- Columns configured with `filter: 'agTextColumnFilter'`
+- Columns with `filter: true` (AG Grid's default text filter)
+- Any column where users apply text-based filters
+
+### URL Examples
+
+- Simple: `https://app.com/data?f_name_contains=john`
+- Multiple: `https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_email_contains=company.com`
+
 ## Installation
 
 ```bash

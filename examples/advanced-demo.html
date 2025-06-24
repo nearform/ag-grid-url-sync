@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AG Grid URL Sync - Advanced Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+    <script type="module">
+      // Import our library from dist
+      import { AGGridUrlSync } from '../dist/index.js'
+      window.AGGridUrlSync = { AGGridUrlSync }
+    </script>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+      .header {
+        background: #1976d2;
+        color: white;
+        padding: 20px;
+        text-align: center;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 28px;
+      }
+      .subtitle {
+        margin: 10px 0 0;
+        opacity: 0.9;
+        font-size: 16px;
+      }
+      .controls {
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+        background: #fafafa;
+      }
+      .control-section {
+        margin-bottom: 20px;
+      }
+      .control-section h3 {
+        margin: 0 0 10px;
+        color: #333;
+        font-size: 16px;
+      }
+      .control-group {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+      }
+      .btn-primary {
+        background: #1976d2;
+        color: white;
+      }
+      .btn-primary:hover {
+        background: #1565c0;
+      }
+      .btn-secondary {
+        background: #f5f5f5;
+        color: #333;
+        border: 1px solid #ddd;
+      }
+      .btn-secondary:hover {
+        background: #e0e0e0;
+      }
+      .btn-danger {
+        background: #d32f2f;
+        color: white;
+      }
+      .btn-danger:hover {
+        background: #c62828;
+      }
+      .btn-success {
+        background: #388e3c;
+        color: white;
+      }
+      .btn-success:hover {
+        background: #2e7d32;
+      }
+      .url-display {
+        background: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 12px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        word-break: break-all;
+        margin: 10px 0;
+        min-height: 20px;
+      }
+      .performance-monitor {
+        background: #e8f5e8;
+        border: 1px solid #4caf50;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 10px 0;
+        font-size: 12px;
+      }
+      .error-display {
+        background: #ffebee;
+        border: 1px solid #f44336;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 10px 0;
+        font-size: 12px;
+        color: #d32f2f;
+      }
+      .hidden {
+        display: none;
+      }
+      #myGrid {
+        height: 500px;
+        width: 100%;
+        margin: 20px 0;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin: 15px 0;
+      }
+      .stat-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 15px;
+        text-align: center;
+      }
+      .stat-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #1976d2;
+        margin-bottom: 5px;
+      }
+      .stat-label {
+        font-size: 12px;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .demo-section {
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+      }
+      .demo-section:last-child {
+        border-bottom: none;
+      }
+      .scenario-btn {
+        margin: 5px;
+      }
+      .copy-btn {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🔗 AG Grid URL Sync - Advanced Demo</h1>
+        <div class="subtitle">
+          Comprehensive demonstration of URL state synchronization features
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="control-section">
+          <h3>📊 Performance Monitor</h3>
+          <div id="performanceMonitor" class="performance-monitor">
+            Ready to monitor performance...
+          </div>
+          <div class="stats">
+            <div class="stat-card">
+              <div id="urlGenerationTime" class="stat-value">0ms</div>
+              <div class="stat-label">URL Generation</div>
+            </div>
+            <div class="stat-card">
+              <div id="filterApplicationTime" class="stat-value">0ms</div>
+              <div class="stat-label">Filter Application</div>
+            </div>
+            <div class="stat-card">
+              <div id="operationCount" class="stat-value">0</div>
+              <div class="stat-label">Total Operations</div>
+            </div>
+            <div class="stat-card">
+              <div id="errorCount" class="stat-value">0</div>
+              <div class="stat-label">Errors</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>🎯 Filter Scenarios</h3>
+          <div class="control-group">
+            <button
+              class="btn btn-primary scenario-btn"
+              onclick="applyScenario('sales')"
+            >
+              💰 Sales Team
+            </button>
+            <button
+              class="btn btn-primary scenario-btn"
+              onclick="applyScenario('engineering')"
+            >
+              ⚙️ Engineering
+            </button>
+            <button
+              class="btn btn-primary scenario-btn"
+              onclick="applyScenario('executive')"
+            >
+              👔 Executive View
+            </button>
+            <button
+              class="btn btn-primary scenario-btn"
+              onclick="applyScenario('support')"
+            >
+              🎧 Customer Support
+            </button>
+            <button class="btn btn-secondary" onclick="clearAllFilters()">
+              🧹 Clear All
+            </button>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>🔗 URL Sharing</h3>
+          <div class="control-group">
+            <button class="btn btn-success" onclick="generateShareableUrl()">
+              📋 Generate Shareable URL
+            </button>
+            <button
+              class="btn btn-secondary copy-btn"
+              onclick="copyUrlToClipboard()"
+            >
+              📄 Copy
+            </button>
+            <button class="btn btn-secondary" onclick="shareViaEmail()">
+              📧 Email
+            </button>
+            <button class="btn btn-secondary" onclick="shareViaSlack()">
+              💬 Slack
+            </button>
+          </div>
+          <div id="urlDisplay" class="url-display">
+            Apply filters and click "Generate Shareable URL" to see the
+            result...
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>🧪 Error Testing</h3>
+          <div class="control-group">
+            <button class="btn btn-danger" onclick="testMalformedUrl()">
+              ❌ Malformed URL
+            </button>
+            <button class="btn btn-danger" onclick="testInvalidFilters()">
+              ⚠️ Invalid Filters
+            </button>
+            <button class="btn btn-danger" onclick="testLongValues()">
+              📏 Long Values
+            </button>
+            <button class="btn btn-secondary" onclick="clearErrors()">
+              🧹 Clear Errors
+            </button>
+          </div>
+          <div id="errorDisplay" class="error-display hidden">
+            No errors to display
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>⚡ Performance Testing</h3>
+          <div class="control-group">
+            <button class="btn btn-secondary" onclick="stressTest()">
+              🔥 Stress Test (100 ops)
+            </button>
+            <button class="btn btn-secondary" onclick="memoryTest()">
+              🧠 Memory Test
+            </button>
+            <button class="btn btn-secondary" onclick="rapidFilterTest()">
+              ⚡ Rapid Filter Changes
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-section">
+        <div id="myGrid" class="ag-theme-alpine"></div>
+      </div>
+    </div>
+
+    <script>
+      // Sample data with realistic company information
+      const sampleData = [
+        {
+          name: 'John Smith',
+          department: 'Sales',
+          position: 'Senior Account Manager',
+          salary: 75000,
+          location: 'New York',
+          hireDate: '2021-03-15',
+          performance: 'Excellent'
+        },
+        {
+          name: 'Sarah Johnson',
+          department: 'Engineering',
+          position: 'Software Engineer',
+          salary: 85000,
+          location: 'San Francisco',
+          hireDate: '2020-07-22',
+          performance: 'Good'
+        },
+        {
+          name: 'Mike Chen',
+          department: 'Engineering',
+          position: 'Tech Lead',
+          salary: 120000,
+          location: 'Seattle',
+          hireDate: '2019-01-10',
+          performance: 'Excellent'
+        },
+        {
+          name: 'Emily Davis',
+          department: 'Marketing',
+          position: 'Marketing Manager',
+          salary: 70000,
+          location: 'Chicago',
+          hireDate: '2021-09-05',
+          performance: 'Good'
+        },
+        {
+          name: 'Robert Wilson',
+          department: 'Sales',
+          position: 'Sales Director',
+          salary: 110000,
+          location: 'Boston',
+          hireDate: '2018-12-01',
+          performance: 'Excellent'
+        },
+        {
+          name: 'Lisa Anderson',
+          department: 'HR',
+          position: 'HR Business Partner',
+          salary: 65000,
+          location: 'Austin',
+          hireDate: '2020-11-18',
+          performance: 'Good'
+        },
+        {
+          name: 'David Brown',
+          department: 'Engineering',
+          position: 'Senior Developer',
+          salary: 95000,
+          location: 'San Francisco',
+          hireDate: '2019-08-30',
+          performance: 'Excellent'
+        },
+        {
+          name: 'Jennifer Taylor',
+          department: 'Finance',
+          position: 'Financial Analyst',
+          salary: 60000,
+          location: 'New York',
+          hireDate: '2022-02-14',
+          performance: 'Good'
+        },
+        {
+          name: 'Chris Martin',
+          department: 'Support',
+          position: 'Customer Success Manager',
+          salary: 55000,
+          location: 'Portland',
+          hireDate: '2021-06-20',
+          performance: 'Good'
+        },
+        {
+          name: 'Amanda White',
+          department: 'Engineering',
+          position: 'Principal Engineer',
+          salary: 140000,
+          location: 'Seattle',
+          hireDate: '2017-04-03',
+          performance: 'Excellent'
+        },
+        {
+          name: 'Kevin Lee',
+          department: 'Sales',
+          position: 'Account Executive',
+          salary: 68000,
+          location: 'Denver',
+          hireDate: '2020-10-12',
+          performance: 'Good'
+        },
+        {
+          name: 'Rachel Green',
+          department: 'Design',
+          position: 'Senior UX Designer',
+          salary: 80000,
+          location: 'Los Angeles',
+          hireDate: '2019-12-07',
+          performance: 'Excellent'
+        },
+        {
+          name: 'Mark Thompson',
+          department: 'Operations',
+          position: 'Operations Manager',
+          salary: 72000,
+          location: 'Phoenix',
+          hireDate: '2021-01-25',
+          performance: 'Good'
+        },
+        {
+          name: 'Nicole Garcia',
+          department: 'Support',
+          position: 'Technical Support Lead',
+          salary: 58000,
+          location: 'Miami',
+          hireDate: '2020-05-18',
+          performance: 'Good'
+        },
+        {
+          name: 'Steve Rodriguez',
+          department: 'Engineering',
+          position: 'DevOps Engineer',
+          salary: 100000,
+          location: 'Austin',
+          hireDate: '2018-09-14',
+          performance: 'Excellent'
+        }
+      ]
+
+      // Grid configuration
+      const gridOptions = {
+        columnDefs: [
+          {
+            field: 'name',
+            headerName: 'Name',
+            filter: 'agTextColumnFilter',
+            floatingFilter: true
+          },
+          {
+            field: 'department',
+            headerName: 'Department',
+            filter: 'agTextColumnFilter',
+            floatingFilter: true
+          },
+          {
+            field: 'position',
+            headerName: 'Position',
+            filter: 'agTextColumnFilter',
+            floatingFilter: true
+          },
+          {
+            field: 'salary',
+            headerName: 'Salary',
+            filter: 'agNumberColumnFilter',
+            floatingFilter: true
+          },
+          {
+            field: 'location',
+            headerName: 'Location',
+            filter: 'agTextColumnFilter',
+            floatingFilter: true
+          },
+          {
+            field: 'hireDate',
+            headerName: 'Hire Date',
+            filter: 'agDateColumnFilter',
+            floatingFilter: true
+          },
+          {
+            field: 'performance',
+            headerName: 'Performance',
+            filter: 'agTextColumnFilter',
+            floatingFilter: true
+          }
+        ],
+        rowData: sampleData,
+        defaultColDef: {
+          resizable: true,
+          sortable: true,
+          flex: 1,
+          minWidth: 100
+        },
+        onFilterChanged: updatePerformanceMonitor,
+        animateRows: true,
+        enableRangeSelection: true
+      }
+
+      // Performance monitoring
+      let performanceStats = {
+        operationCount: 0,
+        errorCount: 0,
+        lastUrlGenerationTime: 0,
+        lastFilterApplicationTime: 0
+      }
+
+      // Initialize grid and URL sync
+      let gridApi
+      let urlSync
+
+      document.addEventListener('DOMContentLoaded', function () {
+        // Create grid
+        const gridDiv = document.querySelector('#myGrid')
+        gridApi = agGrid.createGrid(gridDiv, gridOptions)
+
+        // Wait for library to load
+        setTimeout(() => {
+          if (window.AGGridUrlSync) {
+            urlSync = new window.AGGridUrlSync.AGGridUrlSync(gridApi, {
+              onParseError: error => {
+                showError(`URL Parse Error: ${error.message}`)
+                performanceStats.errorCount++
+                updatePerformanceStats()
+              }
+            })
+            updatePerformanceMonitor()
+          }
+        }, 100)
+      })
+
+      function updatePerformanceMonitor() {
+        if (gridApi) {
+          const filterCount = Object.keys(gridApi.getFilterModel()).length
+          document.getElementById('performanceMonitor').textContent =
+            `Grid updated. Active filters: ${filterCount}`
+        }
+      }
+
+      function updatePerformanceStats() {
+        document.getElementById('urlGenerationTime').textContent =
+          `${performanceStats.lastUrlGenerationTime.toFixed(2)}ms`
+        document.getElementById('filterApplicationTime').textContent =
+          `${performanceStats.lastFilterApplicationTime.toFixed(2)}ms`
+        document.getElementById('operationCount').textContent =
+          performanceStats.operationCount
+        document.getElementById('errorCount').textContent =
+          performanceStats.errorCount
+      }
+
+      function applyScenario(scenario) {
+        if (!urlSync) return
+
+        const start = performance.now()
+
+        try {
+          let filters = {}
+
+          switch (scenario) {
+            case 'sales':
+              filters = {
+                department: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Sales'
+                },
+                salary: {
+                  filterType: 'number',
+                  type: 'greaterThan',
+                  filter: 60000
+                }
+              }
+              break
+            case 'engineering':
+              filters = {
+                department: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Engineering'
+                },
+                location: {
+                  filterType: 'text',
+                  type: 'contains',
+                  filter: 'San'
+                }
+              }
+              break
+            case 'executive':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'greaterThan',
+                  filter: 100000
+                },
+                performance: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Excellent'
+                }
+              }
+              break
+            case 'support':
+              filters = {
+                department: {
+                  filterType: 'text',
+                  type: 'contains',
+                  filter: 'Support'
+                }
+              }
+              break
+          }
+
+          gridApi.setFilterModel(filters)
+          performanceStats.lastFilterApplicationTime = performance.now() - start
+          performanceStats.operationCount++
+          updatePerformanceStats()
+          updatePerformanceMonitor()
+        } catch (error) {
+          showError(`Scenario application failed: ${error.message}`)
+          performanceStats.errorCount++
+          updatePerformanceStats()
+        }
+      }
+
+      function generateShareableUrl() {
+        if (!urlSync) return
+
+        const start = performance.now()
+
+        try {
+          const currentUrl = urlSync.generateUrl(
+            window.location.origin + window.location.pathname
+          )
+          document.getElementById('urlDisplay').textContent = currentUrl
+
+          performanceStats.lastUrlGenerationTime = performance.now() - start
+          performanceStats.operationCount++
+          updatePerformanceStats()
+        } catch (error) {
+          showError(`URL generation failed: ${error.message}`)
+          performanceStats.errorCount++
+          updatePerformanceStats()
+        }
+      }
+
+      function copyUrlToClipboard() {
+        const urlText = document.getElementById('urlDisplay').textContent
+        if (
+          urlText &&
+          urlText !==
+            'Apply filters and click "Generate Shareable URL" to see the result...'
+        ) {
+          navigator.clipboard
+            .writeText(urlText)
+            .then(() => {
+              showSuccess('URL copied to clipboard!')
+            })
+            .catch(err => {
+              showError('Failed to copy URL to clipboard')
+            })
+        }
+      }
+
+      function shareViaEmail() {
+        const url = document.getElementById('urlDisplay').textContent
+        if (
+          url &&
+          url !==
+            'Apply filters and click "Generate Shareable URL" to see the result...'
+        ) {
+          const subject = encodeURIComponent(
+            'Check out this filtered data view'
+          )
+          const body = encodeURIComponent(
+            `I've shared a filtered view of our data with you:\n\n${url}`
+          )
+          window.open(`mailto:?subject=${subject}&body=${body}`)
+        }
+      }
+
+      function shareViaSlack() {
+        const url = document.getElementById('urlDisplay').textContent
+        if (
+          url &&
+          url !==
+            'Apply filters and click "Generate Shareable URL" to see the result...'
+        ) {
+          const text = encodeURIComponent(
+            `Check out this filtered data view: ${url}`
+          )
+          window.open(
+            `https://slack.com/share?url=${encodeURIComponent(url)}&text=${text}`
+          )
+        }
+      }
+
+      function clearAllFilters() {
+        if (!urlSync) return
+
+        const start = performance.now()
+
+        try {
+          urlSync.clearFilters()
+          performanceStats.lastFilterApplicationTime = performance.now() - start
+          performanceStats.operationCount++
+          updatePerformanceStats()
+          updatePerformanceMonitor()
+
+          document.getElementById('urlDisplay').textContent =
+            'Apply filters and click "Generate Shareable URL" to see the result...'
+        } catch (error) {
+          showError(`Clear filters failed: ${error.message}`)
+          performanceStats.errorCount++
+          updatePerformanceStats()
+        }
+      }
+
+      function testMalformedUrl() {
+        if (!urlSync) return
+
+        try {
+          urlSync.applyFromUrl('not-a-valid-url')
+        } catch (error) {
+          showError(`Expected error: ${error.message}`)
+          performanceStats.errorCount++
+          updatePerformanceStats()
+        }
+      }
+
+      function testInvalidFilters() {
+        if (!urlSync) return
+
+        try {
+          const invalidUrl =
+            'https://example.com?f_nonexistent_invalidop=test&f__contains=empty'
+          urlSync.applyFromUrl(invalidUrl)
+        } catch (error) {
+          showError(`Expected error: ${error.message}`)
+          performanceStats.errorCount++
+          updatePerformanceStats()
+        }
+      }
+
+      function testLongValues() {
+        if (!urlSync) return
+
+        try {
+          const longValue = 'x'.repeat(300) // Exceeds default limit
+          const longUrl = `https://example.com?f_name_contains=${encodeURIComponent(longValue)}`
+          urlSync.applyFromUrl(longUrl)
+        } catch (error) {
+          showError(`Expected error: ${error.message}`)
+          performanceStats.errorCount++
+          updatePerformanceStats()
+        }
+      }
+
+      function stressTest() {
+        const start = performance.now()
+        showInfo('Running stress test with 100 operations...')
+
+        let completed = 0
+        const total = 100
+
+        for (let i = 0; i < total; i++) {
+          setTimeout(() => {
+            try {
+              const testUrl = `https://example.com?f_test_contains=value${i}`
+              urlSync.applyFromUrl(testUrl)
+              const generatedUrl = urlSync.generateUrl('https://example.com')
+
+              completed++
+              if (completed === total) {
+                const duration = performance.now() - start
+                showSuccess(
+                  `Stress test completed! 100 operations in ${duration.toFixed(2)}ms`
+                )
+                performanceStats.operationCount += total
+                updatePerformanceStats()
+              }
+            } catch (error) {
+              showError(`Stress test error: ${error.message}`)
+              performanceStats.errorCount++
+              updatePerformanceStats()
+            }
+          }, i * 10) // 10ms delay between operations
+        }
+      }
+
+      function memoryTest() {
+        showInfo('Running memory test...')
+
+        const initialMemory = performance.memory
+          ? performance.memory.usedJSHeapSize
+          : 0
+
+        // Perform many operations
+        for (let i = 0; i < 1000; i++) {
+          try {
+            urlSync.generateUrl(`https://example.com?iteration=${i}`)
+          } catch (error) {
+            // Ignore errors for this test
+          }
+        }
+
+        // Force garbage collection if available
+        if (window.gc) {
+          window.gc()
+        }
+
+        setTimeout(() => {
+          const finalMemory = performance.memory
+            ? performance.memory.usedJSHeapSize
+            : 0
+          const memoryIncrease = finalMemory - initialMemory
+          const memoryMB = (memoryIncrease / 1024 / 1024).toFixed(2)
+
+          if (memoryIncrease < 5 * 1024 * 1024) {
+            // Less than 5MB
+            showSuccess(`Memory test passed! Memory increase: ${memoryMB}MB`)
+          } else {
+            showError(`Memory test warning! Memory increase: ${memoryMB}MB`)
+          }
+        }, 1000)
+      }
+
+      function rapidFilterTest() {
+        const start = performance.now()
+        showInfo('Testing rapid filter changes...')
+
+        const scenarios = ['sales', 'engineering', 'executive', 'support']
+        let currentScenario = 0
+
+        const interval = setInterval(() => {
+          applyScenario(scenarios[currentScenario])
+          currentScenario++
+
+          if (currentScenario >= scenarios.length) {
+            clearInterval(interval)
+            const duration = performance.now() - start
+            showSuccess(
+              `Rapid filter test completed in ${duration.toFixed(2)}ms`
+            )
+          }
+        }, 100) // Change filters every 100ms
+      }
+
+      function clearErrors() {
+        const errorDisplay = document.getElementById('errorDisplay')
+        errorDisplay.classList.add('hidden')
+        errorDisplay.textContent = 'No errors to display'
+      }
+
+      function showError(message) {
+        const errorDisplay = document.getElementById('errorDisplay')
+        errorDisplay.classList.remove('hidden')
+        errorDisplay.textContent = message
+        console.error(message)
+      }
+
+      function showSuccess(message) {
+        const performanceMonitor = document.getElementById('performanceMonitor')
+        const originalBg = performanceMonitor.style.backgroundColor
+        performanceMonitor.style.backgroundColor = '#e8f5e8'
+        performanceMonitor.textContent = message
+
+        setTimeout(() => {
+          performanceMonitor.style.backgroundColor = originalBg
+          updatePerformanceMonitor()
+        }, 3000)
+      }
+
+      function showInfo(message) {
+        const performanceMonitor = document.getElementById('performanceMonitor')
+        performanceMonitor.textContent = message
+      }
+    </script>
+  </body>
+</html>

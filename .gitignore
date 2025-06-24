@@ -1,6 +1,7 @@
 node_modules
 .eslintcache
 dist
+coverage
 
 # JetBrains IDEs
 .idea

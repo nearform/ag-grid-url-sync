@@ -38,18 +38,51 @@ export function validateFilterValue(
 }
 
 /**
- * Parses a URL parameter into a column filter
+ * Extracts column name and operation from a filter parameter
  */
-export function parseFilterParam(param: string, value: string): ColumnFilter {
-  const parts = param.split('_')
-  if (parts.length !== 3) {
+function extractColumnAndOperation(
+  param: string,
+  expectedPrefix?: string
+): { column: string; operation: string } {
+  const ensureTrailingUnderscore = (prefix: string): string =>
+    prefix.endsWith('_') ? prefix : prefix + '_'
+
+  const sanitizedPrefix = expectedPrefix
+    ? ensureTrailingUnderscore(expectedPrefix)
+    : ensureTrailingUnderscore(DEFAULT_CONFIG.paramPrefix)
+
+  const prefixToCheck = sanitizedPrefix.slice(0, -1)
+  if (!param.startsWith(prefixToCheck + '_')) {
+    throw new InvalidFilterError(`Invalid filter prefix in parameter: ${param}`)
+  }
+
+  // Remove prefix and find the last underscore to separate column from operation
+  const withoutPrefix = param.substring(prefixToCheck.length + 1)
+  const lastUnderscoreIndex = withoutPrefix.lastIndexOf('_')
+
+  if (lastUnderscoreIndex === -1) {
     throw new InvalidFilterError(`Invalid filter parameter format: ${param}`)
   }
 
-  const [prefix, column, operation] = parts
-  if (prefix !== DEFAULT_CONFIG.paramPrefix.slice(0, -1)) {
-    throw new InvalidFilterError(`Invalid filter prefix: ${prefix}`)
+  const column = withoutPrefix.substring(0, lastUnderscoreIndex)
+  const operation = withoutPrefix.substring(lastUnderscoreIndex + 1)
+
+  if (!column.trim()) {
+    throw new InvalidFilterError(`Empty column name in parameter: ${param}`)
   }
+
+  return { column, operation }
+}
+
+/**
+ * Parses a URL parameter into a column filter
+ */
+export function parseFilterParam(
+  param: string,
+  value: string,
+  expectedPrefix?: string
+): ColumnFilter {
+  const { operation } = extractColumnAndOperation(param, expectedPrefix)
 
   const filterOp = OPERATION_MAP[operation as keyof typeof OPERATION_MAP]
   if (!filterOp) {
@@ -59,7 +92,7 @@ export function parseFilterParam(param: string, value: string): ColumnFilter {
   return {
     filterType: 'text',
     type: filterOp,
-    filter: decodeURIComponent(value)
+    filter: value || ''
   }
 }
 
@@ -78,15 +111,18 @@ export function parseUrlFilters(
       if (!param.startsWith(config.paramPrefix)) continue
 
       try {
-        const columnName = param.split('_')[1]
-        if (!columnName) {
-          throw new InvalidFilterError(
-            `Missing column name in parameter: ${param}`
-          )
-        }
+        // Extract column name and parse the filter parameter
+        const { column: columnName } = extractColumnAndOperation(
+          param,
+          config.paramPrefix
+        )
+        const filterParam = parseFilterParam(param, value, config.paramPrefix)
 
         const validatedValue = validateFilterValue(value, config)
-        filterState[columnName] = parseFilterParam(param, validatedValue)
+        filterState[columnName] = {
+          ...filterParam,
+          filter: validatedValue
+        }
       } catch (err) {
         if (config.onParseError) {
           config.onParseError(err as Error)
@@ -151,25 +187,36 @@ export function generateUrl(
  * Gets the current filter model from AG Grid
  */
 export function getFilterModel(config: InternalConfig): FilterState {
-  const model = config.gridApi.getFilterModel()
-  const filterState: FilterState = {}
+  try {
+    const model = config.gridApi.getFilterModel()
+    const filterState: FilterState = {}
 
-  for (const [column, filter] of Object.entries(model)) {
-    if (!filter || typeof filter !== 'object') continue
+    if (!model || typeof model !== 'object') {
+      return filterState
+    }
 
-    const { filterType, type, filter: value } = filter as any
-    if (filterType !== 'text' || !value) continue
+    for (const [column, filter] of Object.entries(model)) {
+      if (!filter || typeof filter !== 'object') continue
 
-    if (type === 'contains' || type === 'equals') {
-      filterState[column] = {
-        filterType: 'text',
-        type: type === 'equals' ? 'eq' : 'contains',
-        filter: value
+      const { filterType, type, filter: value } = filter as any
+      if (filterType !== 'text' || !value) continue
+
+      if (type === 'contains' || type === 'equals') {
+        filterState[column] = {
+          filterType: 'text',
+          type: type === 'equals' ? 'eq' : 'contains',
+          filter: value
+        }
       }
     }
-  }
 
-  return filterState
+    return filterState
+  } catch (error) {
+    if (config.onParseError) {
+      config.onParseError(error as Error)
+    }
+    return {}
+  }
 }
 
 /**
@@ -179,15 +226,27 @@ export function applyFilterModel(
   filterState: FilterState,
   config: InternalConfig
 ): void {
-  const model: any = {}
+  try {
+    const model: any = {}
 
-  for (const [column, filter] of Object.entries(filterState)) {
-    model[column] = {
-      filterType: filter.filterType,
-      type: filter.type === 'eq' ? 'equals' : filter.type,
-      filter: filter.filter
+    for (const [column, filter] of Object.entries(filterState)) {
+      if (
+        filter &&
+        typeof filter === 'object' &&
+        filter.filterType === 'text'
+      ) {
+        model[column] = {
+          filterType: filter.filterType,
+          type: filter.type === 'eq' ? 'equals' : filter.type,
+          filter: filter.filter
+        }
+      }
+    }
+
+    config.gridApi.setFilterModel(model)
+  } catch (error) {
+    if (config.onParseError) {
+      config.onParseError(error as Error)
     }
   }
-
-  config.gridApi.setFilterModel(model)
 }

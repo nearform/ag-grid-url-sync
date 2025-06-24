@@ -1,3 +1,23 @@
+/**
+ * @fileoverview React Hook for AG Grid URL Synchronization
+ *
+ * This module provides a React hook that integrates the AGGridUrlSync core functionality
+ * with React's lifecycle and state management. The hook provides an event-driven architecture
+ * that updates state only when changes occur, avoiding performance issues with polling.
+ *
+ * Key features:
+ * - Event-driven state updates (no polling)
+ * - Automatic cleanup and memory leak prevention
+ * - Error handling and recovery
+ * - Optional auto-apply filters on mount
+ * - Manual state refresh capability
+ * - Integration with React's useEffect and useState
+ *
+ * The hook manages the AGGridUrlSync instance lifecycle and provides a React-friendly
+ * API for URL synchronization operations.
+ *
+ */
+
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GridApi } from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
@@ -13,14 +33,54 @@ import type {
 } from './types.js'
 
 /**
- * React hook for AG Grid URL synchronization v1.0
+ * React hook for AG Grid URL synchronization with comprehensive filter support.
  *
- * Event-driven architecture - updates state only when changes occur,
- * not through polling. Provides manual refresh capability.
+ * Provides a React-friendly interface to the AGGridUrlSync functionality with
+ * automatic lifecycle management, error handling, and state synchronization.
+ * Uses an event-driven architecture that updates state only when changes occur,
+ * avoiding performance issues with polling.
+ *
+ * The hook automatically manages the AGGridUrlSync instance creation and cleanup,
+ * handles React-specific concerns like component unmounting, and provides
+ * optimized state updates through manual refresh patterns.
  *
  * @param gridApi - AG Grid API instance (can be null during initialization)
- * @param options - Configuration options for the hook
- * @returns Hook API for URL synchronization
+ * @param options - Configuration options for the hook and underlying AGGridUrlSync
+ * @param options.autoApplyOnMount - Whether to automatically apply URL filters when the hook mounts
+ * @param options.enabledWhenReady - Whether to enable URL sync when grid API becomes available
+ * @returns Hook API containing state, methods, and utilities for URL synchronization
+ *
+ * @example
+ * ```typescript
+ * function MyGridComponent() {
+ *   const [gridApi, setGridApi] = useState<GridApi | null>(null);
+ *
+ *   const {
+ *     isReady,
+ *     currentUrl,
+ *     hasFilters,
+ *     toUrl,
+ *     fromUrl,
+ *     clearFilters,
+ *     refresh
+ *   } = useAGGridUrlSync(gridApi, {
+ *     autoApplyOnMount: true,
+ *     prefix: 'filter_',
+ *     compression: 'auto'
+ *   });
+ *
+ *   return (
+ *     <div>
+ *       <AgGridReact onGridReady={params => setGridApi(params.api)} />
+ *       {isReady && (
+ *         <button onClick={() => navigator.clipboard.writeText(currentUrl)}>
+ *           Share Filtered View
+ *         </button>
+ *       )}
+ *     </div>
+ *   );
+ * }
+ * ```
  */
 export function useAGGridUrlSync(
   gridApi: GridApi | null,
@@ -145,7 +205,7 @@ export function useAGGridUrlSync(
           lastGridApiRef.current = gridApi
 
           if (coreOptions.debug) {
-            console.log('AGGridUrlSync React hook v1.0 initialized')
+            console.log('AGGridUrlSync React hook initialized')
           }
 
           // Initial state refresh
@@ -435,7 +495,7 @@ export function useAGGridUrlSync(
     isLoading,
     error,
 
-    // New v1.0 capabilities
+    // Enhanced capabilities with comprehensive filter support
     urlInfo,
     columnTypes,
     validateUrl,

@@ -1,3 +1,20 @@
+/**
+ * @fileoverview Core Utility Functions for AG Grid URL Synchronization
+ *
+ * This module contains the core utility functions for parsing, generating, and managing
+ * URL filter parameters. It handles filter serialization/deserialization, URL construction,
+ * validation, and type conversion between AG Grid filters and URL parameters.
+ *
+ * Key responsibilities:
+ * - Configuration management and merging
+ * - URL parameter parsing and generation
+ * - Filter state serialization/deserialization
+ * - Type-specific filter handling (text, number, date, set)
+ * - Validation and error handling
+ * - AG Grid integration utilities
+ *
+ */
+
 import type {
   FilterState,
   ColumnFilter,
@@ -29,13 +46,21 @@ import {
 import { compressFilterData, decompressFilterData } from './compression.js'
 
 /**
- * Merges user configuration with defaults for v1.0
+ * Merges user configuration with defaults to create internal configuration.
+ *
+ * Takes user-provided configuration and merges it with sensible defaults
+ * to create a complete internal configuration object. Handles both simple
+ * and complex configuration properties including compression settings.
+ *
+ * @param gridApi - The AG Grid API instance
+ * @param userConfig - User-provided configuration options
+ * @returns Complete internal configuration object
  */
 export function mergeConfig(
   gridApi: any,
   userConfig: AGGridUrlSyncConfig = {}
 ): InternalConfig {
-  // Use v1.0 clean configuration properties
+  // Create clean configuration properties with proper defaults
   const prefix = userConfig.prefix ?? 'f_'
   const valueLength = userConfig.limits?.valueLength ?? 200
 

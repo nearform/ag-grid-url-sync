@@ -41,7 +41,7 @@ describe('Integration Tests & Workflows', () => {
 
       const urlSync = createUrlSync(gridApi, {})
 
-      // Verify all new v1.0 methods exist and work
+      // Verify all enhanced methods exist and work
       expect(typeof urlSync.toUrl).toBe('function')
       expect(typeof urlSync.fromUrl).toBe('function')
       expect(typeof urlSync.getUrlInfo).toBe('function')

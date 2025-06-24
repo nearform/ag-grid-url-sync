@@ -1,7 +1,21 @@
 /**
- * Phase 3: Advanced URL Compression Utilities
+ * @fileoverview Advanced URL Compression Utilities
  *
- * Provides URL compression with multiple algorithms and automatic fallback
+ * This module provides comprehensive URL compression capabilities to manage URL length
+ * when dealing with complex filter states. It implements multiple compression algorithms
+ * with automatic selection and fallback mechanisms to optimize URL size while maintaining
+ * reliability and compatibility.
+ *
+ * Key features:
+ * - Multiple compression algorithms (LZ-like, Run-length, Base64)
+ * - Automatic algorithm selection based on effectiveness
+ * - Configurable compression thresholds and strategies
+ * - Robust error handling and fallback mechanisms
+ * - URL-safe encoding for all compressed data
+ *
+ * The compression system is designed to be transparent to the end user while providing
+ * significant space savings for complex filter configurations.
+ *
  */
 
 import type {
@@ -13,7 +27,24 @@ import type {
 import { URLSyncError } from './types.js'
 
 /**
- * Compression engine with smart algorithm selection
+ * Compression engine with smart algorithm selection and automatic optimization.
+ *
+ * The CompressionEngine class manages multiple compression algorithms and automatically
+ * selects the most effective one for each data set. It provides configurable compression
+ * strategies and handles fallback scenarios gracefully.
+ *
+ * @example
+ * ```typescript
+ * const engine = new CompressionEngine({
+ *   strategy: 'auto',
+ *   threshold: 2000,
+ *   algorithms: ['lz', 'gzip', 'base64'],
+ *   level: 6
+ * });
+ *
+ * const result = await engine.compress(largeDataString);
+ * console.log(`Compressed from ${result.originalLength} to ${result.compressedLength}`);
+ * ```
  */
 export class CompressionEngine {
   private config: CompressionConfig

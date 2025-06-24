@@ -1,3 +1,21 @@
+/**
+ * @fileoverview React-Specific Type Definitions for AG Grid URL Synchronization
+ *
+ * This module defines TypeScript interfaces and types specifically for the React
+ * integration of AGGridUrlSync. It extends the core types with React-specific
+ * functionality and provides comprehensive type definitions for the useAGGridUrlSync hook.
+ *
+ * Key type definitions:
+ * - UseAGGridUrlSyncOptions: Configuration for the React hook
+ * - UseAGGridUrlSyncReturn: Complete return type with organized API surface
+ * - React lifecycle and state management types
+ * - Hook-specific error handling and loading states
+ *
+ * The types are designed to provide both a clean, intuitive API surface and
+ * an organized alternative access pattern for different use cases.
+ *
+ */
+
 import type {
   AGGridUrlSyncConfig,
   FilterState,
@@ -24,7 +42,7 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
 }
 
 /**
- * Enhanced return type for the useAGGridUrlSync hook v1.0
+ * Enhanced return type for the useAGGridUrlSync hook with comprehensive filter support.
  */
 export interface UseAGGridUrlSyncReturn {
   // Primary API (clean and intuitive)
@@ -73,7 +91,7 @@ export interface UseAGGridUrlSyncReturn {
    */
   error: Error | null
 
-  // New v1.0 capabilities
+  // Enhanced capabilities with comprehensive filter support
 
   /**
    * Comprehensive URL information

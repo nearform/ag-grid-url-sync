@@ -1,12 +1,42 @@
+/**
+ * @fileoverview Core Type Definitions for AG Grid URL Synchronization
+ *
+ * This module contains all the core TypeScript type definitions, interfaces, and enums
+ * used throughout the AG Grid URL Sync library. It defines the contract for configuration,
+ * filter states, error handling, and all data structures used for URL synchronization.
+ *
+ * Key type categories:
+ * - Configuration types: AGGridUrlSyncConfig, InternalConfig, CompressionConfig
+ * - Filter types: ColumnFilter, FilterState, and specific filter interfaces
+ * - Operation types: FilterOperation and type-specific operations
+ * - Error types: Custom error classes for different failure scenarios
+ * - Utility types: ParseContext, UrlInfo, ValidationResult, etc.
+ * - Integration types: Type detection, compression, and grid API abstractions
+ *
+ * The types are designed to provide comprehensive type safety while maintaining
+ * flexibility for different use cases and configurations.
+ *
+ */
+
 import type { GridApi as AGGridApi } from 'ag-grid-community'
 
 /**
- * URL compression strategy options
+ * URL compression strategy options.
+ *
+ * Defines how the library should handle URL compression to manage URL length:
+ * - 'auto': Compress automatically when URL exceeds threshold
+ * - 'always': Always compress regardless of URL length
+ * - 'never': Never compress URLs
+ * - 'gzip': Use gzip compression specifically
+ * - 'lz': Use LZ compression specifically
  */
 export type CompressionStrategy = 'auto' | 'always' | 'never' | 'gzip' | 'lz'
 
 /**
- * Compression algorithm configuration
+ * Compression algorithm configuration.
+ *
+ * Detailed configuration for URL compression behavior including strategy,
+ * thresholds, algorithm preferences, and compression levels.
  */
 export interface CompressionConfig {
   /** Compression strategy */
@@ -20,7 +50,11 @@ export interface CompressionConfig {
 }
 
 /**
- * Enhanced configuration options for AG Grid URL Sync v0.3
+ * Configuration options for AG Grid URL Sync.
+ *
+ * Comprehensive configuration interface that allows customization of all
+ * aspects of URL synchronization behavior including prefixes, limits,
+ * error handling, type detection, and compression settings.
  */
 export interface AGGridUrlSyncConfig {
   /**
@@ -41,7 +75,10 @@ export interface AGGridUrlSyncConfig {
   }
 
   /**
-   * Enhanced error handling configuration
+   * Comprehensive error handling configuration.
+   *
+   * Allows customization of error handling behavior for different types
+   * of errors that can occur during URL synchronization operations.
    */
   onError?: {
     /** Handler for URL parsing errors */
@@ -62,7 +99,10 @@ export interface AGGridUrlSyncConfig {
   typeDetection?: 'smart' | 'strict' | 'disabled'
 
   /**
-   * URL compression strategy (Phase 3)
+   * URL compression strategy configuration.
+   *
+   * Can be either a simple strategy string or a detailed configuration object
+   * for fine-grained control over compression behavior.
    */
   compression?: CompressionStrategy | CompressionConfig
 
@@ -89,12 +129,23 @@ export interface AGGridUrlSyncConfig {
 }
 
 /**
- * Supported filter types in v0.3
+ * Supported filter types.
+ *
+ * The library supports four main filter types that correspond to common
+ * data types and filtering patterns in data grids:
+ * - 'text': String-based filtering with contains/equals operations
+ * - 'number': Numeric filtering with comparison and range operations
+ * - 'date': Date-based filtering with before/after/range operations
+ * - 'set': Multi-value selection filtering
  */
 export type FilterType = 'text' | 'number' | 'date' | 'set'
 
 /**
- * Supported filter operations by type
+ * Supported filter operations organized by filter type.
+ *
+ * Each filter type supports specific operations that make sense for that data type.
+ * These operations are used to construct filter parameters in URLs and determine
+ * how filters should be applied to the grid.
  */
 export type TextOperation = 'contains' | 'equals'
 export type NumberOperation =

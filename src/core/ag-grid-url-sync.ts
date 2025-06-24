@@ -1,3 +1,15 @@
+/**
+ * @fileoverview AG Grid URL Synchronization Library
+ *
+ * This module provides the core AGGridUrlSync class for synchronizing AG Grid filter states
+ * with URL parameters. It supports comprehensive filter types including text, number, date,
+ * and set filters with automatic type detection, URL compression, and robust error handling.
+ *
+ * The library enables users to share filtered grid views via URLs and maintain filter
+ * state across browser navigation and page reloads.
+ *
+ */
+
 import type { GridApi } from 'ag-grid-community'
 import type {
   AGGridUrlSyncConfig,
@@ -20,8 +32,26 @@ import {
 } from './type-detection.js'
 
 /**
- * AGGridUrlSync class for synchronizing AG Grid filters with URL parameters
- * v1.0 - Comprehensive filter support (text, number, date, set)
+ * Main class for synchronizing AG Grid filter states with URL parameters.
+ *
+ * Provides comprehensive filter support with automatic type detection, URL compression,
+ * and error handling. Supports text, number, date, and set filters with configurable
+ * behavior for different use cases.
+ *
+ * @example
+ * ```typescript
+ * const urlSync = new AGGridUrlSync(gridApi, {
+ *   prefix: 'filter_',
+ *   compression: 'auto',
+ *   typeDetection: 'smart'
+ * });
+ *
+ * // Apply filters from current URL
+ * await urlSync.fromUrl(window.location.href);
+ *
+ * // Generate URL with current filters
+ * const shareableUrl = await urlSync.toUrl();
+ * ```
  */
 export class AGGridUrlSync {
   private config: InternalConfig
@@ -29,16 +59,32 @@ export class AGGridUrlSync {
   private nonFilterParams: URLSearchParams = new URLSearchParams()
 
   /**
-   * Creates a new instance of AGGridUrlSync v1.0
-   * @param gridApi - AG Grid API instance
-   * @param config - Enhanced configuration options
+   * Creates a new instance of AGGridUrlSync with the specified configuration.
+   *
+   * Initializes the internal configuration, type detection engine, and sets up
+   * debugging if enabled. The constructor validates the grid API and merges
+   * user configuration with sensible defaults.
+   *
+   * @param gridApi - The AG Grid API instance to synchronize with
+   * @param config - Optional configuration to customize behavior
+   * @throws {Error} When gridApi is null or invalid
+   * @throws {Error} When configuration validation fails
+   *
+   * @example
+   * ```typescript
+   * const urlSync = new AGGridUrlSync(gridApi, {
+   *   prefix: 'f_',
+   *   limits: { urlLength: 2000 },
+   *   compression: 'auto'
+   * });
+   * ```
    */
   constructor(gridApi: GridApi, config: AGGridUrlSyncConfig = {}) {
     this.config = mergeConfig(gridApi, config)
     this.typeEngine = createTypeDetectionEngine(gridApi, this.config)
 
     if (this.config.debug) {
-      console.log('AGGridUrlSync v1.0 initialized with config:', {
+      console.log('AGGridUrlSync initialized with config:', {
         prefix: this.config.prefix,
         typeDetection: this.config.typeDetection,
         compression: this.config.compression,
@@ -48,10 +94,30 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Generates a URL with the current filter state (Phase 3 enhanced with compression)
-   * @param baseUrl - Optional base URL (defaults to current URL)
-   * @param options - Generation options
-   * @returns Promise resolving to URL string with filter parameters
+   * Generates a complete URL with current grid filters as query parameters.
+   *
+   * Automatically compresses the URL if it exceeds configured length limits.
+   * Preserves non-filter query parameters and handles URL construction errors gracefully.
+   * Performance monitoring is available when enabled in configuration.
+   *
+   * @param baseUrl - Optional base URL (defaults to current window location)
+   * @param options - Generation options including compression override
+   * @param options.compress - Force compression on/off (overrides auto-detection)
+   * @returns Promise resolving to the complete URL with filter parameters
+   * @throws {Error} When URL generation fails
+   * @throws {Error} When grid API is unavailable
+   *
+   * @example
+   * ```typescript
+   * // Generate URL with current filters
+   * const url = await urlSync.toUrl();
+   *
+   * // Generate with custom base URL
+   * const url = await urlSync.toUrl('https://example.com/grid');
+   *
+   * // Force compression
+   * const url = await urlSync.toUrl(undefined, { compress: true });
+   * ```
    */
   async toUrl(
     baseUrl?: string,
@@ -92,9 +158,25 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Gets the current filter state as URL query parameters
-   * @param options - Generation options
-   * @returns Promise resolving to query parameter string
+   * Generates query parameters string from current grid filters.
+   *
+   * Returns only the query parameter portion (including the leading '?') without the base URL.
+   * Useful for manual URL construction or when working with routing libraries.
+   * Uses the same compression logic as toUrl().
+   *
+   * @param options - Optional generation options
+   * @param options.compress - Force compression on/off (overrides auto-detection)
+   * @returns Promise resolving to query parameters string (with leading '?')
+   * @throws {Error} When parameter generation fails
+   *
+   * @example
+   * ```typescript
+   * const params = await urlSync.toParams();
+   * // Returns: "?f_name_contains=john&f_age_gt=25"
+   *
+   * // Use with router
+   * router.push(`/grid${params}`);
+   * ```
    */
   async toParams(options: { compress?: boolean } = {}): Promise<string> {
     const url = await this.toUrl(undefined, options)
@@ -103,8 +185,25 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Applies filters from a URL to the grid (Phase 3 enhanced with decompression)
-   * @param url - Optional URL to parse (defaults to current URL)
+   * Applies filters to the grid from a complete URL.
+   *
+   * Parses filter parameters from the URL and applies them to the grid.
+   * Automatically handles decompression if compressed parameters are detected.
+   * Preserves non-filter parameters for future URL generation and gracefully
+   * handles malformed URLs and invalid parameters.
+   *
+   * @param url - Optional URL to parse (defaults to current window location)
+   * @throws {Error} When URL parsing fails critically
+   * @throws {Error} When grid API is unavailable
+   *
+   * @example
+   * ```typescript
+   * // Apply filters from current URL
+   * await urlSync.fromUrl(window.location.href);
+   *
+   * // Apply filters from shared URL
+   * await urlSync.fromUrl('https://example.com/grid?f_name_contains=john');
+   * ```
    */
   async fromUrl(url?: string): Promise<void> {
     const startTime = this.config.performanceMonitoring ? performance.now() : 0
@@ -142,8 +241,23 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Applies a filter state object to the grid
-   * @param filterState - Filter state to apply
+   * Applies a filter state object directly to the grid.
+   *
+   * Bypasses URL parsing and directly applies the provided filter configuration.
+   * Validates filter structure if validation is enabled and handles type conversion
+   * automatically. This is the core method used by fromUrl() after parsing.
+   *
+   * @param filterState - Object containing filter definitions by column
+   * @throws {Error} When filter state is invalid
+   * @throws {Error} When grid API is unavailable
+   *
+   * @example
+   * ```typescript
+   * urlSync.fromFilters({
+   *   name: { filterType: 'text', type: 'contains', filter: 'john' },
+   *   age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+   * });
+   * ```
    */
   fromFilters(filterState: FilterState): void {
     try {
@@ -165,8 +279,22 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Gets comprehensive information about the current URL state (Phase 3 enhanced)
-   * @returns Promise resolving to URL information including length, filter count, compression status, and types
+   * Gets comprehensive information about the current URL state.
+   *
+   * Analyzes the current filter state to provide statistics about filter count,
+   * URL length, compression status, and detected filter types. Useful for
+   * debugging and monitoring URL state without applying filters to the grid.
+   *
+   * @returns Promise resolving to detailed URL information
+   * @throws {Error} When URL analysis fails
+   *
+   * @example
+   * ```typescript
+   * const info = await urlSync.getUrlInfo();
+   * console.log(`URL contains ${info.filterCount} filters`);
+   * console.log(`Compression: ${info.compressed ? 'enabled' : 'disabled'}`);
+   * console.log('Filter types:', info.types);
+   * ```
    */
   async getUrlInfo(): Promise<UrlInfo> {
     try {
@@ -199,17 +327,43 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Gets the detected column types for all columns
+   * Gets the detected column types for all columns in the grid.
+   *
+   * Returns a mapping of column IDs to their automatically detected filter types.
+   * This information is used internally for proper filter serialization and
+   * can be useful for debugging type detection issues.
+   *
    * @returns Record mapping column IDs to their detected filter types
+   *
+   * @example
+   * ```typescript
+   * const types = urlSync.getColumnTypes();
+   * console.log('Detected types:', types);
+   * // Output: { name: 'text', age: 'number', date: 'date', status: 'set' }
+   * ```
    */
   getColumnTypes(): Record<string, FilterType> {
     return this.typeEngine.getColumnTypes()
   }
 
   /**
-   * Validates a URL for proper filter format (Phase 3 enhanced)
-   * @param url - URL to validate
-   * @returns Promise resolving to validation result with any errors or warnings
+   * Validates a URL and returns detailed validation results.
+   *
+   * Checks for valid filter parameters, proper encoding, and structural correctness.
+   * Does not apply filters to the grid, only validates the URL structure.
+   * Provides both errors (blocking issues) and warnings (non-critical issues).
+   *
+   * @param url - The URL to validate
+   * @returns Promise resolving to validation results with errors and warnings
+   *
+   * @example
+   * ```typescript
+   * const result = await urlSync.validateUrl(url);
+   * if (!result.valid) {
+   *   console.log('Validation errors:', result.errors);
+   *   console.log('Warnings:', result.warnings);
+   * }
+   * ```
    */
   async validateUrl(url: string): Promise<ValidationResult> {
     const errors: string[] = []
@@ -242,7 +396,18 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Clears all filters from the grid
+   * Clears all filters from the grid.
+   *
+   * Removes all active filters and resets the grid to its unfiltered state.
+   * This is equivalent to calling fromFilters({}) with an empty filter state.
+   *
+   * @throws {Error} When grid API is unavailable
+   *
+   * @example
+   * ```typescript
+   * // Clear all filters
+   * urlSync.clearFilters();
+   * ```
    */
   clearFilters(): void {
     try {
@@ -260,7 +425,17 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Cleans up resources and event listeners
+   * Cleans up resources and event listeners.
+   *
+   * Clears the type detection cache and performs any necessary cleanup.
+   * Should be called when the AGGridUrlSync instance is no longer needed
+   * to prevent memory leaks.
+   *
+   * @example
+   * ```typescript
+   * // Clean up when component unmounts
+   * urlSync.destroy();
+   * ```
    */
   destroy(): void {
     try {
@@ -278,8 +453,21 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Updates the configuration (useful for React re-renders)
-   * @param newConfig - New configuration to merge
+   * Updates the configuration with new settings.
+   *
+   * Merges the new configuration with existing settings and updates the
+   * type detection engine accordingly. Useful for React components that
+   * need to update configuration during re-renders.
+   *
+   * @param newConfig - New configuration to merge with existing settings
+   *
+   * @example
+   * ```typescript
+   * // Update compression settings
+   * urlSync.updateConfig({
+   *   compression: { strategy: 'always', threshold: 1000 }
+   * });
+   * ```
    */
   updateConfig(newConfig: AGGridUrlSyncConfig): void {
     this.config = mergeConfig(this.config.gridApi, newConfig)
@@ -291,8 +479,15 @@ export class AGGridUrlSync {
   }
 
   /**
-   * Validates a filter state object
+   * Validates a filter state object for structural correctness.
+   *
+   * Performs basic validation on the filter state structure to ensure
+   * each filter has required properties. This is used internally when
+   * validateOnApply is enabled in the configuration.
+   *
    * @private
+   * @param filterState - The filter state object to validate
+   * @throws {Error} When filter structure is invalid
    */
   private validateFilterState(filterState: FilterState): void {
     for (const [column, filter] of Object.entries(filterState)) {
@@ -314,10 +509,23 @@ export class AGGridUrlSync {
 }
 
 /**
- * Factory function to create a new AGGridUrlSync instance
- * @param gridApi - AG Grid API instance
- * @param config - Optional configuration options
- * @returns AGGridUrlSync instance
+ * Factory function to create a new AGGridUrlSync instance.
+ *
+ * Convenience function that creates and returns a new AGGridUrlSync instance
+ * with the provided configuration. This is an alternative to using the
+ * constructor directly.
+ *
+ * @param gridApi - The AG Grid API instance to synchronize with
+ * @param config - Optional configuration to customize behavior
+ * @returns A new AGGridUrlSync instance
+ *
+ * @example
+ * ```typescript
+ * const urlSync = createUrlSync(gridApi, {
+ *   prefix: 'filter_',
+ *   compression: 'auto'
+ * });
+ * ```
  */
 export function createUrlSync(
   gridApi: GridApi,

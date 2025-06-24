@@ -1,3 +1,28 @@
+/**
+ * @fileoverview Intelligent Type Detection System for AG Grid Columns
+ *
+ * This module provides sophisticated type detection capabilities for AG Grid columns
+ * to automatically determine the appropriate filter type (text, number, date, set)
+ * for each column. It follows a hierarchical detection strategy that prioritizes
+ * user preferences while providing intelligent fallbacks.
+ *
+ * Detection Hierarchy:
+ * 1. User-defined columnTypes (highest priority)
+ * 2. User-provided typeHints
+ * 3. AG Grid column filter configuration
+ * 4. AG Grid cell data type analysis
+ * 5. Smart value analysis (when enabled)
+ * 6. Default to text filter (most permissive)
+ *
+ * Key features:
+ * - Performance-optimized with intelligent caching
+ * - Configurable detection strategies (smart, strict, disabled)
+ * - Comprehensive data analysis with confidence scoring
+ * - Robust error handling and fallback mechanisms
+ * - Integration with AG Grid's native type system
+ *
+ */
+
 import type { GridApi, ColDef } from 'ag-grid-community'
 import type {
   FilterType,
@@ -7,7 +32,10 @@ import type {
 import { TypeDetectionError } from './types.js'
 
 /**
- * Cache for type detection results to improve performance
+ * Performance-optimized cache for type detection results.
+ *
+ * Stores type detection results to avoid redundant analysis of the same columns.
+ * The cache can be disabled for debugging or when column types change frequently.
  */
 class TypeDetectionCache {
   private cache = new Map<string, TypeDetectionResult>()
@@ -37,7 +65,24 @@ class TypeDetectionCache {
 }
 
 /**
- * Type detection engine following the hierarchy specified in PRD
+ * Intelligent type detection engine with hierarchical analysis.
+ *
+ * The TypeDetectionEngine implements a sophisticated type detection system that
+ * follows a prioritized hierarchy to determine the most appropriate filter type
+ * for each column. It balances accuracy with performance through intelligent
+ * caching and configurable analysis depth.
+ *
+ * The engine supports multiple detection strategies:
+ * - 'smart': Full analysis including data sampling (slower but more accurate)
+ * - 'strict': Only explicit type information (faster but less flexible)
+ * - 'disabled': Skip type detection entirely (fastest, defaults to text)
+ *
+ * @example
+ * ```typescript
+ * const engine = new TypeDetectionEngine(gridApi, config);
+ * const result = engine.detectColumnType('age');
+ * console.log(`Column 'age' detected as ${result.type} with ${result.confidence} confidence`);
+ * ```
  */
 export class TypeDetectionEngine {
   private cache = new TypeDetectionCache()

@@ -97,7 +97,7 @@ const columnDefs = [
 ]
 
 export default function BasicGrid() {
-  const [gridApi, setGridApi] = useState(null)
+  const [gridApi, setGridApi] = useState<GridApi | null>(null)
 
   const {
     shareUrl,

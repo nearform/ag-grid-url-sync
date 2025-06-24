@@ -1,18 +1,22 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GridApi } from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
-import {
-  parseUrlFilters as parseFilters,
-  DEFAULT_CONFIG
-} from '../core/utils.js'
-import type { FilterState } from '../core/types.js'
+import type {
+  FilterState,
+  UrlInfo,
+  ValidationResult,
+  FilterType
+} from '../core/types.js'
 import type {
   UseAGGridUrlSyncOptions,
   UseAGGridUrlSyncReturn
 } from './types.js'
 
 /**
- * React hook for AG Grid URL synchronization
+ * React hook for AG Grid URL synchronization v1.0
+ *
+ * Event-driven architecture - updates state only when changes occur,
+ * not through polling. Provides manual refresh capability.
  *
  * @param gridApi - AG Grid API instance (can be null during initialization)
  * @param options - Configuration options for the hook
@@ -30,13 +34,62 @@ export function useAGGridUrlSync(
 
   // Internal state
   const [isReady, setIsReady] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
   const [currentUrl, setCurrentUrl] = useState('')
   const [hasFilters, setHasFilters] = useState(false)
+  const [urlInfo, setUrlInfo] = useState<UrlInfo>({
+    length: 0,
+    filterCount: 0,
+    compressed: false,
+    types: {}
+  })
+  const [columnTypes, setColumnTypes] = useState<Record<string, FilterType>>({})
 
   // Refs to track state and prevent memory leaks
   const urlSyncRef = useRef<AGGridUrlSync | null>(null)
   const autoAppliedRef = useRef(false)
   const lastGridApiRef = useRef<GridApi | null>(null)
+
+  // Manual state refresh function
+  const refreshState = useCallback(async () => {
+    if (!urlSyncRef.current) {
+      setCurrentUrl('')
+      setHasFilters(false)
+      setUrlInfo({
+        length: 0,
+        filterCount: 0,
+        compressed: false,
+        types: {}
+      })
+      setColumnTypes({})
+      return
+    }
+
+    try {
+      const [newUrl, newUrlInfo, newColumnTypes] = await Promise.all([
+        urlSyncRef.current.toUrl(),
+        urlSyncRef.current.getUrlInfo(),
+        Promise.resolve(urlSyncRef.current.getColumnTypes())
+      ])
+
+      setCurrentUrl(newUrl)
+      setUrlInfo(newUrlInfo)
+      setColumnTypes(newColumnTypes)
+      setHasFilters(newUrlInfo.filterCount > 0)
+
+      // Clear error if state update succeeds
+      if (error) {
+        setError(null)
+      }
+    } catch (err) {
+      const error = err as Error
+      setError(error)
+      if (coreOptions.debug) {
+        console.error('Failed to refresh state:', error)
+      }
+    }
+  }, [error, coreOptions.debug])
 
   // Initialize or update URL sync instance when grid API changes
   useEffect(() => {
@@ -50,13 +103,62 @@ export function useAGGridUrlSync(
 
       // Create new instance if needed
       if (!urlSyncRef.current) {
+        setIsLoading(true)
+        setError(null)
+
         try {
-          urlSyncRef.current = new AGGridUrlSync(gridApi, coreOptions)
+          urlSyncRef.current = new AGGridUrlSync(gridApi, {
+            ...coreOptions,
+            // Enhanced error handling for React
+            onError: {
+              parsing: (err, context) => {
+                if (coreOptions.debug) {
+                  console.warn('URL parsing error:', err, context)
+                }
+                setError(err)
+                coreOptions.onError?.parsing?.(err, context)
+              },
+              typeDetection: (err, column) => {
+                if (coreOptions.debug) {
+                  console.warn('Type detection error:', err, column)
+                }
+                coreOptions.onError?.typeDetection?.(err, column)
+              },
+              urlLength: info => {
+                if (coreOptions.debug) {
+                  console.warn('URL length warning:', info)
+                }
+                coreOptions.onError?.urlLength?.(info)
+              },
+              validation: (err, filter) => {
+                if (coreOptions.debug) {
+                  console.warn('Validation error:', err, filter)
+                }
+                setError(err)
+                coreOptions.onError?.validation?.(err, filter)
+              }
+            }
+          })
+
           setIsReady(true)
+          setError(null)
           lastGridApiRef.current = gridApi
+
+          if (coreOptions.debug) {
+            console.log('AGGridUrlSync React hook v1.0 initialized')
+          }
+
+          // Initial state refresh
+          refreshState()
         } catch (error) {
-          console.error('Failed to initialize AG Grid URL Sync:', error)
+          const err = error as Error
+          setError(err)
           setIsReady(false)
+          if (coreOptions.debug) {
+            console.error('Failed to initialize AG Grid URL Sync:', err)
+          }
+        } finally {
+          setIsLoading(false)
         }
       }
     } else {
@@ -67,9 +169,10 @@ export function useAGGridUrlSync(
         autoAppliedRef.current = false
       }
       setIsReady(false)
+      setError(null)
       lastGridApiRef.current = null
     }
-  }, [gridApi, enabledWhenReady, coreOptions])
+  }, [gridApi, enabledWhenReady, coreOptions, refreshState])
 
   // Auto-apply URL filters on mount if enabled
   useEffect(() => {
@@ -79,43 +182,29 @@ export function useAGGridUrlSync(
       !autoAppliedRef.current &&
       urlSyncRef.current
     ) {
-      try {
-        urlSyncRef.current.applyFromUrl()
-        autoAppliedRef.current = true
-      } catch (error) {
-        console.error('Failed to auto-apply URL filters:', error)
-        coreOptions.onParseError?.(error as Error)
+      setIsLoading(true)
+      const applyFilters = async () => {
+        try {
+          await urlSyncRef.current!.fromUrl()
+          autoAppliedRef.current = true
+          if (coreOptions.debug) {
+            console.log('Auto-applied URL filters on mount')
+          }
+          // Refresh state after applying filters
+          await refreshState()
+        } catch (error) {
+          const err = error as Error
+          setError(err)
+          if (coreOptions.debug) {
+            console.error('Failed to auto-apply URL filters:', err)
+          }
+        } finally {
+          setIsLoading(false)
+        }
       }
+      applyFilters()
     }
-  }, [isReady, autoApplyOnMount, coreOptions])
-
-  // Update current URL and filter state periodically
-  useEffect(() => {
-    if (!isReady || !urlSyncRef.current) {
-      setCurrentUrl('')
-      setHasFilters(false)
-      return
-    }
-
-    const updateState = () => {
-      try {
-        const newUrl = urlSyncRef.current!.generateUrl()
-        setCurrentUrl(newUrl)
-
-        // Check if there are active filters by comparing query params
-        const queryParams = urlSyncRef.current!.getQueryParams()
-        setHasFilters(queryParams.length > 1) // > 1 because it includes the '?' prefix
-      } catch (error) {
-        console.error('Failed to update URL state:', error)
-      }
-    }
-
-    updateState()
-
-    // Set up periodic updates to track filter changes
-    const interval = setInterval(updateState, 500)
-    return () => clearInterval(interval)
-  }, [isReady])
+  }, [isReady, autoApplyOnMount, coreOptions, refreshState])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -127,118 +216,238 @@ export function useAGGridUrlSync(
     }
   }, [])
 
-  // Memoized API methods
-  const shareUrl = useCallback((baseUrl?: string): string => {
-    if (!urlSyncRef.current) {
-      return baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
-    }
-    try {
-      return urlSyncRef.current.generateUrl(baseUrl)
-    } catch (error) {
-      console.error('Failed to generate share URL:', error)
-      return baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
-    }
-  }, [])
-
-  const getQueryParams = useCallback((): string => {
-    if (!urlSyncRef.current) {
-      return ''
-    }
-    try {
-      return urlSyncRef.current.getQueryParams()
-    } catch (error) {
-      console.error('Failed to get query params:', error)
-      return ''
-    }
-  }, [])
-
-  const applyUrlFilters = useCallback(
-    (url?: string): void => {
+  // Primary API methods with automatic state refresh
+  const shareUrl = useCallback(
+    async (
+      baseUrl?: string,
+      options?: { compress?: boolean }
+    ): Promise<string> => {
       if (!urlSyncRef.current) {
-        console.warn('AG Grid URL Sync not ready')
-        return
+        return (
+          baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+        )
       }
       try {
-        urlSyncRef.current.applyFromUrl(url)
+        const result = await urlSyncRef.current.toUrl(baseUrl, options)
+        setError(null) // Clear error on success
+        // Refresh state after URL generation
+        await refreshState()
+        return result
       } catch (error) {
-        console.error('Failed to apply URL filters:', error)
-        coreOptions.onParseError?.(error as Error)
+        const err = error as Error
+        setError(err)
+        if (coreOptions.debug) {
+          console.error('Failed to generate share URL:', err)
+        }
+        return (
+          baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+        )
+      }
+    },
+    [coreOptions, refreshState]
+  )
+
+  const getQueryParams = useCallback(
+    async (options?: { compress?: boolean }): Promise<string> => {
+      if (!urlSyncRef.current) {
+        return ''
+      }
+      try {
+        const result = await urlSyncRef.current.toParams(options)
+        setError(null) // Clear error on success
+        return result
+      } catch (error) {
+        const err = error as Error
+        setError(err)
+        if (coreOptions.debug) {
+          console.error('Failed to get query params:', err)
+        }
+        return ''
       }
     },
     [coreOptions]
   )
 
-  const clearFilters = useCallback((): void => {
-    if (!urlSyncRef.current) {
-      console.warn('AG Grid URL Sync not ready')
-      return
-    }
-    try {
-      urlSyncRef.current.clearFilters()
-    } catch (error) {
-      console.error('Failed to clear filters:', error)
-    }
-  }, [])
-
-  const parseUrlFilters = useCallback(
-    (url: string): FilterState => {
-      if (!gridApi) {
-        console.warn('AG Grid API not available')
-        return {}
-      }
-      try {
-        const config = {
-          gridApi,
-          paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
-          maxValueLength:
-            coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-          onParseError: coreOptions.onParseError ?? (() => {})
+  const applyUrlFilters = useCallback(
+    async (url?: string): Promise<void> => {
+      if (!urlSyncRef.current) {
+        if (coreOptions.debug) {
+          console.warn('AG Grid URL Sync not ready')
         }
-        return parseFilters(url, config)
+        return
+      }
+
+      setIsLoading(true)
+      try {
+        await urlSyncRef.current.fromUrl(url)
+        setError(null) // Clear error on success
+        if (coreOptions.debug) {
+          console.log('Applied URL filters successfully')
+        }
+        // Refresh state after applying filters
+        await refreshState()
       } catch (error) {
-        console.error('Failed to parse URL filters:', error)
-        coreOptions.onParseError?.(error as Error)
-        return {}
+        const err = error as Error
+        setError(err)
+        if (coreOptions.debug) {
+          console.error('Failed to apply URL filters:', err)
+        }
+      } finally {
+        setIsLoading(false)
       }
     },
-    [coreOptions, gridApi]
+    [coreOptions, refreshState]
   )
 
-  const applyFilters = useCallback((filters: FilterState): void => {
+  const applyFilters = useCallback(
+    async (filterState: FilterState): Promise<void> => {
+      if (!urlSyncRef.current) {
+        if (coreOptions.debug) {
+          console.warn('AG Grid URL Sync not ready')
+        }
+        return
+      }
+
+      setIsLoading(true)
+      try {
+        urlSyncRef.current.fromFilters(filterState)
+        setError(null) // Clear error on success
+        if (coreOptions.debug) {
+          console.log('Applied filter state successfully')
+        }
+        // Refresh state after applying filters
+        await refreshState()
+      } catch (error) {
+        const err = error as Error
+        setError(err)
+        if (coreOptions.debug) {
+          console.error('Failed to apply filter state:', err)
+        }
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [coreOptions, refreshState]
+  )
+
+  const clearFilters = useCallback(async (): Promise<void> => {
     if (!urlSyncRef.current) {
-      console.warn('AG Grid URL Sync not ready')
+      if (coreOptions.debug) {
+        console.warn('AG Grid URL Sync not ready')
+      }
       return
     }
-    try {
-      urlSyncRef.current.applyFilters(filters)
-    } catch (error) {
-      console.error('Failed to apply filters:', error)
-    }
-  }, [])
 
-  // Return the hook API
-  return useMemo(
+    setIsLoading(true)
+    try {
+      urlSyncRef.current.clearFilters()
+      setError(null) // Clear error on success
+      if (coreOptions.debug) {
+        console.log('Cleared filters successfully')
+      }
+      // Refresh state after clearing filters
+      await refreshState()
+    } catch (error) {
+      const err = error as Error
+      setError(err)
+      if (coreOptions.debug) {
+        console.error('Failed to clear filters:', err)
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }, [coreOptions, refreshState])
+
+  const validateUrl = useCallback(
+    async (url: string): Promise<ValidationResult> => {
+      if (!urlSyncRef.current) {
+        return {
+          valid: false,
+          errors: ['AG Grid URL Sync not ready'],
+          warnings: []
+        }
+      }
+
+      try {
+        const result = await urlSyncRef.current.validateUrl(url)
+        setError(null) // Clear error on success
+        return result
+      } catch (error) {
+        const err = error as Error
+        setError(err)
+        return {
+          valid: false,
+          errors: [err.message],
+          warnings: []
+        }
+      }
+    },
+    []
+  )
+
+  // Organized API surface using useMemo for performance
+  const url = useMemo(
     () => ({
-      shareUrl,
-      getQueryParams,
-      applyUrlFilters,
-      clearFilters,
-      isReady,
-      currentUrl,
-      hasFilters,
-      parseUrlFilters,
-      applyFilters
+      share: shareUrl,
+      current: currentUrl,
+      info: urlInfo,
+      validate: validateUrl
+    }),
+    [shareUrl, currentUrl, urlInfo, validateUrl]
+  )
+
+  const filters = useMemo(
+    () => ({
+      apply: applyUrlFilters,
+      applyState: applyFilters,
+      clear: clearFilters,
+      count: urlInfo.filterCount,
+      types: columnTypes
     }),
     [
-      shareUrl,
-      getQueryParams,
       applyUrlFilters,
+      applyFilters,
       clearFilters,
-      isReady,
-      currentUrl,
-      hasFilters,
-      parseUrlFilters,
-      applyFilters
+      urlInfo.filterCount,
+      columnTypes
     ]
   )
+
+  const status = useMemo(
+    () => ({
+      ready: isReady,
+      loading: isLoading,
+      error,
+      hasFilters
+    }),
+    [isReady, isLoading, error, hasFilters]
+  )
+
+  return {
+    // Primary API
+    shareUrl,
+    applyUrlFilters,
+    clearFilters,
+
+    // Status information
+    isReady,
+    hasFilters,
+    isLoading,
+    error,
+
+    // New v1.0 capabilities
+    urlInfo,
+    columnTypes,
+    validateUrl,
+    applyFilters,
+    getQueryParams,
+
+    // Manual control
+    refresh: refreshState,
+
+    // Organized API surface
+    url,
+    filters,
+    status
+  }
 }

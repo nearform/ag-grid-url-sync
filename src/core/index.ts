@@ -9,6 +9,5 @@ export {
   getFilterModel,
   applyFilterModel,
   validateFilterValue,
-  parseFilterParam,
-  DEFAULT_CONFIG
+  parseFilterParam
 } from './utils.js'

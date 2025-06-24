@@ -528,10 +528,12 @@
         setTimeout(() => {
           if (window.AGGridUrlSync) {
             urlSync = new window.AGGridUrlSync.AGGridUrlSync(gridApi, {
-              onParseError: error => {
-                showError(`URL Parse Error: ${error.message}`)
-                performanceStats.errorCount++
-                updatePerformanceStats()
+              onError: {
+                parsing: error => {
+                  showError(`URL Parse Error: ${error.message}`)
+                  performanceStats.errorCount++
+                  updatePerformanceStats()
+                }
               }
             })
             updatePerformanceMonitor()
@@ -632,13 +634,13 @@
         }
       }
 
-      function generateShareableUrl() {
+      async function generateShareableUrl() {
         if (!urlSync) return
 
         const start = performance.now()
 
         try {
-          const currentUrl = urlSync.generateUrl(
+          const currentUrl = await urlSync.toUrl(
             window.location.origin + window.location.pathname
           )
           document.getElementById('urlDisplay').textContent = currentUrl

@@ -108,7 +108,7 @@ export default function BasicGrid() {
     currentUrl
   } = useAGGridUrlSync(gridApi, {
     autoApplyOnMount: true,
-    paramPrefix: 'filter_'
+    prefix: 'filter_'
   })
 
   const defaultColDef = useMemo(

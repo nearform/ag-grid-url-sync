@@ -15,7 +15,9 @@ export default defineConfig({
         '**/*.d.ts',
         '**/vitest.config.*',
         '**/eslint.config.js',
-        '**/examples/**'
+        '**/examples/**',
+        // Exclude export/index files (no testable logic)
+        '**/index.ts'
       ]
     }
   }

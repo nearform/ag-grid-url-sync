@@ -105,7 +105,7 @@ export default function RouterGrid() {
   const { shareUrl, applyUrlFilters, clearFilters, hasFilters, isReady } =
     useAGGridUrlSync(gridApi, {
       autoApplyOnMount: true,
-      paramPrefix: 'f_'
+      prefix: 'f_'
     })
 
   const defaultColDef = useMemo(

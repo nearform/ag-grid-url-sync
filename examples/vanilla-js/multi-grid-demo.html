@@ -536,32 +536,32 @@
         employeesUrlSync = new window.AGGridUrlSync.AGGridUrlSync(
           employeesGridApi,
           {
-            paramPrefix: 'emp_',
-            onParseError: handleParseError
+            prefix: 'emp_',
+            onError: { parsing: handleParseError }
           }
         )
 
         projectsUrlSync = new window.AGGridUrlSync.AGGridUrlSync(
           projectsGridApi,
           {
-            paramPrefix: 'proj_',
-            onParseError: handleParseError
+            prefix: 'proj_',
+            onError: { parsing: handleParseError }
           }
         )
 
         departmentsUrlSync = new window.AGGridUrlSync.AGGridUrlSync(
           departmentsGridApi,
           {
-            paramPrefix: 'dept_',
-            onParseError: handleParseError
+            prefix: 'dept_',
+            onError: { parsing: handleParseError }
           }
         )
 
         metricsUrlSync = new window.AGGridUrlSync.AGGridUrlSync(
           metricsGridApi,
           {
-            paramPrefix: 'metric_',
-            onParseError: handleParseError
+            prefix: 'metric_',
+            onError: { parsing: handleParseError }
           }
         )
 

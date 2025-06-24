@@ -46,8 +46,7 @@
     "filter",
     "share",
     "typescript",
-    "react",
-    "hook"
+    "react"
   ],
   "author": "NearForm",
   "license": "ISC",

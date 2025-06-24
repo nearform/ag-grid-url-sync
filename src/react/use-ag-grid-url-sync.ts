@@ -130,13 +130,13 @@ export function useAGGridUrlSync(
   // Memoized API methods
   const shareUrl = useCallback((baseUrl?: string): string => {
     if (!urlSyncRef.current) {
-      return baseUrl || window.location.href
+      return baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
     }
     try {
       return urlSyncRef.current.generateUrl(baseUrl)
     } catch (error) {
       console.error('Failed to generate share URL:', error)
-      return baseUrl || window.location.href
+      return baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
     }
   }, [])
 

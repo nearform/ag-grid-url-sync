@@ -87,9 +87,9 @@ export function useAGGridUrlSync(
     }
   }, [isReady, autoApplyOnMount, coreOptions])
 
-  // Update current URL and filter state periodically
+  // Update current URL and filter state on filter changes
   useEffect(() => {
-    if (!isReady || !urlSyncRef.current) {
+    if (!isReady || !urlSyncRef.current || !gridApi) {
       setCurrentUrl('')
       setHasFilters(false)
       return
@@ -108,12 +108,18 @@ export function useAGGridUrlSync(
       }
     }
 
+    // Attach event listener for filter changes
+    const onFilterChanged = () => updateState()
+    gridApi.addEventListener('filterChanged', onFilterChanged)
+
+    // Initial state update
     updateState()
 
-    // Set up periodic updates to track filter changes
-    const interval = setInterval(updateState, 500)
-    return () => clearInterval(interval)
-  }, [isReady])
+    // Cleanup event listener on unmount or gridApi change
+    return () => {
+      gridApi.removeEventListener('filterChanged', onFilterChanged)
+    }
+  }, [isReady, gridApi])
 
   // Cleanup on unmount
   useEffect(() => {

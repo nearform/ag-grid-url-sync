@@ -45,6 +45,8 @@ const createMockGridApi = (): GridApi =>
     setFilterModel: vi.fn(),
     getFilterModel: vi.fn(() => ({})),
     onFilterChanged: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     destroy: vi.fn()
   }) as any
 
@@ -338,7 +340,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 600)) // Wait for state update interval
+        await new Promise(resolve => setTimeout(resolve, 0)) // Wait for initial state update
       })
 
       // Since mocks might not work perfectly in this test environment,
@@ -355,10 +357,38 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 600))
+        await new Promise(resolve => setTimeout(resolve, 0))
       })
 
       expect(result.current.hasFilters).toBe(false)
+    })
+
+    test('sets up filterChanged event listener', async () => {
+      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
+
+      expect(mockGridApi.addEventListener).toHaveBeenCalledWith(
+        'filterChanged',
+        expect.any(Function)
+      )
+    })
+
+    test('removes filterChanged event listener on cleanup', async () => {
+      const { unmount } = renderHook(() => useAGGridUrlSync(mockGridApi))
+
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
+
+      unmount()
+
+      expect(mockGridApi.removeEventListener).toHaveBeenCalledWith(
+        'filterChanged',
+        expect.any(Function)
+      )
     })
   })
 })

@@ -4,13 +4,10 @@ import type {
   FilterState,
   InternalConfig
 } from './types.js'
-import { DEFAULT_CONFIG } from './utils.js'
-import {
-  parseUrlFilters,
-  generateUrl,
-  getFilterModel,
-  applyFilterModel
-} from './utils.js'
+import { DEFAULT_CONFIG } from './validation.js'
+import { parseUrlFilters } from './url-parser.js'
+import { generateUrl } from './url-generator.js'
+import { getFilterModel, applyFilterModel } from './grid-integration.js'
 
 /**
  * AGGridUrlSync class for synchronizing AG Grid text filters with URL parameters

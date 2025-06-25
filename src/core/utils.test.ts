@@ -1,14 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import type { FilterState, InternalConfig } from './types.js'
-import {
-  validateFilterValue,
-  parseFilterParam,
-  parseUrlFilters,
-  serializeFilters,
-  generateUrl,
-  DEFAULT_CONFIG
-} from './utils.js'
 import { InvalidFilterError, InvalidURLError } from './types.js'
+import { validateFilterValue, DEFAULT_CONFIG } from './validation.js'
+import { parseFilterParam, parseUrlFilters } from './url-parser.js'
+import { serializeFilters, generateUrl } from './url-generator.js'
 
 describe('validateFilterValue', () => {
   const config: InternalConfig = {

@@ -11,51 +11,18 @@
     />
     <script type="module">
       import { createUrlSync } from '../dist/index.js'
-
-      // Sample data
-      const rowData = [
-        { name: 'John Smith', age: 32, city: 'New York' },
-        { name: 'Jane Doe', age: 27, city: 'San Francisco' },
-        { name: 'Bob Johnson', age: 45, city: 'Chicago' },
-        { name: 'Alice Brown', age: 29, city: 'Boston' },
-        { name: 'Charlie Wilson', age: 38, city: 'Seattle' }
-      ]
-
-      // Column definitions
-      const columnDefs = [
-        {
-          field: 'name',
-          filter: 'agTextColumnFilter',
-          filterParams: {
-            filterOptions: ['contains', 'equals'],
-            defaultOption: 'contains'
-          }
-        },
-        {
-          field: 'age',
-          filter: 'agTextColumnFilter',
-          filterParams: {
-            filterOptions: ['contains', 'equals'],
-            defaultOption: 'contains'
-          }
-        },
-        {
-          field: 'city',
-          filter: 'agTextColumnFilter',
-          filterParams: {
-            filterOptions: ['contains', 'equals'],
-            defaultOption: 'contains'
-          }
-        }
-      ]
+      import {
+        simpleData,
+        simpleColumnDefs,
+        defaultColDef
+      } from '../shared-data.js'
 
       // Grid options
       const gridOptions = {
-        columnDefs,
-        rowData,
+        columnDefs: simpleColumnDefs,
+        rowData: simpleData,
         defaultColDef: {
-          flex: 1,
-          sortable: true,
+          ...defaultColDef,
           filter: true
         }
       }

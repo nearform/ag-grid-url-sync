@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AGGridUrlSync } from './ag-grid-url-sync.js'
-import { parseUrlFilters, serializeFilters, generateUrl } from './utils.js'
+import { parseUrlFilters } from './url-parser.js'
+import { serializeFilters, generateUrl } from './url-generator.js'
 import type { GridApi } from 'ag-grid-community'
 import type { FilterState, InternalConfig } from './types.js'
 

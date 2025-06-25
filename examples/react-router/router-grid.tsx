@@ -2,100 +2,13 @@ import React, { useState, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+import {
+  employeeData,
+  employeeColumnDefs,
+  defaultColDef
+} from '../shared-data.js'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
-
-// Sample data
-const rowData = [
-  {
-    id: 1,
-    name: 'John Doe',
-    email: 'john@example.com',
-    status: 'active',
-    department: 'Engineering'
-  },
-  {
-    id: 2,
-    name: 'Jane Smith',
-    email: 'jane@example.com',
-    status: 'inactive',
-    department: 'Marketing'
-  },
-  {
-    id: 3,
-    name: 'Bob Johnson',
-    email: 'bob@example.com',
-    status: 'active',
-    department: 'Sales'
-  },
-  {
-    id: 4,
-    name: 'Alice Brown',
-    email: 'alice@example.com',
-    status: 'active',
-    department: 'Engineering'
-  },
-  {
-    id: 5,
-    name: 'Charlie Wilson',
-    email: 'charlie@example.com',
-    status: 'inactive',
-    department: 'HR'
-  },
-  {
-    id: 6,
-    name: 'Diana Davis',
-    email: 'diana@example.com',
-    status: 'active',
-    department: 'Marketing'
-  },
-  {
-    id: 7,
-    name: 'Edward Miller',
-    email: 'edward@example.com',
-    status: 'active',
-    department: 'Sales'
-  },
-  {
-    id: 8,
-    name: 'Fiona Garcia',
-    email: 'fiona@example.com',
-    status: 'inactive',
-    department: 'Engineering'
-  }
-]
-
-const columnDefs = [
-  { field: 'id', headerName: 'ID', width: 80 },
-  {
-    field: 'name',
-    headerName: 'Name',
-    filter: 'agTextColumnFilter',
-    floatingFilter: true,
-    width: 150
-  },
-  {
-    field: 'email',
-    headerName: 'Email',
-    filter: 'agTextColumnFilter',
-    floatingFilter: true,
-    width: 200
-  },
-  {
-    field: 'status',
-    headerName: 'Status',
-    filter: 'agTextColumnFilter',
-    floatingFilter: true,
-    width: 120
-  },
-  {
-    field: 'department',
-    headerName: 'Department',
-    filter: 'agTextColumnFilter',
-    floatingFilter: true,
-    width: 150
-  }
-]
 
 export default function RouterGrid() {
   const [gridApi, setGridApi] = useState(null)
@@ -108,15 +21,7 @@ export default function RouterGrid() {
       paramPrefix: 'f_'
     })
 
-  const defaultColDef = useMemo(
-    () => ({
-      flex: 1,
-      minWidth: 100,
-      resizable: true,
-      sortable: true
-    }),
-    []
-  )
+  const memoizedDefaultColDef = useMemo(() => defaultColDef, [])
 
   // Update browser URL with filters (user controls when)
   const updateUrlWithFilters = () => {
@@ -262,9 +167,9 @@ export default function RouterGrid() {
         style={{ height: '400px', width: '100%' }}
       >
         <AgGridReact
-          rowData={rowData}
-          columnDefs={columnDefs}
-          defaultColDef={defaultColDef}
+          rowData={employeeData}
+          columnDefs={employeeColumnDefs}
+          defaultColDef={memoizedDefaultColDef}
           onGridReady={params => setGridApi(params.api)}
           animateRows={true}
           rowSelection="multiple"

@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GridApi } from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
-import {
-  parseUrlFilters as parseFilters,
-  DEFAULT_CONFIG
-} from '../core/utils.js'
+import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
+import { DEFAULT_CONFIG } from '../core/validation.js'
 import type { FilterState } from '../core/types.js'
 import type {
   UseAGGridUrlSyncOptions,
@@ -130,13 +128,17 @@ export function useAGGridUrlSync(
   // Memoized API methods
   const shareUrl = useCallback((baseUrl?: string): string => {
     if (!urlSyncRef.current) {
-      return baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+      return (
+        baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+      )
     }
     try {
       return urlSyncRef.current.generateUrl(baseUrl)
     } catch (error) {
       console.error('Failed to generate share URL:', error)
-      return baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+      return (
+        baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+      )
     }
   }, [])
 

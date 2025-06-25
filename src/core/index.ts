@@ -2,13 +2,14 @@ export { AGGridUrlSync, createUrlSync } from './ag-grid-url-sync.js'
 
 export * from './types.js'
 
-export {
-  parseUrlFilters,
-  serializeFilters,
-  generateUrl,
-  getFilterModel,
-  applyFilterModel,
-  validateFilterValue,
-  parseFilterParam,
-  DEFAULT_CONFIG
-} from './utils.js'
+// Validation utilities
+export { validateFilterValue, DEFAULT_CONFIG } from './validation.js'
+
+// URL parsing utilities
+export { parseUrlFilters, parseFilterParam } from './url-parser.js'
+
+// URL generation utilities
+export { serializeFilters, generateUrl } from './url-generator.js'
+
+// AG Grid integration utilities
+export { getFilterModel, applyFilterModel } from './grid-integration.js'

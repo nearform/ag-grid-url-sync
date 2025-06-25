@@ -19,15 +19,19 @@ vi.mock('../core/ag-grid-url-sync.js', () => {
   }
 })
 
-// Mock the utils
-vi.mock('../core/utils.js', () => ({
+// Mock the url-parser
+vi.mock('../core/url-parser.js', () => ({
   parseUrlFilters: vi.fn(() => ({
     name: {
       filterType: 'text' as const,
       type: 'contains' as const,
       filter: 'test'
     }
-  })),
+  }))
+}))
+
+// Mock the validation
+vi.mock('../core/validation.js', () => ({
   DEFAULT_CONFIG: {
     paramPrefix: 'f_',
     maxValueLength: 200,
@@ -280,7 +284,7 @@ describe('useAGGridUrlSync', () => {
         await new Promise(resolve => setTimeout(resolve, 0))
       })
 
-      const { parseUrlFilters } = await import('../core/utils.js')
+      const { parseUrlFilters } = await import('../core/url-parser.js')
       ;(parseUrlFilters as any).mockImplementationOnce(() => {
         throw new Error('Parse error')
       })

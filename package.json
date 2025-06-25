@@ -4,9 +4,43 @@
   "description": "AG Grid URL Sync - Synchronize AG Grid text filters with URL parameters",
   "main": "dist/index.js",
   "type": "module",
+  "sideEffects": false,
   "exports": {
-    ".": "./dist/index.js",
-    "./react": "./dist/react/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.js"
+    },
+    "./validation": {
+      "types": "./dist/core/validation.d.ts",
+      "import": "./dist/core/validation.js",
+      "require": "./dist/core/validation.js"
+    },
+    "./url-parser": {
+      "types": "./dist/core/url-parser.d.ts",
+      "import": "./dist/core/url-parser.js",
+      "require": "./dist/core/url-parser.js"
+    },
+    "./url-generator": {
+      "types": "./dist/core/url-generator.d.ts",
+      "import": "./dist/core/url-generator.js",
+      "require": "./dist/core/url-generator.js"
+    },
+    "./grid-integration": {
+      "types": "./dist/core/grid-integration.d.ts",
+      "import": "./dist/core/grid-integration.js",
+      "require": "./dist/core/grid-integration.js"
+    },
+    "./types": {
+      "types": "./dist/core/types.d.ts",
+      "import": "./dist/core/types.js",
+      "require": "./dist/core/types.js"
+    }
   },
   "typesVersions": {
     "*": {
@@ -15,6 +49,21 @@
       ],
       "react": [
         "dist/react/index.d.ts"
+      ],
+      "validation": [
+        "dist/core/validation.d.ts"
+      ],
+      "url-parser": [
+        "dist/core/url-parser.d.ts"
+      ],
+      "url-generator": [
+        "dist/core/url-generator.d.ts"
+      ],
+      "grid-integration": [
+        "dist/core/grid-integration.d.ts"
+      ],
+      "types": [
+        "dist/core/types.d.ts"
       ]
     }
   },
@@ -103,8 +152,20 @@
       "maxSize": "4KB"
     },
     {
-      "path": "./dist/core/utils.js",
-      "maxSize": "4KB"
+      "path": "./dist/core/validation.js",
+      "maxSize": "2KB"
+    },
+    {
+      "path": "./dist/core/url-parser.js",
+      "maxSize": "3KB"
+    },
+    {
+      "path": "./dist/core/url-generator.js",
+      "maxSize": "2KB"
+    },
+    {
+      "path": "./dist/core/grid-integration.js",
+      "maxSize": "2KB"
     },
     {
       "path": "./dist/react/index.js",

@@ -64,6 +64,81 @@ import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
 import type { FilterState, AGGridUrlSyncConfig } from 'ag-grid-url-sync'
 ```
 
+### Tree-Shaking & Granular Imports
+
+For optimal bundle sizes, you can import only the specific utilities you need:
+
+```typescript
+import {
+  validateFilterValue,
+  DEFAULT_CONFIG
+} from 'ag-grid-url-sync/validation'
+
+import { parseUrlFilters, parseFilterParam } from 'ag-grid-url-sync/url-parser'
+
+import { serializeFilters, generateUrl } from 'ag-grid-url-sync/url-generator'
+
+import {
+  getFilterModel,
+  applyFilterModel
+} from 'ag-grid-url-sync/grid-integration'
+
+import type {
+  FilterState,
+  ColumnFilter,
+  FilterOperation
+} from 'ag-grid-url-sync/types'
+```
+
+#### Bundle Size Comparison
+
+| Import Pattern   | Bundle Size | Use Case               |
+| ---------------- | ----------- | ---------------------- |
+| Full library     | 5KB         | Complete functionality |
+| Core class only  | 3.2KB       | Basic URL sync         |
+| React hook only  | 7KB         | React applications     |
+| URL parsing only | 1.05KB      | Parse existing URLs    |
+| Validation only  | 318B        | Input validation       |
+| Types only       | 0B          | TypeScript types       |
+
+#### Example: Custom URL Parser
+
+```typescript
+import { parseUrlFilters } from 'ag-grid-url-sync/url-parser'
+import { DEFAULT_CONFIG } from 'ag-grid-url-sync/validation'
+import type { FilterState } from 'ag-grid-url-sync/types'
+
+function getFiltersFromUrl(url: string): FilterState {
+  const config = {
+    gridApi: null, // Not needed for parsing
+    ...DEFAULT_CONFIG,
+    onParseError: error => console.error('Parse error:', error)
+  }
+
+  return parseUrlFilters(url, config)
+}
+```
+
+#### Example: Custom URL Generator
+
+```typescript
+import { generateUrl, serializeFilters } from 'ag-grid-url-sync/url-generator'
+import type { FilterState } from 'ag-grid-url-sync/types'
+
+function createShareableUrl(filters: FilterState, baseUrl: string): string {
+  const config = {
+    gridApi: null, // Not needed for generation
+    paramPrefix: 'f_',
+    maxValueLength: 200,
+    onParseError: () => {}
+  }
+
+  return generateUrl(baseUrl, filters, config)
+}
+```
+
+**💡 Pro Tip**: Use granular imports in libraries and applications where bundle size matters. All existing import patterns remain fully supported for backward compatibility.
+
 ### Basic Example
 
 ```typescript

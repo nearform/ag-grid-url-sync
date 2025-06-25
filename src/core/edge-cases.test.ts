@@ -339,3 +339,73 @@ describe('Edge Cases - Configuration', () => {
     })
   })
 })
+
+describe('Text Filter Operations Edge Cases', () => {
+  const config: InternalConfig = {
+    gridApi: {} as any,
+    paramPrefix: 'f_',
+    maxValueLength: 200,
+    onParseError: vi.fn()
+  }
+
+  describe('New Operations', () => {
+    it('should handle all 8 text operations', () => {
+      const complexUrl =
+        'https://example.com?' +
+        'f_name_contains=john&' +
+        'f_email_startsWith=admin&' +
+        'f_status_neq=inactive&' +
+        'f_description_endsWith=test&' +
+        'f_optional_blank=true&' +
+        'f_required_notBlank=true&' +
+        'f_tags_notContains=spam&' +
+        'f_title_eq=manager'
+
+      const filters = parseUrlFilters(complexUrl, config)
+
+      expect(Object.keys(filters)).toHaveLength(8)
+      expect(filters.name.type).toBe('contains')
+      expect(filters.email.type).toBe('startsWith')
+      expect(filters.status.type).toBe('notEqual')
+      expect(filters.description.type).toBe('endsWith')
+      expect(filters.optional.type).toBe('blank')
+      expect(filters.required.type).toBe('notBlank')
+      expect(filters.tags.type).toBe('notContains')
+      expect(filters.title.type).toBe('eq')
+    })
+
+    it('should handle blank operations with values gracefully', () => {
+      const url =
+        'https://example.com/?f_field_blank=unexpected_value&f_other_notBlank=123'
+      const filters = parseUrlFilters(url, config)
+
+      expect(filters.field).toEqual({
+        filterType: 'text',
+        type: 'blank',
+        filter: ''
+      })
+      expect(filters.other).toEqual({
+        filterType: 'text',
+        type: 'notBlank',
+        filter: ''
+      })
+    })
+
+    it('should maintain v0.2 URL compatibility', () => {
+      const v02Url =
+        'https://example.com/?f_name_contains=john&f_status_eq=active'
+      const filters = parseUrlFilters(v02Url, config)
+
+      expect(filters.name).toEqual({
+        filterType: 'text',
+        type: 'contains',
+        filter: 'john'
+      })
+      expect(filters.status).toEqual({
+        filterType: 'text',
+        type: 'eq',
+        filter: 'active'
+      })
+    })
+  })
+})

@@ -4,16 +4,8 @@ import type {
   FilterOperation,
   InternalConfig
 } from './types.js'
-import { InvalidFilterError, InvalidURLError } from './types.js'
+import { InvalidFilterError, InvalidURLError, OPERATION_MAP } from './types.js'
 import { validateFilterValue, DEFAULT_CONFIG } from './validation.js'
-
-/**
- * Operation mapping between URL parameters and AG Grid filter types
- */
-const OPERATION_MAP: Record<string, FilterOperation> = {
-  contains: 'contains',
-  eq: 'eq'
-} as const
 
 /**
  * Extracts column name and operation from a filter parameter
@@ -67,6 +59,15 @@ export function parseFilterParam(
     throw new InvalidFilterError(`Unsupported filter operation: ${operation}`)
   }
 
+  // Special handling for blank operations - they don't use the value
+  if (filterOp === 'blank' || filterOp === 'notBlank') {
+    return {
+      filterType: 'text',
+      type: filterOp,
+      filter: '' // Blank operations don't use the value
+    }
+  }
+
   return {
     filterType: 'text',
     type: filterOp,
@@ -96,7 +97,11 @@ export function parseUrlFilters(
         )
         const filterParam = parseFilterParam(param, value, config.paramPrefix)
 
-        const validatedValue = validateFilterValue(value, config)
+        const validatedValue = validateFilterValue(
+          value,
+          config,
+          filterParam.type
+        )
         filterState[columnName] = {
           ...filterParam,
           filter: validatedValue

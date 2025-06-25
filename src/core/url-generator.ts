@@ -1,5 +1,6 @@
 import type { FilterState, InternalConfig } from './types.js'
 import { validateFilterValue } from './validation.js'
+import { REVERSE_OPERATION_MAP } from './types.js'
 
 /**
  * Converts a filter state object into URL search parameters
@@ -13,12 +14,20 @@ export function serializeFilters(
   for (const [column, filter] of Object.entries(filterState)) {
     if (filter.filterType !== 'text') continue
 
-    const operation = filter.type === 'contains' ? 'contains' : 'eq'
-    const paramName = `${config.paramPrefix}${column}_${operation}`
-    const value = validateFilterValue(filter.filter, config)
+    const operation =
+      REVERSE_OPERATION_MAP[filter.type as keyof typeof REVERSE_OPERATION_MAP]
+    if (!operation) continue
 
-    // URLSearchParams already handles encoding, so don't double-encode
-    params.append(paramName, value)
+    const paramName = `${config.paramPrefix}${column}_${operation}`
+
+    // Special handling for blank operations
+    if (filter.type === 'blank' || filter.type === 'notBlank') {
+      params.append(paramName, 'true')
+    } else {
+      const value = validateFilterValue(filter.filter, config, filter.type)
+      // URLSearchParams already handles encoding, so don't double-encode
+      params.append(paramName, value)
+    }
   }
 
   return params

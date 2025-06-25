@@ -23,7 +23,15 @@ export interface AGGridUrlSyncConfig {
 /**
  * Supported filter operations
  */
-export type FilterOperation = 'contains' | 'eq'
+export type FilterOperation =
+  | 'contains'
+  | 'eq'
+  | 'notContains'
+  | 'notEqual'
+  | 'startsWith'
+  | 'endsWith'
+  | 'blank'
+  | 'notBlank'
 
 /**
  * Filter state for a single column
@@ -74,7 +82,7 @@ export class InvalidURLError extends URLSyncError {
 
 export type ParsedFilterParam = {
   columnName: string
-  operation: 'contains' | 'equals'
+  operation: FilterOperation
   value: string
   action: 'apply' | 'remove'
 }
@@ -82,13 +90,48 @@ export type ParsedFilterParam = {
 // Re-export GridApi for convenience
 export type GridApi = AGGridApi
 
-// Internal operation mapping
+// Internal operation mapping - URL parameter names to internal types
 export const OPERATION_MAP = {
   contains: 'contains',
-  eq: 'equals'
+  eq: 'eq',
+  notContains: 'notContains',
+  neq: 'notEqual',
+  startsWith: 'startsWith',
+  endsWith: 'endsWith',
+  blank: 'blank',
+  notBlank: 'notBlank'
 } as const
 
 export const REVERSE_OPERATION_MAP = {
   contains: 'contains',
-  equals: 'eq'
+  eq: 'eq',
+  notContains: 'notContains',
+  notEqual: 'neq',
+  startsWith: 'startsWith',
+  endsWith: 'endsWith',
+  blank: 'blank',
+  notBlank: 'notBlank'
+} as const
+
+// AG Grid operation name mappings - internal types to AG Grid operations
+export const AG_GRID_OPERATION_NAMES = {
+  contains: 'contains',
+  eq: 'equals',
+  notContains: 'notContains',
+  notEqual: 'notEqual',
+  startsWith: 'startsWith',
+  endsWith: 'endsWith',
+  blank: 'blank',
+  notBlank: 'notBlank'
+} as const
+
+export const REVERSE_AG_GRID_OPERATION_NAMES = {
+  contains: 'contains',
+  equals: 'eq',
+  notContains: 'notContains',
+  notEqual: 'notEqual',
+  startsWith: 'startsWith',
+  endsWith: 'endsWith',
+  blank: 'blank',
+  notBlank: 'notBlank'
 } as const

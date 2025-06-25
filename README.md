@@ -6,7 +6,7 @@ A lightweight TypeScript library for synchronizing AG Grid text filters with URL
 
 ## Features
 
-- 🔍 Text filter synchronization (`contains` and `equals` operations)
+- 🔍 **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - 🔗 Manual URL generation for sharing filter states
 - ↔️ Bidirectional sync between grid and URL
 - 🛠️ Framework agnostic - works with any AG Grid setup
@@ -21,12 +21,18 @@ A lightweight TypeScript library for synchronizing AG Grid text filters with URL
 
 ## Supported Filter Types
 
-Currently supports **AG Grid text filters** with the following operations:
+Supports **all AG Grid text filter operations** (8 total) with clean, human-readable URL parameters:
 
-| Filter Type | Operations | URL Format                | Example                |
-| ----------- | ---------- | ------------------------- | ---------------------- |
-| **Text**    | `contains` | `f_column_contains=value` | `f_name_contains=john` |
-| **Text**    | `equals`   | `f_column_eq=value`       | `f_status_eq=active`   |
+| Filter Type | Operation    | URL Format                   | Example                    | Description                 |
+| ----------- | ------------ | ---------------------------- | -------------------------- | --------------------------- |
+| **Text**    | Contains     | `f_column_contains=value`    | `f_name_contains=john`     | Text contains value         |
+| **Text**    | Equals       | `f_column_eq=value`          | `f_status_eq=active`       | Text equals value exactly   |
+| **Text**    | Not Contains | `f_column_notContains=value` | `f_name_notContains=spam`  | Text does not contain value |
+| **Text**    | Not Equal    | `f_column_neq=value`         | `f_status_neq=inactive`    | Text does not equal value   |
+| **Text**    | Starts With  | `f_column_startsWith=value`  | `f_email_startsWith=admin` | Text starts with value      |
+| **Text**    | Ends With    | `f_column_endsWith=value`    | `f_file_endsWith=.pdf`     | Text ends with value        |
+| **Text**    | Blank        | `f_column_blank=true`        | `f_optional_blank=true`    | Field is empty/null         |
+| **Text**    | Not Blank    | `f_column_notBlank=true`     | `f_required_notBlank=true` | Field has any value         |
 
 ### Filter Detection
 
@@ -35,11 +41,33 @@ The library automatically works with:
 - Columns configured with `filter: 'agTextColumnFilter'`
 - Columns with `filter: true` (AG Grid's default text filter)
 - Any column where users apply text-based filters
+- All AG Grid text filter operations through the filter menu
 
 ### URL Examples
 
-- Simple: `https://app.com/data?f_name_contains=john`
-- Multiple: `https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_email_contains=company.com`
+**Simple filter:**
+
+```
+https://app.com/data?f_name_contains=john
+```
+
+**Multiple operations:**
+
+```
+https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_email_startsWith=admin&f_status_neq=inactive
+```
+
+**Complex filtering with all operations:**
+
+```
+https://app.com/data?f_name_contains=john&f_email_startsWith=admin&f_status_neq=inactive&f_description_endsWith=test&f_optional_blank=true&f_required_notBlank=true&f_tags_notContains=spam&f_title_eq=manager
+```
+
+**Blank operations:**
+
+```
+https://app.com/data?f_comments_blank=true&f_name_notBlank=true
+```
 
 ## Installation
 

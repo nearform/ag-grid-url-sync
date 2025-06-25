@@ -102,7 +102,8 @@ export function useAGGridUrlSync(
 
         // Check if there are active filters by comparing query params
         const queryParams = urlSyncRef.current!.getQueryParams()
-        setHasFilters(queryParams.length > 1) // > 1 because it includes the '?' prefix
+        const searchParams = new URLSearchParams(queryParams)
+        setHasFilters([...searchParams.entries()].length > 0) // Check if there are any query parameters
       } catch (error) {
         console.error('Failed to update URL state:', error)
       }

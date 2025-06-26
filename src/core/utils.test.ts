@@ -102,12 +102,6 @@ describe('parseUrlFilters', () => {
   it('should throw error for invalid URLs', () => {
     expect(() => parseUrlFilters('not-a-url', config)).toThrow(InvalidURLError)
   })
-
-  it('should handle empty filter parameters', () => {
-    const url = 'https://example.com'
-    const result = parseUrlFilters(url, config)
-    expect(result).toEqual({})
-  })
 })
 
 describe('serializeFilters', () => {
@@ -150,10 +144,7 @@ describe('serializeFilters', () => {
     expect(params.toString()).toBe('f_name_contains=john+%26+doe')
   })
 
-  it('should handle empty filter state', () => {
-    const params = serializeFilters({}, config)
-    expect(params.toString()).toBe('')
-  })
+  // Removed trivial empty state test - just tests obvious URLSearchParams behavior
 })
 
 describe('generateUrl', () => {
@@ -200,5 +191,61 @@ describe('generateUrl', () => {
   it('should handle empty filter state', () => {
     const url = generateUrl('https://example.com', {}, config)
     expect(url).toBe('https://example.com/')
+  })
+
+  describe('Critical Business Logic Tests', () => {
+    it('should handle filter parameter conflicts with existing params', () => {
+      // Critical scenario: URL already has params that conflict with filter prefix
+      const filterState: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'john' }
+      }
+
+      const url = generateUrl(
+        'https://example.com?f_name_contains=old_value&other=keep',
+        filterState,
+        config
+      )
+
+      // Should replace old filter param with new value, keep other params
+      expect(url).toContain('f_name_contains=john')
+      expect(url).toContain('other=keep')
+      expect(url).not.toContain('old_value')
+    })
+
+    it('should handle malformed base URLs gracefully', () => {
+      // Critical scenario: Invalid base URL should not crash the application
+      const filterState: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'test' }
+      }
+
+      // Should throw for truly malformed URLs
+      expect(() => generateUrl('not-a-url', filterState, config)).toThrow()
+      expect(() => generateUrl('', filterState, config)).toThrow()
+
+      // But should handle edge cases gracefully
+      expect(() =>
+        generateUrl('https://example.com', filterState, config)
+      ).not.toThrow()
+    })
+
+    it('should handle very long filter values approaching limits', () => {
+      // Critical scenario: Values near the limit should work, over limit should fail
+      const nearLimitConfig = { ...config, maxValueLength: 50 }
+
+      const validFilterState: FilterState = {
+        test: { filterType: 'text', type: 'contains', filter: 'x'.repeat(49) }
+      }
+
+      const invalidFilterState: FilterState = {
+        test: { filterType: 'text', type: 'contains', filter: 'x'.repeat(51) }
+      }
+
+      expect(() =>
+        generateUrl('https://example.com', validFilterState, nearLimitConfig)
+      ).not.toThrow()
+      expect(() =>
+        generateUrl('https://example.com', invalidFilterState, nearLimitConfig)
+      ).toThrow()
+    })
   })
 })

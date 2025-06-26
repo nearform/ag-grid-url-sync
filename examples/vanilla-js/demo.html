@@ -4,11 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AG Grid URL Sync - Advanced Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.3.2/dist/ag-grid-community.min.js"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/ag-grid-community@33.3.2/styles/ag-grid.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/ag-grid-community@33.3.2/styles/ag-theme-alpine.min.css"
+      rel="stylesheet"
+    />
     <script type="module">
       // Import our library from dist
-      import { AGGridUrlSync } from '../dist/index.js'
-      window.AGGridUrlSync = { AGGridUrlSync }
+      import { createUrlSync } from '../../dist/index.js'
+      window.createUrlSync = createUrlSync
     </script>
     <style>
       body {
@@ -235,6 +243,24 @@
               onclick="applyScenario('support')"
             >
               🎧 Customer Support
+            </button>
+            <button
+              class="btn btn-primary scenario-btn"
+              onclick="applyScenario('startsWithFilter')"
+            >
+              🚀 Starts With 'S'
+            </button>
+            <button
+              class="btn btn-primary scenario-btn"
+              onclick="applyScenario('endsWithFilter')"
+            >
+              📍 Ends With 'er'
+            </button>
+            <button
+              class="btn btn-primary scenario-btn"
+              onclick="applyScenario('notContainsFilter')"
+            >
+              🚫 Not Contains 'a'
             </button>
             <button class="btn btn-secondary" onclick="clearAllFilters()">
               🧹 Clear All
@@ -526,14 +552,28 @@
 
         // Wait for library to load
         setTimeout(() => {
-          if (window.AGGridUrlSync) {
-            urlSync = new window.AGGridUrlSync.AGGridUrlSync(gridApi, {
+          if (window.createUrlSync) {
+            urlSync = window.createUrlSync(gridApi, {
               onParseError: error => {
                 showError(`URL Parse Error: ${error.message}`)
                 performanceStats.errorCount++
                 updatePerformanceStats()
               }
             })
+
+            // Apply filters from URL on page load
+            try {
+              urlSync.applyFromUrl()
+              const filterCount = Object.keys(gridApi.getFilterModel()).length
+              if (filterCount > 0) {
+                showSuccess(
+                  `Applied ${filterCount} filter(s) from URL on page load`
+                )
+              }
+            } catch (error) {
+              console.warn('Failed to apply filters from URL:', error)
+            }
+
             updatePerformanceMonitor()
           }
         }, 100)
@@ -615,6 +655,33 @@
                   filterType: 'text',
                   type: 'contains',
                   filter: 'Support'
+                }
+              }
+              break
+            case 'startsWithFilter':
+              filters = {
+                name: {
+                  filterType: 'text',
+                  type: 'startsWith',
+                  filter: 'S'
+                }
+              }
+              break
+            case 'endsWithFilter':
+              filters = {
+                position: {
+                  filterType: 'text',
+                  type: 'endsWith',
+                  filter: 'er'
+                }
+              }
+              break
+            case 'notContainsFilter':
+              filters = {
+                name: {
+                  filterType: 'text',
+                  type: 'notContains',
+                  filter: 'a'
                 }
               }
               break

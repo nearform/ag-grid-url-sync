@@ -6,7 +6,7 @@ A lightweight TypeScript library for synchronizing AG Grid text filters with URL
 
 ## Features
 
-- 🔍 Text filter synchronization (`contains` and `equals` operations)
+- 🔍 **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - 🔗 Manual URL generation for sharing filter states
 - ↔️ Bidirectional sync between grid and URL
 - 🛠️ Framework agnostic - works with any AG Grid setup
@@ -21,12 +21,20 @@ A lightweight TypeScript library for synchronizing AG Grid text filters with URL
 
 ## Supported Filter Types
 
-Currently supports **AG Grid text filters** with the following operations:
+Supports **all AG Grid text filter operations** (8 total) with clean, human-readable URL parameters:
 
-| Filter Type | Operations | URL Format                | Example                |
-| ----------- | ---------- | ------------------------- | ---------------------- |
-| **Text**    | `contains` | `f_column_contains=value` | `f_name_contains=john` |
-| **Text**    | `equals`   | `f_column_eq=value`       | `f_status_eq=active`   |
+| Filter Type | Operation    | URL Format                   | Example                    | Description                 |
+| ----------- | ------------ | ---------------------------- | -------------------------- | --------------------------- |
+| **Text**    | Contains     | `f_column_contains=value`    | `f_name_contains=john`     | Text contains value         |
+| **Text**    | Equals       | `f_column_eq=value`          | `f_status_eq=active`       | Text equals value exactly   |
+| **Text**    | Not Contains | `f_column_notContains=value` | `f_name_notContains=spam`  | Text does not contain value |
+| **Text**    | Not Equal    | `f_column_neq=value`         | `f_status_neq=inactive`    | Text does not equal value   |
+| **Text**    | Starts With  | `f_column_startsWith=value`  | `f_email_startsWith=admin` | Text starts with value      |
+| **Text**    | Ends With    | `f_column_endsWith=value`    | `f_file_endsWith=.pdf`     | Text ends with value        |
+| **Text**    | Blank        | `f_column_blank=true`        | `f_optional_blank=true`    | Field is empty/null         |
+| **Text**    | Not Blank    | `f_column_notBlank=true`     | `f_required_notBlank=true` | Field has any value         |
+
+> **💡 Naming Convention Note**: URL parameters use short, clean names for better readability (`eq` for equals, `neq` for not equal). These are automatically converted to the proper AG Grid operation names (`equals`, `notEqual`) internally. This design keeps URLs concise while maintaining full compatibility with AG Grid's filter API.
 
 ### Filter Detection
 
@@ -35,11 +43,33 @@ The library automatically works with:
 - Columns configured with `filter: 'agTextColumnFilter'`
 - Columns with `filter: true` (AG Grid's default text filter)
 - Any column where users apply text-based filters
+- All AG Grid text filter operations through the filter menu
 
 ### URL Examples
 
-- Simple: `https://app.com/data?f_name_contains=john`
-- Multiple: `https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_email_contains=company.com`
+**Simple filter:**
+
+```
+https://app.com/data?f_name_contains=john
+```
+
+**Multiple operations:**
+
+```
+https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_email_startsWith=admin&f_status_neq=inactive
+```
+
+**Complex filtering with all operations:**
+
+```
+https://app.com/data?f_name_contains=john&f_email_startsWith=admin&f_status_neq=inactive&f_description_endsWith=test&f_optional_blank=true&f_required_notBlank=true&f_tags_notContains=spam&f_title_eq=manager
+```
+
+**Blank operations:**
+
+```
+https://app.com/data?f_comments_blank=true&f_name_notBlank=true
+```
 
 ## Installation
 
@@ -533,59 +563,39 @@ interface AGGridUrlSyncConfig {
 
 Check out the [examples](./examples) directory for comprehensive working demos:
 
-### Vanilla JavaScript Examples
+### 🚀 [Vanilla JavaScript Demo](./examples/vanilla-js/demo.html)
 
-### 📝 [Basic Example](./examples/vanilla-js/basic-example.html)
+Comprehensive demonstration showcasing all features:
 
-Simple HTML/JS implementation showing core functionality:
+- **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
+- **Filter scenarios** - Pre-configured examples (Sales team, Engineering, Executive view, etc.)
+- **New operation demos** - Dedicated buttons for startsWith, endsWith, and notContains filters
+- **URL sharing workflow** - Copy to clipboard, email, and Slack integration
+- **Performance monitoring** - Real-time benchmarks and stress testing
+- **Error handling** - Malformed URL and invalid filter testing
+- **Complete API showcase** - Generate URLs, apply filters, clear filters
 
-- Initialize URL sync with AG Grid
-- Generate shareable URLs
-- Apply filters from URLs
-- Handle filter changes
+### ⚛️ [React Integration](./examples/react-basic/basic-grid.tsx)
 
-### 🚀 [Advanced Demo](./examples/vanilla-js/advanced-demo.html)
-
-Feature-rich demonstration including:
-
-- Performance monitoring and benchmarks
-- Multiple filter scenarios (Sales, Engineering, Executive views)
-- URL sharing workflow with copy/email/Slack functionality
-- Error testing with malformed URLs and invalid filters
-- Memory and stress testing capabilities
-
-### 🔗 [Multi-Grid Demo](./examples/vanilla-js/multi-grid-demo.html)
-
-Complex example with multiple independent grids:
-
-- Four separate grids (Employees, Projects, Departments, Metrics)
-- Individual URL namespacing with different prefixes
-- Combined URL generation merging all grid states
-- Independent grid controls and clearing functions
-
-### React Examples
-
-### ⚛️ [Basic React Grid](./examples/react-basic/basic-grid.tsx)
-
-Complete React component showing the `useAGGridUrlSync` hook:
+Clean React component showing the `useAGGridUrlSync` hook:
 
 - React hook integration with AG Grid
 - Automatic filter state management
 - Share button with clipboard functionality
 - Filter status indicators and controls
 - Auto-apply filters on component mount
+- Full TypeScript support
 
-### 🛣️ [React Router Integration](./examples/react-router/router-grid.tsx)
+### 📊 [Shared Data](./examples/shared-data.js)
 
-Advanced React example with React Router:
+Common data and column definitions used across examples:
 
-- Browser URL synchronization
-- Navigation-aware filter persistence
-- Automatic filter restoration on page refresh
-- Clean URL management with multiple parameters
-- User-controlled URL updates
+- Employee data with realistic company information
+- Project data with status and priority fields
+- Column definitions with complete text filter support
+- All 8 text filter operations enabled by default
 
-All examples work out-of-the-box. HTML files can be opened directly in your browser, while React examples show complete implementation patterns.
+All examples work out-of-the-box and demonstrate the complete functionality. The HTML demo can be opened directly in your browser, while the React example shows clean integration patterns.
 
 ## Contributing
 

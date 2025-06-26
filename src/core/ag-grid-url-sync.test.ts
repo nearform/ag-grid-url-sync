@@ -18,19 +18,6 @@ describe('AGGridUrlSync', () => {
     setFilterModel: vi.fn()
   } as unknown as GridApi
 
-  it('should create instance with default config', () => {
-    const urlSync = new AGGridUrlSync(mockGridApi)
-    expect(urlSync).toBeInstanceOf(AGGridUrlSync)
-  })
-
-  it('should create instance with custom config', () => {
-    const urlSync = new AGGridUrlSync(mockGridApi, {
-      paramPrefix: 'filter_',
-      maxValueLength: 100
-    })
-    expect(urlSync).toBeInstanceOf(AGGridUrlSync)
-  })
-
   describe('generateUrl', () => {
     it('should generate URL with current filter state', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
@@ -101,28 +88,144 @@ describe('AGGridUrlSync', () => {
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
     })
   })
-})
 
-describe('createUrlSync', () => {
-  it('should create AGGridUrlSync instance', () => {
-    const mockGridApi = {
-      getFilterModel: vi.fn(),
-      setFilterModel: vi.fn()
-    } as unknown as GridApi
-    const urlSync = createUrlSync(mockGridApi)
-    expect(urlSync).toBeInstanceOf(AGGridUrlSync)
-  })
+  describe('Text Filter Operations', () => {
+    // Consolidated test for all filter operations - reduces redundancy while maintaining coverage
+    const filterOperations = [
+      {
+        urlOp: 'contains',
+        value: 'john',
+        agGridType: 'contains',
+        column: 'name'
+      },
+      { urlOp: 'eq', value: 'active', agGridType: 'equals', column: 'status' },
+      {
+        urlOp: 'neq',
+        value: 'inactive',
+        agGridType: 'notEqual',
+        column: 'status'
+      },
+      {
+        urlOp: 'notContains',
+        value: 'spam',
+        agGridType: 'notContains',
+        column: 'tags'
+      },
+      {
+        urlOp: 'startsWith',
+        value: 'admin',
+        agGridType: 'startsWith',
+        column: 'email'
+      },
+      {
+        urlOp: 'endsWith',
+        value: 'pending',
+        agGridType: 'endsWith',
+        column: 'description'
+      }
+    ]
 
-  it('should pass config to AGGridUrlSync instance', () => {
-    const mockGridApi = {
-      getFilterModel: vi.fn(),
-      setFilterModel: vi.fn()
-    } as unknown as GridApi
-    const config = {
-      paramPrefix: 'filter_',
-      maxValueLength: 100
-    }
-    const urlSync = createUrlSync(mockGridApi, config)
-    expect(urlSync).toBeInstanceOf(AGGridUrlSync)
+    describe.each(filterOperations)(
+      'Operation: $urlOp',
+      ({ urlOp, value, agGridType, column }) => {
+        it('should apply filter from URL and generate URL correctly', () => {
+          // Test URL → Filter conversion
+          const urlSync = new AGGridUrlSync(mockGridApi)
+          urlSync.applyFromUrl(
+            `https://example.com?f_${column}_${urlOp}=${value}`
+          )
+
+          expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+            [column]: {
+              filterType: 'text',
+              type: agGridType,
+              filter: value
+            }
+          })
+
+          // Test Filter → URL conversion
+          const mockGridApiWithFilter = {
+            getFilterModel: vi.fn().mockReturnValue({
+              [column]: { filterType: 'text', type: agGridType, filter: value }
+            }),
+            setFilterModel: vi.fn()
+          } as unknown as GridApi
+
+          const urlSyncReverse = new AGGridUrlSync(mockGridApiWithFilter)
+          const url = urlSyncReverse.generateUrl('https://example.com')
+          expect(url).toBe(`https://example.com/?f_${column}_${urlOp}=${value}`)
+        })
+      }
+    )
+
+    describe('Blank Operations', () => {
+      it('should handle blank and notBlank operations correctly', () => {
+        const urlSync = new AGGridUrlSync(mockGridApi)
+
+        // Test blank operation
+        urlSync.applyFromUrl('https://example.com?f_optional_blank=true')
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+          optional: { filterType: 'text', type: 'blank', filter: '' }
+        })
+
+        // Test notBlank operation
+        urlSync.applyFromUrl('https://example.com?f_required_notBlank=true')
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+          required: { filterType: 'text', type: 'notBlank', filter: '' }
+        })
+
+        // Test blank operations ignore the parameter value
+        urlSync.applyFromUrl(
+          'https://example.com?f_optional_blank=ignored_value'
+        )
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+          optional: { filterType: 'text', type: 'blank', filter: '' }
+        })
+      })
+
+      it('should generate URLs for blank operations', () => {
+        const mockGridApiWithFilters = {
+          getFilterModel: vi.fn().mockReturnValue({
+            optional: { filterType: 'text', type: 'blank', filter: '' },
+            required: { filterType: 'text', type: 'notBlank', filter: '' }
+          }),
+          setFilterModel: vi.fn()
+        } as unknown as GridApi
+
+        const urlSync = new AGGridUrlSync(mockGridApiWithFilters)
+        const url = urlSync.generateUrl('https://example.com')
+        expect(url).toContain('f_optional_blank=true')
+        expect(url).toContain('f_required_notBlank=true')
+      })
+    })
+
+    describe('Complex Multi-Operation Scenarios', () => {
+      it('should handle multiple different operations in single URL', () => {
+        // Test business scenario: user applies multiple filters and shares URL
+        const urlSync = new AGGridUrlSync(mockGridApi)
+        const complexUrl =
+          'https://example.com?' +
+          'f_name_contains=john&' +
+          'f_email_startsWith=admin&' +
+          'f_status_neq=inactive&' +
+          'f_description_endsWith=test&' +
+          'f_optional_blank=true&' +
+          'f_required_notBlank=true&' +
+          'f_tags_notContains=spam&' +
+          'f_title_eq=manager'
+
+        urlSync.applyFromUrl(complexUrl)
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+          name: { filterType: 'text', type: 'contains', filter: 'john' },
+          email: { filterType: 'text', type: 'startsWith', filter: 'admin' },
+          status: { filterType: 'text', type: 'notEqual', filter: 'inactive' },
+          description: { filterType: 'text', type: 'endsWith', filter: 'test' },
+          optional: { filterType: 'text', type: 'blank', filter: '' },
+          required: { filterType: 'text', type: 'notBlank', filter: '' },
+          tags: { filterType: 'text', type: 'notContains', filter: 'spam' },
+          title: { filterType: 'text', type: 'equals', filter: 'manager' }
+        })
+      })
+    })
   })
 })

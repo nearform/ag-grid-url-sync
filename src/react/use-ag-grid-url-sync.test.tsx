@@ -1,5 +1,6 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { setTimeout } from 'timers/promises'
 import type { GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 
@@ -112,7 +113,7 @@ describe('useAGGridUrlSync', () => {
 
       // Wait for effects to run
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       expect(mockInstance.applyFromUrl).toHaveBeenCalled()
@@ -127,7 +128,7 @@ describe('useAGGridUrlSync', () => {
       )
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
@@ -139,7 +140,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const url = result.current.shareUrl()
@@ -157,7 +158,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const params = result.current.getQueryParams()
@@ -171,7 +172,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       act(() => {
@@ -188,7 +189,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       act(() => {
@@ -202,7 +203,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const filters = result.current.parseUrlFilters(
@@ -220,7 +221,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const filters = {
@@ -265,7 +266,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const url = result.current.shareUrl()
@@ -283,7 +284,7 @@ describe('useAGGridUrlSync', () => {
       )
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const { parseUrlFilters } = await import('../core/url-parser.js')
@@ -307,7 +308,7 @@ describe('useAGGridUrlSync', () => {
       const { unmount } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       unmount()
@@ -325,7 +326,7 @@ describe('useAGGridUrlSync', () => {
       )
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const newMockGridApi = createMockGridApi()
@@ -340,7 +341,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0)) // Wait for initial state update
+        await setTimeout(0) // Wait for initial state update
       })
 
       // Since mocks might not work perfectly in this test environment,
@@ -357,7 +358,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       expect(result.current.hasFilters).toBe(false)
@@ -367,7 +368,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       expect(mockGridApi.addEventListener).toHaveBeenCalledWith(
@@ -380,7 +381,7 @@ describe('useAGGridUrlSync', () => {
       const { unmount } = renderHook(() => useAGGridUrlSync(mockGridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       unmount()

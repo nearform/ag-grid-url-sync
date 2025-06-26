@@ -198,6 +198,57 @@ describe('Edge Cases - Grid Integration', () => {
     expect(() => urlSync.clearFilters()).not.toThrow()
   })
 
+  it('should handle filter model with non-text filters gracefully', () => {
+    // Critical scenario: Grid has mixed filter types, only text filters should be processed
+    const mockGridApi = {
+      getFilterModel: vi.fn().mockReturnValue({
+        textColumn: { filterType: 'text', type: 'contains', filter: 'value' },
+        numberColumn: { filterType: 'number', type: 'equals', filter: 123 },
+        dateColumn: {
+          filterType: 'date',
+          type: 'equals',
+          filterDateFrom: '2023-01-01'
+        },
+        setColumn: { filterType: 'set', values: ['option1', 'option2'] }
+      }),
+      setFilterModel: vi.fn()
+    } as unknown as GridApi
+
+    const urlSync = new AGGridUrlSync(mockGridApi)
+    const url = urlSync.generateUrl('https://example.com')
+
+    // Should only include text filters in URL
+    expect(url).toContain('f_textColumn_contains=value')
+    expect(url).not.toContain('numberColumn')
+    expect(url).not.toContain('dateColumn')
+    expect(url).not.toContain('setColumn')
+  })
+
+  it('should handle unknown AG Grid operation types', () => {
+    // Critical scenario: AG Grid introduces new operation types
+    const mockGridApi = {
+      getFilterModel: vi.fn().mockReturnValue({
+        column1: {
+          filterType: 'text',
+          type: 'unknownOperation',
+          filter: 'value'
+        },
+        column2: { filterType: 'text', type: 'contains', filter: 'validValue' }
+      }),
+      setFilterModel: vi.fn()
+    } as unknown as GridApi
+
+    const urlSync = new AGGridUrlSync(mockGridApi)
+
+    // Should handle unknown operations gracefully and process known ones
+    expect(() => urlSync.generateUrl('https://example.com')).not.toThrow()
+
+    const url = urlSync.generateUrl('https://example.com')
+    expect(url).toContain('f_column2_contains=validValue')
+    // Unknown operation should be filtered out
+    expect(url).not.toContain('unknownOperation')
+  })
+
   it('should handle non-existent columns in URL', () => {
     const mockGridApi = {
       getFilterModel: vi.fn().mockReturnValue({}),
@@ -336,6 +387,59 @@ describe('Edge Cases - Configuration', () => {
         type: 'equals',
         filter: 'boston'
       }
+    })
+  })
+})
+
+describe('Text Filter Operations Edge Cases', () => {
+  const config: InternalConfig = {
+    gridApi: {} as any,
+    paramPrefix: 'f_',
+    maxValueLength: 200,
+    onParseError: vi.fn()
+  }
+
+  describe('New Operations', () => {
+    it('should handle all 8 text operations', () => {
+      const complexUrl =
+        'https://example.com?' +
+        'f_name_contains=john&' +
+        'f_email_startsWith=admin&' +
+        'f_status_neq=inactive&' +
+        'f_description_endsWith=test&' +
+        'f_optional_blank=true&' +
+        'f_required_notBlank=true&' +
+        'f_tags_notContains=spam&' +
+        'f_title_eq=manager'
+
+      const filters = parseUrlFilters(complexUrl, config)
+
+      expect(Object.keys(filters)).toHaveLength(8)
+      expect(filters.name.type).toBe('contains')
+      expect(filters.email.type).toBe('startsWith')
+      expect(filters.status.type).toBe('notEqual')
+      expect(filters.description.type).toBe('endsWith')
+      expect(filters.optional.type).toBe('blank')
+      expect(filters.required.type).toBe('notBlank')
+      expect(filters.tags.type).toBe('notContains')
+      expect(filters.title.type).toBe('eq')
+    })
+
+    it('should handle blank operations with values gracefully', () => {
+      const url =
+        'https://example.com/?f_field_blank=unexpected_value&f_other_notBlank=123'
+      const filters = parseUrlFilters(url, config)
+
+      expect(filters.field).toEqual({
+        filterType: 'text',
+        type: 'blank',
+        filter: ''
+      })
+      expect(filters.other).toEqual({
+        filterType: 'text',
+        type: 'notBlank',
+        filter: ''
+      })
     })
   })
 })

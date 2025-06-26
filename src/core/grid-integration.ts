@@ -1,4 +1,8 @@
-import type { FilterState, InternalConfig } from './types.js'
+import type { FilterState, InternalConfig, FilterOperation } from './types.js'
+import {
+  AG_GRID_OPERATION_NAMES,
+  REVERSE_AG_GRID_OPERATION_NAMES
+} from './types.js'
 
 /**
  * Gets the current filter model from AG Grid
@@ -16,13 +20,19 @@ export function getFilterModel(config: InternalConfig): FilterState {
       if (!filter || typeof filter !== 'object') continue
 
       const { filterType, type, filter: value } = filter as any
-      if (filterType !== 'text' || !value) continue
+      if (filterType !== 'text') continue
 
-      if (type === 'contains' || type === 'equals') {
+      // Map AG Grid operations back to our internal operations using centralized mapping
+      const internalOperation =
+        REVERSE_AG_GRID_OPERATION_NAMES[
+          type as keyof typeof REVERSE_AG_GRID_OPERATION_NAMES
+        ]
+
+      if (internalOperation) {
         filterState[column] = {
           filterType: 'text',
-          type: type === 'equals' ? 'eq' : 'contains',
-          filter: value
+          type: internalOperation as FilterOperation,
+          filter: value || ''
         }
       }
     }
@@ -52,10 +62,17 @@ export function applyFilterModel(
         typeof filter === 'object' &&
         filter.filterType === 'text'
       ) {
-        model[column] = {
-          filterType: filter.filterType,
-          type: filter.type === 'eq' ? 'equals' : filter.type,
-          filter: filter.filter
+        // Convert our internal operation to AG Grid operation using centralized mapping
+        const agGridOperation =
+          AG_GRID_OPERATION_NAMES[
+            filter.type as keyof typeof AG_GRID_OPERATION_NAMES
+          ]
+        if (agGridOperation) {
+          model[column] = {
+            filterType: filter.filterType,
+            type: agGridOperation,
+            filter: filter.filter
+          }
         }
       }
     }

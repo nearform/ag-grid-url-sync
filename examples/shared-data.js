@@ -7,56 +7,100 @@ export const employeeData = [
     name: 'John Doe',
     email: 'john@example.com',
     status: 'active',
-    department: 'Engineering'
+    department: 'Engineering',
+    salary: 85000,
+    age: 32,
+    experience: 8
   },
   {
     id: 2,
     name: 'Jane Smith',
     email: 'jane@example.com',
     status: 'inactive',
-    department: 'Marketing'
+    department: 'Marketing',
+    salary: 72000,
+    age: 28,
+    experience: 5
   },
   {
     id: 3,
     name: 'Bob Johnson',
     email: 'bob@example.com',
     status: 'active',
-    department: 'Sales'
+    department: 'Sales',
+    salary: 68000,
+    age: 35,
+    experience: 12
   },
   {
     id: 4,
     name: 'Alice Brown',
     email: 'alice@example.com',
     status: 'active',
-    department: 'Engineering'
+    department: 'Engineering',
+    salary: 95000,
+    age: 29,
+    experience: 7
   },
   {
     id: 5,
     name: 'Charlie Wilson',
     email: 'charlie@example.com',
     status: 'inactive',
-    department: 'HR'
+    department: 'HR',
+    salary: 58000,
+    age: 42,
+    experience: 15
   },
   {
     id: 6,
     name: 'Diana Davis',
     email: 'diana@example.com',
     status: 'active',
-    department: 'Marketing'
+    department: 'Marketing',
+    salary: 75000,
+    age: 31,
+    experience: 6
   },
   {
     id: 7,
     name: 'Edward Miller',
     email: 'edward@example.com',
     status: 'active',
-    department: 'Sales'
+    department: 'Sales',
+    salary: 82000,
+    age: 38,
+    experience: 14
   },
   {
     id: 8,
     name: 'Fiona Garcia',
     email: 'fiona@example.com',
     status: 'inactive',
-    department: 'Engineering'
+    department: 'Engineering',
+    salary: 78000,
+    age: 26,
+    experience: 3
+  },
+  {
+    id: 9,
+    name: 'Sam Wilson',
+    email: 'sam@example.com',
+    status: 'active',
+    department: 'Design',
+    salary: null, // For demonstrating blank filters
+    age: 30,
+    experience: 4
+  },
+  {
+    id: 10,
+    name: 'Alex Johnson',
+    email: 'alex@example.com',
+    status: 'active',
+    department: 'Operations',
+    salary: 65000,
+    age: 33,
+    experience: 9
   }
 ]
 
@@ -67,28 +111,102 @@ export const employeeColumnDefs = [
     headerName: 'Name',
     filter: 'agTextColumnFilter',
     floatingFilter: true,
-    width: 150
+    width: 150,
+    filterParams: {
+      filterOptions: [
+        'equals',
+        'notEqual',
+        'contains',
+        'notContains',
+        'startsWith',
+        'endsWith'
+      ],
+      defaultOption: 'contains'
+    }
   },
   {
     field: 'email',
     headerName: 'Email',
     filter: 'agTextColumnFilter',
     floatingFilter: true,
-    width: 200
+    width: 200,
+    filterParams: {
+      filterOptions: ['contains', 'startsWith', 'endsWith'],
+      defaultOption: 'contains'
+    }
   },
   {
     field: 'status',
     headerName: 'Status',
     filter: 'agTextColumnFilter',
     floatingFilter: true,
-    width: 120
+    width: 120,
+    filterParams: {
+      filterOptions: ['equals', 'notEqual'],
+      defaultOption: 'equals'
+    }
   },
   {
     field: 'department',
     headerName: 'Department',
     filter: 'agTextColumnFilter',
     floatingFilter: true,
-    width: 150
+    width: 150,
+    filterParams: {
+      filterOptions: ['equals', 'contains'],
+      defaultOption: 'equals'
+    }
+  },
+  {
+    field: 'salary',
+    headerName: 'Salary',
+    filter: 'agNumberColumnFilter',
+    floatingFilter: true,
+    width: 130,
+    valueFormatter: params =>
+      params.value ? `$${params.value.toLocaleString()}` : 'N/A',
+    filterParams: {
+      filterOptions: [
+        'equals',
+        'notEqual',
+        'greaterThan',
+        'greaterThanOrEqual',
+        'lessThan',
+        'lessThanOrEqual',
+        'inRange',
+        'blank',
+        'notBlank'
+      ],
+      defaultOption: 'greaterThan'
+    }
+  },
+  {
+    field: 'age',
+    headerName: 'Age',
+    filter: 'agNumberColumnFilter',
+    floatingFilter: true,
+    width: 100,
+    filterParams: {
+      filterOptions: ['equals', 'greaterThan', 'lessThan', 'inRange'],
+      defaultOption: 'equals'
+    }
+  },
+  {
+    field: 'experience',
+    headerName: 'Experience (Years)',
+    filter: 'agNumberColumnFilter',
+    floatingFilter: true,
+    width: 160,
+    filterParams: {
+      filterOptions: [
+        'equals',
+        'greaterThan',
+        'greaterThanOrEqual',
+        'lessThan',
+        'inRange'
+      ],
+      defaultOption: 'greaterThan'
+    }
   }
 ]
 

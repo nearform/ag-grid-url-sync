@@ -21,9 +21,27 @@ export interface AGGridUrlSyncConfig {
 }
 
 /**
- * Supported filter operations
+ * Supported filter operations for both text and number filters
  */
 export type FilterOperation =
+  | 'contains' // Text only
+  | 'eq' // Both text and number (shared)
+  | 'notContains' // Text only
+  | 'notEqual' // Both text and number (shared)
+  | 'startsWith' // Text only
+  | 'endsWith' // Text only
+  | 'blank' // Both text and number (shared)
+  | 'notBlank' // Both text and number (shared)
+  | 'lessThan' // Number only
+  | 'lessThanOrEqual' // Number only
+  | 'greaterThan' // Number only
+  | 'greaterThanOrEqual' // Number only
+  | 'inRange' // Number only
+
+/**
+ * Text-specific filter operations
+ */
+export type TextFilterOperation =
   | 'contains'
   | 'eq'
   | 'notContains'
@@ -34,13 +52,49 @@ export type FilterOperation =
   | 'notBlank'
 
 /**
- * Filter state for a single column
+ * Number-specific filter operations
  */
-export interface ColumnFilter {
-  filterType: 'text'
+export type NumberFilterOperation =
+  | 'eq'
+  | 'notEqual'
+  | 'lessThan'
+  | 'lessThanOrEqual'
+  | 'greaterThan'
+  | 'greaterThanOrEqual'
+  | 'inRange'
+  | 'blank'
+  | 'notBlank'
+
+/**
+ * Base interface for column filters
+ */
+interface BaseColumnFilter {
   type: FilterOperation
+}
+
+/**
+ * Text filter configuration
+ */
+export interface TextColumnFilter extends BaseColumnFilter {
+  filterType: 'text'
+  type: TextFilterOperation
   filter: string
 }
+
+/**
+ * Number filter configuration
+ */
+export interface NumberColumnFilter extends BaseColumnFilter {
+  filterType: 'number'
+  type: NumberFilterOperation
+  filter: number
+  filterTo?: number // For inRange operations
+}
+
+/**
+ * Filter state for a single column (union of text and number filters)
+ */
+export type ColumnFilter = TextColumnFilter | NumberColumnFilter
 
 /**
  * Complete filter state mapping
@@ -83,7 +137,9 @@ export class InvalidURLError extends URLSyncError {
 export type ParsedFilterParam = {
   columnName: string
   operation: FilterOperation
-  value: string
+  filterType: 'text' | 'number' | 'auto' // 'auto' for operations that work with both
+  value: string | number
+  filterTo?: number // For range operations
   action: 'apply' | 'remove'
 }
 
@@ -95,7 +151,7 @@ export type GridApi = AGGridApi
  *
  * We use three different naming conventions for better user experience:
  *
- * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq')
+ * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq', 'lt', 'gt')
  * 2. Internal Types: Consistent naming for our FilterOperation type
  * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual')
  *
@@ -105,6 +161,7 @@ export type GridApi = AGGridApi
 // URL parameter names to internal operation types
 // Uses short names for cleaner URLs: 'eq' instead of 'equals', 'neq' instead of 'notEqual'
 export const OPERATION_MAP = {
+  // Text operations (unchanged)
   contains: 'contains',
   eq: 'eq', // Short form for URL brevity
   notContains: 'notContains',
@@ -112,11 +169,19 @@ export const OPERATION_MAP = {
   startsWith: 'startsWith',
   endsWith: 'endsWith',
   blank: 'blank',
-  notBlank: 'notBlank'
+  notBlank: 'notBlank',
+
+  // New number operations
+  lt: 'lessThan',
+  lte: 'lessThanOrEqual',
+  gt: 'greaterThan',
+  gte: 'greaterThanOrEqual',
+  range: 'inRange'
 } as const
 
 // Internal operation types to URL parameter names
 export const INTERNAL_TO_URL_OPERATION_MAP = {
+  // Text operations (unchanged)
   contains: 'contains',
   eq: 'eq',
   notContains: 'notContains',
@@ -124,12 +189,20 @@ export const INTERNAL_TO_URL_OPERATION_MAP = {
   startsWith: 'startsWith',
   endsWith: 'endsWith',
   blank: 'blank',
-  notBlank: 'notBlank'
+  notBlank: 'notBlank',
+
+  // New number operations
+  lessThan: 'lt',
+  lessThanOrEqual: 'lte',
+  greaterThan: 'gt',
+  greaterThanOrEqual: 'gte',
+  inRange: 'range'
 } as const
 
 // Internal operation types to AG Grid operation names
 // AG Grid expects 'equals' not 'eq', 'notEqual' not 'neq'
 export const AG_GRID_OPERATION_NAMES = {
+  // Text operations (unchanged)
   contains: 'contains',
   eq: 'equals', // Internal 'eq' -> AG Grid 'equals'
   notContains: 'notContains',
@@ -137,11 +210,19 @@ export const AG_GRID_OPERATION_NAMES = {
   startsWith: 'startsWith',
   endsWith: 'endsWith',
   blank: 'blank',
-  notBlank: 'notBlank'
+  notBlank: 'notBlank',
+
+  // New number operations
+  lessThan: 'lessThan',
+  lessThanOrEqual: 'lessThanOrEqual',
+  greaterThan: 'greaterThan',
+  greaterThanOrEqual: 'greaterThanOrEqual',
+  inRange: 'inRange'
 } as const
 
 // AG Grid operation names to internal operation types (reverse mapping)
 export const REVERSE_AG_GRID_OPERATION_NAMES = {
+  // Text operations (unchanged)
   contains: 'contains',
   equals: 'eq', // AG Grid 'equals' -> Internal 'eq'
   notContains: 'notContains',
@@ -149,5 +230,12 @@ export const REVERSE_AG_GRID_OPERATION_NAMES = {
   startsWith: 'startsWith',
   endsWith: 'endsWith',
   blank: 'blank',
-  notBlank: 'notBlank'
+  notBlank: 'notBlank',
+
+  // New number operations
+  lessThan: 'lessThan',
+  lessThanOrEqual: 'lessThanOrEqual',
+  greaterThan: 'greaterThan',
+  greaterThanOrEqual: 'greaterThanOrEqual',
+  inRange: 'inRange'
 } as const

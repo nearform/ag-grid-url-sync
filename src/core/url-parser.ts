@@ -1,6 +1,32 @@
 import type { FilterState, ColumnFilter, InternalConfig } from './types.js'
 import { InvalidFilterError, InvalidURLError, OPERATION_MAP } from './types.js'
-import { validateFilterValue, DEFAULT_CONFIG } from './validation.js'
+import {
+  validateFilterValue,
+  validateAndParseNumber,
+  validateNumberRange,
+  validateNumberFilter,
+  DEFAULT_CONFIG
+} from './validation.js'
+
+/**
+ * Detects if an operation is number-specific
+ */
+function isNumberOperation(operation: string): boolean {
+  return [
+    'lessThan',
+    'lessThanOrEqual',
+    'greaterThan',
+    'greaterThanOrEqual',
+    'inRange'
+  ].includes(operation)
+}
+
+/**
+ * Detects if an operation works with both text and number filters
+ */
+function isSharedOperation(operation: string): boolean {
+  return ['eq', 'notEqual', 'blank', 'notBlank'].includes(operation)
+}
 
 /**
  * Extracts column name and operation from a filter parameter
@@ -54,7 +80,45 @@ export function parseFilterParam(
     throw new InvalidFilterError(`Unsupported filter operation: ${operation}`)
   }
 
-  // Special handling for blank operations - they don't use the value
+  // Handle range operations
+  if (filterOp === 'inRange') {
+    const rangeParts = value.split(',')
+    if (rangeParts.length !== 2) {
+      throw new InvalidFilterError(
+        'Range operation requires exactly two values separated by comma'
+      )
+    }
+
+    const min = validateAndParseNumber(rangeParts[0] || '')
+    const max = validateAndParseNumber(rangeParts[1] || '')
+
+    const rangeValidation = validateNumberRange(min, max)
+    if (!rangeValidation.valid) {
+      throw new InvalidFilterError(
+        rangeValidation.error || 'Invalid range values'
+      )
+    }
+
+    return {
+      filterType: 'number',
+      type: filterOp as any,
+      filter: min,
+      filterTo: max
+    }
+  }
+
+  // Handle number operations
+  if (isNumberOperation(filterOp)) {
+    const numValue = validateAndParseNumber(value)
+
+    return {
+      filterType: 'number',
+      type: filterOp as any,
+      filter: numValue
+    }
+  }
+
+  // Handle blank operations first (work for both text and number but default to text)
   if (filterOp === 'blank' || filterOp === 'notBlank') {
     return {
       filterType: 'text',
@@ -63,9 +127,36 @@ export function parseFilterParam(
     }
   }
 
+  // Handle shared operations (eq, notEqual) - detect if they should be number based on value
+  if (isSharedOperation(filterOp)) {
+    // Try to parse as number first
+    try {
+      const numValue = parseFloat(value)
+      if (!isNaN(numValue) && Number.isFinite(numValue)) {
+        const validation = validateNumberFilter(numValue)
+        if (validation.valid) {
+          return {
+            filterType: 'number',
+            type: filterOp as any,
+            filter: numValue
+          }
+        }
+      }
+    } catch {
+      // Fall through to text handling
+    }
+
+    return {
+      filterType: 'text',
+      type: filterOp as any,
+      filter: value || ''
+    }
+  }
+
+  // Handle text operations (existing logic)
   return {
     filterType: 'text',
-    type: filterOp,
+    type: filterOp as any,
     filter: value || ''
   }
 }
@@ -92,14 +183,20 @@ export function parseUrlFilters(
         )
         const filterParam = parseFilterParam(param, value, config.paramPrefix)
 
-        const validatedValue = validateFilterValue(
-          value,
-          config,
-          filterParam.type
-        )
-        filterState[columnName] = {
-          ...filterParam,
-          filter: validatedValue
+        // Apply validation based on filter type
+        if (filterParam.filterType === 'text') {
+          const validatedValue = validateFilterValue(
+            value,
+            config,
+            filterParam.type
+          )
+          filterState[columnName] = {
+            ...filterParam,
+            filter: validatedValue
+          }
+        } else {
+          // Number filters are already validated in parseFilterParam
+          filterState[columnName] = filterParam
         }
       } catch (err) {
         if (config.onParseError) {

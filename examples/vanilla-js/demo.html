@@ -187,7 +187,8 @@
       <div class="header">
         <h1>🔗 AG Grid URL Sync - Advanced Demo</h1>
         <div class="subtitle">
-          Comprehensive demonstration of URL state synchronization features
+          Comprehensive demonstration of text & number filter URL
+          synchronization
         </div>
       </div>
 
@@ -218,7 +219,7 @@
         </div>
 
         <div class="control-section">
-          <h3>🎯 Filter Scenarios</h3>
+          <h3>🎯 Text Filter Scenarios</h3>
           <div class="control-group">
             <button
               class="btn btn-primary scenario-btn"
@@ -231,12 +232,6 @@
               onclick="applyScenario('engineering')"
             >
               ⚙️ Engineering
-            </button>
-            <button
-              class="btn btn-primary scenario-btn"
-              onclick="applyScenario('executive')"
-            >
-              👔 Executive View
             </button>
             <button
               class="btn btn-primary scenario-btn"
@@ -261,6 +256,65 @@
               onclick="applyScenario('notContainsFilter')"
             >
               🚫 Not Contains 'a'
+            </button>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>🔢 Number Filter Scenarios</h3>
+          <p style="margin: 0 0 15px; color: #666; font-size: 14px">
+            Demonstrates all 9 number filter operations: equals, notEqual,
+            greaterThan, greaterThanOrEqual, lessThan, lessThanOrEqual, inRange,
+            blank, notBlank
+          </p>
+          <div class="control-group">
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('highSalary')"
+            >
+              💎 High Salary (≥$90K)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('midSalary')"
+            >
+              💰 Mid Salary ($60K-$90K)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('entrySalary')"
+            >
+              🎯 Entry Level (<$65K)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('exactSalary')"
+            >
+              🎪 Exact Salary ($75K)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('notEqualSalary')"
+            >
+              ❌ Not $60K
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('executive')"
+            >
+              👔 Executive View (>$100K + Excellent)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('blankSalary')"
+            >
+              🕳️ Blank Salary
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('notBlankSalary')"
+            >
+              ✅ Not Blank Salary
             </button>
             <button class="btn btn-secondary" onclick="clearAllFilters()">
               🧹 Clear All
@@ -472,6 +526,24 @@
           location: 'Austin',
           hireDate: '2018-09-14',
           performance: 'Excellent'
+        },
+        {
+          name: 'Alex Johnson',
+          department: 'Intern',
+          position: 'Summer Intern',
+          salary: null, // For demonstrating blank filters
+          location: 'Remote',
+          hireDate: '2023-06-01',
+          performance: 'Good'
+        },
+        {
+          name: 'Sam Wilson',
+          department: 'Contractor',
+          position: 'Freelance Developer',
+          salary: undefined, // For demonstrating blank filters
+          location: 'Remote',
+          hireDate: '2023-01-15',
+          performance: 'Good'
         }
       ]
 
@@ -607,17 +679,13 @@
           let filters = {}
 
           switch (scenario) {
+            // Text filter scenarios
             case 'sales':
               filters = {
                 department: {
                   filterType: 'text',
                   type: 'equals',
                   filter: 'Sales'
-                },
-                salary: {
-                  filterType: 'number',
-                  type: 'greaterThan',
-                  filter: 60000
                 }
               }
               break
@@ -632,20 +700,6 @@
                   filterType: 'text',
                   type: 'contains',
                   filter: 'San'
-                }
-              }
-              break
-            case 'executive':
-              filters = {
-                salary: {
-                  filterType: 'number',
-                  type: 'greaterThan',
-                  filter: 100000
-                },
-                performance: {
-                  filterType: 'text',
-                  type: 'equals',
-                  filter: 'Excellent'
                 }
               }
               break
@@ -682,6 +736,86 @@
                   filterType: 'text',
                   type: 'notContains',
                   filter: 'a'
+                }
+              }
+              break
+
+            // Number filter scenarios
+            case 'highSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'greaterThanOrEqual',
+                  filter: 90000
+                }
+              }
+              break
+            case 'midSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'inRange',
+                  filter: 60000,
+                  filterTo: 90000
+                }
+              }
+              break
+            case 'entrySalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'lessThan',
+                  filter: 65000
+                }
+              }
+              break
+            case 'exactSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'equals',
+                  filter: 75000
+                }
+              }
+              break
+            case 'notEqualSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'notEqual',
+                  filter: 60000
+                }
+              }
+              break
+            case 'executive':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'greaterThan',
+                  filter: 100000
+                },
+                performance: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Excellent'
+                }
+              }
+              break
+            case 'blankSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'blank',
+                  filter: null
+                }
+              }
+              break
+            case 'notBlankSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'notBlank',
+                  filter: null
                 }
               }
               break

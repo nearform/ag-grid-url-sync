@@ -1,6 +1,49 @@
-import type { FilterState, InternalConfig } from './types.js'
+import type { FilterState, InternalConfig, ColumnFilter } from './types.js'
 import { validateFilterValue } from './validation.js'
 import { INTERNAL_TO_URL_OPERATION_MAP } from './types.js'
+
+/**
+ * Serializes a single column filter to URL parameter
+ */
+function serializeColumnFilter(
+  columnName: string,
+  filter: ColumnFilter,
+  paramPrefix: string
+): string {
+  const urlOperation =
+    INTERNAL_TO_URL_OPERATION_MAP[
+      filter.type as keyof typeof INTERNAL_TO_URL_OPERATION_MAP
+    ]
+  if (!urlOperation) return ''
+
+  const paramName = `${paramPrefix}${columnName}_${urlOperation}`
+
+  // Handle range operations
+  if (filter.type === 'inRange' && filter.filterType === 'number') {
+    const numberFilter = filter as any
+    if (numberFilter.filterTo === undefined) return ''
+    // Don't encode the comma for range values - handle this directly
+    return `${paramName}=${filter.filter},${numberFilter.filterTo}`
+  }
+
+  // Handle blank operations
+  if (filter.type === 'blank' || filter.type === 'notBlank') {
+    return `${paramName}=true`
+  }
+
+  // Handle number operations
+  if (filter.filterType === 'number') {
+    return `${paramName}=${filter.filter}`
+  }
+
+  // Handle text operations (existing logic)
+  if (filter.filterType === 'text' && filter.filter) {
+    // Note: Validation should be done at the serializeFilters level, not here
+    return `${paramName}=${encodeURIComponent(filter.filter.toString())}`
+  }
+
+  return ''
+}
 
 /**
  * Converts a filter state object into URL search parameters
@@ -12,23 +55,43 @@ export function serializeFilters(
   const params = new URLSearchParams()
 
   for (const [column, filter] of Object.entries(filterState)) {
-    if (filter.filterType !== 'text') continue
+    // Support both text and number filters
+    if (filter.filterType !== 'text' && filter.filterType !== 'number') continue
 
-    const operation =
-      INTERNAL_TO_URL_OPERATION_MAP[
-        filter.type as keyof typeof INTERNAL_TO_URL_OPERATION_MAP
-      ]
-    if (!operation) continue
-
-    const paramName = `${config.paramPrefix}${column}_${operation}`
-
-    // Special handling for blank operations
-    if (filter.type === 'blank' || filter.type === 'notBlank') {
-      params.append(paramName, 'true')
+    // Apply validation for text filters before serialization
+    if (filter.filterType === 'text') {
+      const validatedValue = validateFilterValue(
+        filter.filter,
+        config,
+        filter.type
+      )
+      const updatedFilter = { ...filter, filter: validatedValue }
+      const serialized = serializeColumnFilter(
+        column,
+        updatedFilter,
+        config.paramPrefix
+      )
+      if (serialized) {
+        const [paramName, paramValue] = serialized.split('=')
+        if (paramName && paramValue) {
+          // Decode the parameter value to handle commas correctly
+          params.append(paramName, decodeURIComponent(paramValue))
+        }
+      }
     } else {
-      const value = validateFilterValue(filter.filter, config, filter.type)
-      // URLSearchParams already handles encoding, so don't double-encode
-      params.append(paramName, value)
+      // Number filters don't need additional validation as they're already validated
+      const serialized = serializeColumnFilter(
+        column,
+        filter,
+        config.paramPrefix
+      )
+      if (serialized) {
+        const [paramName, paramValue] = serialized.split('=')
+        if (paramName && paramValue) {
+          // Decode the parameter value to handle commas correctly
+          params.append(paramName, decodeURIComponent(paramValue))
+        }
+      }
     }
   }
 

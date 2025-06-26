@@ -2,11 +2,12 @@
 
 # AG Grid URL Sync
 
-A lightweight TypeScript library for synchronizing AG Grid text filters with URL parameters, enabling shareable filter states through clean, human-readable URLs.
+A lightweight TypeScript library for synchronizing AG Grid text and number filters with URL parameters, enabling shareable filter states through clean, human-readable URLs.
 
 ## Features
 
 - 🔍 **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
+- 🔢 **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
 - 🔗 Manual URL generation for sharing filter states
 - ↔️ Bidirectional sync between grid and URL
 - 🛠️ Framework agnostic - works with any AG Grid setup
@@ -21,7 +22,9 @@ A lightweight TypeScript library for synchronizing AG Grid text filters with URL
 
 ## Supported Filter Types
 
-Supports **all AG Grid text filter operations** (8 total) with clean, human-readable URL parameters:
+Supports **all AG Grid text and number filter operations** (17 total) with clean, human-readable URL parameters:
+
+### Text Filters (8 operations)
 
 | Filter Type | Operation    | URL Format                   | Example                    | Description                 |
 | ----------- | ------------ | ---------------------------- | -------------------------- | --------------------------- |
@@ -34,41 +37,76 @@ Supports **all AG Grid text filter operations** (8 total) with clean, human-read
 | **Text**    | Blank        | `f_column_blank=true`        | `f_optional_blank=true`    | Field is empty/null         |
 | **Text**    | Not Blank    | `f_column_notBlank=true`     | `f_required_notBlank=true` | Field has any value         |
 
+### Number Filters (9 operations)
+
+| Filter Type | Operation             | URL Format               | Example                  | Description                   |
+| ----------- | --------------------- | ------------------------ | ------------------------ | ----------------------------- |
+| **Number**  | Equals                | `f_column_eq=value`      | `f_age_eq=30`            | Number equals value exactly   |
+| **Number**  | Not Equal             | `f_column_neq=value`     | `f_salary_neq=50000`     | Number does not equal value   |
+| **Number**  | Greater Than          | `f_column_gt=value`      | `f_experience_gt=5`      | Number is greater than value  |
+| **Number**  | Greater Than or Equal | `f_column_gte=value`     | `f_score_gte=85`         | Number is ≥ value             |
+| **Number**  | Less Than             | `f_column_lt=value`      | `f_budget_lt=10000`      | Number is less than value     |
+| **Number**  | Less Than or Equal    | `f_column_lte=value`     | `f_hours_lte=40`         | Number is ≤ value             |
+| **Number**  | In Range              | `f_column_range=min,max` | `f_age_range=25,45`      | Number is between min and max |
+| **Number**  | Blank                 | `f_column_blank=true`    | `f_bonus_blank=true`     | Field is empty/null           |
+| **Number**  | Not Blank             | `f_column_notBlank=true` | `f_salary_notBlank=true` | Field has any numeric value   |
+
 > **💡 Naming Convention Note**: URL parameters use short, clean names for better readability (`eq` for equals, `neq` for not equal). These are automatically converted to the proper AG Grid operation names (`equals`, `notEqual`) internally. This design keeps URLs concise while maintaining full compatibility with AG Grid's filter API.
 
 ### Filter Detection
 
 The library automatically works with:
 
-- Columns configured with `filter: 'agTextColumnFilter'`
+- **Text columns** configured with `filter: 'agTextColumnFilter'`
+- **Number columns** configured with `filter: 'agNumberColumnFilter'`
+- **Auto-detection** based on `cellDataType: 'number'` configuration
 - Columns with `filter: true` (AG Grid's default text filter)
-- Any column where users apply text-based filters
-- All AG Grid text filter operations through the filter menu
+- Any column where users apply text or number-based filters
+- All AG Grid text and number filter operations through the filter menu
+- **Mixed filter types** - combine text and number filters in the same URL
 
 ### URL Examples
 
-**Simple filter:**
+**Simple text filter:**
 
 ```
 https://app.com/data?f_name_contains=john
 ```
 
-**Multiple operations:**
+**Simple number filter:**
 
 ```
-https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_email_startsWith=admin&f_status_neq=inactive
+https://app.com/data?f_salary_gt=75000
 ```
 
-**Complex filtering with all operations:**
+**Mixed text and number filters:**
+
+```
+https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_salary_gte=80000&f_age_range=25,45
+```
+
+**Complex filtering with range operations:**
+
+```
+https://app.com/data?f_name_contains=manager&f_salary_range=60000,100000&f_experience_gte=5&f_status_eq=active
+```
+
+**All text operations:**
 
 ```
 https://app.com/data?f_name_contains=john&f_email_startsWith=admin&f_status_neq=inactive&f_description_endsWith=test&f_optional_blank=true&f_required_notBlank=true&f_tags_notContains=spam&f_title_eq=manager
 ```
 
-**Blank operations:**
+**All number operations:**
 
 ```
-https://app.com/data?f_comments_blank=true&f_name_notBlank=true
+https://app.com/data?f_age_eq=30&f_salary_neq=50000&f_experience_gt=5&f_score_gte=85&f_budget_lt=10000&f_hours_lte=40&f_age_range=25,45&f_bonus_blank=true&f_salary_notBlank=true
+```
+
+**Blank operations (both text and number):**
+
+```
+https://app.com/data?f_comments_blank=true&f_bonus_blank=true&f_name_notBlank=true&f_salary_notBlank=true
 ```
 
 ## Installation
@@ -177,13 +215,23 @@ import { createUrlSync } from 'ag-grid-url-sync'
 // Initialize with AG Grid API
 const urlSync = createUrlSync(gridApi)
 
-// Generate shareable URL with current filters
+// Generate shareable URL with current filters (text and number)
 const shareableUrl = urlSync.generateUrl()
+// Result: https://app.com/data?f_name_contains=john&f_salary_gte=80000&f_age_range=25,45
 
-// Apply filters from URL
-urlSync.applyFromUrl()
+// Apply filters from URL (automatically detects text vs number columns)
+urlSync.applyFromUrl(
+  'https://app.com/data?f_name_contains=manager&f_salary_gt=75000'
+)
 
-// Clear all text filters
+// Apply specific filter programmatically
+urlSync.applyFilters({
+  name: { filterType: 'text', type: 'contains', filter: 'john' },
+  salary: { filterType: 'number', type: 'greaterThan', filter: 75000 },
+  age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
+})
+
+// Clear all text and number filters
 urlSync.clearFilters()
 ```
 
@@ -241,10 +289,32 @@ function GridComponent() {
         <AgGridReact
           onGridReady={params => setGridApi(params.api)}
           rowData={rowData}
-          columnDefs={columnDefs}
+          columnDefs={[
+            {
+              field: 'name',
+              filter: 'agTextColumnFilter',
+              floatingFilter: true
+            },
+            {
+              field: 'email',
+              filter: 'agTextColumnFilter',
+              floatingFilter: true
+            },
+            {
+              field: 'salary',
+              filter: 'agNumberColumnFilter',
+              floatingFilter: true
+            },
+            {
+              field: 'age',
+              filter: 'agNumberColumnFilter',
+              floatingFilter: true
+            }
+          ]}
           defaultColDef={{
-            filter: 'agTextColumnFilter',
-            floatingFilter: true
+            flex: 1,
+            sortable: true,
+            resizable: true
           }}
         />
       </div>
@@ -449,16 +519,20 @@ The library generates clean, human-readable URLs:
 
 ```
 Base URL: https://app.com/page
-With filters: https://app.com/page?f_name_contains=john&f_status_eq=active
+With text filters: https://app.com/page?f_name_contains=john&f_status_eq=active
+With number filters: https://app.com/page?f_salary_gte=75000&f_age_range=25,45
+Mixed filters: https://app.com/page?f_name_contains=john&f_salary_gte=75000&f_age_lt=50
 ```
 
 Parameter structure:
 
 - Prefix: `f_` (configurable - useful for multi-grid scenarios)
 - Format: `f_{columnName}_{operation}={value}`
-- Operations: `contains`, `eq` (equals)
+- **Text Operations**: `contains`, `eq`, `neq`, `startsWith`, `endsWith`, `notContains`, `blank`, `notBlank`
+- **Number Operations**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `range`, `blank`, `notBlank`
+- **Range Format**: `f_column_range=min,max` (comma-separated values)
 - Standard URL encoding for special characters
-- Supports column names with underscores (e.g., `user_id`, `created_date`)
+- Supports column names with underscores (e.g., `user_id`, `salary_base`, `created_date`)
 
 ## API Reference
 
@@ -568,32 +642,36 @@ Check out the [examples](./examples) directory for comprehensive working demos:
 Comprehensive demonstration showcasing all features:
 
 - **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
-- **Filter scenarios** - Pre-configured examples (Sales team, Engineering, Executive view, etc.)
-- **New operation demos** - Dedicated buttons for startsWith, endsWith, and notContains filters
+- **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
+- **Mixed filter scenarios** - Text and number filters working together (Sales team + salary filters, Engineering + experience, Executive view with high salaries)
+- **Number operation demos** - Dedicated buttons for salary ranges, age filtering, experience thresholds, and blank number fields
 - **URL sharing workflow** - Copy to clipboard, email, and Slack integration
-- **Performance monitoring** - Real-time benchmarks and stress testing
-- **Error handling** - Malformed URL and invalid filter testing
-- **Complete API showcase** - Generate URLs, apply filters, clear filters
+- **Performance monitoring** - Real-time benchmarks and stress testing with mixed filter types
+- **Error handling** - Malformed URL and invalid filter testing for both text and numbers
+- **Complete API showcase** - Generate URLs, apply filters, clear filters with comprehensive examples
 
 ### ⚛️ [React Integration](./examples/react-basic/basic-grid.tsx)
 
 Clean React component showing the `useAGGridUrlSync` hook:
 
-- React hook integration with AG Grid
-- Automatic filter state management
+- React hook integration with AG Grid for text and number filters
+- Automatic filter state management for mixed filter types
 - Share button with clipboard functionality
 - Filter status indicators and controls
-- Auto-apply filters on component mount
-- Full TypeScript support
+- Auto-apply filters on component mount with both text and number support
+- Enhanced employee data with salary, age, and experience columns
+- Full TypeScript support with comprehensive type coverage
 
 ### 📊 [Shared Data](./examples/shared-data.js)
 
 Common data and column definitions used across examples:
 
-- Employee data with realistic company information
-- Project data with status and priority fields
-- Column definitions with complete text filter support
-- All 8 text filter operations enabled by default
+- Enhanced employee data with salary, age, and experience number fields
+- Project data with budget and numeric fields for comprehensive testing
+- Column definitions with complete text and number filter support
+- All 8 text filter operations and 9 number filter operations enabled
+- Realistic data ranges for demonstrating number filters (salaries $58K-$95K, ages 26-42, experience 3-15 years)
+- Includes null values for demonstrating blank/notBlank operations
 
 All examples work out-of-the-box and demonstrate the complete functionality. The HTML demo can be opened directly in your browser, while the React example shows clean integration patterns.
 

@@ -1,5 +1,6 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { setTimeout } from 'timers/promises'
 import type { GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 
@@ -67,7 +68,7 @@ describe('React Hook Integration Tests', () => {
       )
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       // Switch to different grid
@@ -103,7 +104,7 @@ describe('React Hook Integration Tests', () => {
       const { result } = renderHook(() => useAGGridUrlSync(gridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       // Rapid sequence of operations
@@ -127,7 +128,7 @@ describe('React Hook Integration Tests', () => {
       const { result } = renderHook(() => useAGGridUrlSync(gridApi))
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       // Mock a failure in applyUrlFilters
@@ -194,7 +195,7 @@ describe('React Hook Integration Tests', () => {
       )
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const initialShareUrl = result.current.shareUrl
@@ -236,7 +237,7 @@ describe('React Hook Integration Tests', () => {
       )
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
@@ -259,7 +260,7 @@ describe('React Hook Integration Tests', () => {
       )
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
@@ -272,7 +273,7 @@ describe('React Hook Integration Tests', () => {
       rerender({ key: 2 })
 
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0))
+        await setTimeout(0)
       })
 
       // Should not auto-apply again

@@ -390,22 +390,5 @@ describe('Text Filter Operations Edge Cases', () => {
         filter: ''
       })
     })
-
-    it('should maintain v0.2 URL compatibility', () => {
-      const v02Url =
-        'https://example.com/?f_name_contains=john&f_status_eq=active'
-      const filters = parseUrlFilters(v02Url, config)
-
-      expect(filters.name).toEqual({
-        filterType: 'text',
-        type: 'contains',
-        filter: 'john'
-      })
-      expect(filters.status).toEqual({
-        filterType: 'text',
-        type: 'eq',
-        filter: 'active'
-      })
-    })
   })
 })

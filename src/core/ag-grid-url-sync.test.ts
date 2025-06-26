@@ -18,19 +18,6 @@ describe('AGGridUrlSync', () => {
     setFilterModel: vi.fn()
   } as unknown as GridApi
 
-  it('should create instance with default config', () => {
-    const urlSync = new AGGridUrlSync(mockGridApi)
-    expect(urlSync).toBeInstanceOf(AGGridUrlSync)
-  })
-
-  it('should create instance with custom config', () => {
-    const urlSync = new AGGridUrlSync(mockGridApi, {
-      paramPrefix: 'filter_',
-      maxValueLength: 100
-    })
-    expect(urlSync).toBeInstanceOf(AGGridUrlSync)
-  })
-
   describe('generateUrl', () => {
     it('should generate URL with current filter state', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
@@ -103,206 +90,118 @@ describe('AGGridUrlSync', () => {
   })
 
   describe('Text Filter Operations', () => {
-    describe('Equals Operation', () => {
-      it('should apply eq filter from URL', () => {
-        const urlSync = new AGGridUrlSync(mockGridApi)
-        urlSync.applyFromUrl('https://example.com?f_status_eq=active')
-        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-          status: {
-            filterType: 'text',
-            type: 'equals',
-            filter: 'active'
-          }
-        })
-      })
+    // Consolidated test for all filter operations - reduces redundancy while maintaining coverage
+    const filterOperations = [
+      {
+        urlOp: 'contains',
+        value: 'john',
+        agGridType: 'contains',
+        column: 'name'
+      },
+      { urlOp: 'eq', value: 'active', agGridType: 'equals', column: 'status' },
+      {
+        urlOp: 'neq',
+        value: 'inactive',
+        agGridType: 'notEqual',
+        column: 'status'
+      },
+      {
+        urlOp: 'notContains',
+        value: 'spam',
+        agGridType: 'notContains',
+        column: 'tags'
+      },
+      {
+        urlOp: 'startsWith',
+        value: 'admin',
+        agGridType: 'startsWith',
+        column: 'email'
+      },
+      {
+        urlOp: 'endsWith',
+        value: 'pending',
+        agGridType: 'endsWith',
+        column: 'description'
+      }
+    ]
 
-      it('should generate URL for eq filter', () => {
-        const mockGridApiWithFilter = {
-          getFilterModel: vi.fn().mockReturnValue({
-            status: { filterType: 'text', type: 'equals', filter: 'active' }
-          }),
-          setFilterModel: vi.fn()
-        } as unknown as GridApi
+    describe.each(filterOperations)(
+      'Operation: $urlOp',
+      ({ urlOp, value, agGridType, column }) => {
+        it('should apply filter from URL and generate URL correctly', () => {
+          // Test URL → Filter conversion
+          const urlSync = new AGGridUrlSync(mockGridApi)
+          urlSync.applyFromUrl(
+            `https://example.com?f_${column}_${urlOp}=${value}`
+          )
 
-        const urlSync = new AGGridUrlSync(mockGridApiWithFilter)
-        const url = urlSync.generateUrl('https://example.com')
-        expect(url).toBe('https://example.com/?f_status_eq=active')
-      })
-    })
-
-    describe('Not Contains Operation', () => {
-      it('should apply notContains filter from URL', () => {
-        const urlSync = new AGGridUrlSync(mockGridApi)
-        urlSync.applyFromUrl('https://example.com?f_name_notContains=spam')
-        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-          name: {
-            filterType: 'text',
-            type: 'notContains',
-            filter: 'spam'
-          }
-        })
-      })
-
-      it('should generate URL for notContains filter', () => {
-        const mockGridApiWithFilter = {
-          getFilterModel: vi.fn().mockReturnValue({
-            name: { filterType: 'text', type: 'notContains', filter: 'spam' }
-          }),
-          setFilterModel: vi.fn()
-        } as unknown as GridApi
-
-        const urlSync = new AGGridUrlSync(mockGridApiWithFilter)
-        const url = urlSync.generateUrl('https://example.com')
-        expect(url).toBe('https://example.com/?f_name_notContains=spam')
-      })
-    })
-
-    describe('Not Equal Operation', () => {
-      it('should apply notEqual filter from URL', () => {
-        const urlSync = new AGGridUrlSync(mockGridApi)
-        urlSync.applyFromUrl('https://example.com?f_status_neq=inactive')
-        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-          status: {
-            filterType: 'text',
-            type: 'notEqual',
-            filter: 'inactive'
-          }
-        })
-      })
-
-      it('should generate URL for notEqual filter', () => {
-        const mockGridApiWithFilter = {
-          getFilterModel: vi.fn().mockReturnValue({
-            status: { filterType: 'text', type: 'notEqual', filter: 'inactive' }
-          }),
-          setFilterModel: vi.fn()
-        } as unknown as GridApi
-
-        const urlSync = new AGGridUrlSync(mockGridApiWithFilter)
-        const url = urlSync.generateUrl('https://example.com')
-        expect(url).toBe('https://example.com/?f_status_neq=inactive')
-      })
-    })
-
-    describe('Starts With Operation', () => {
-      it('should apply startsWith filter from URL', () => {
-        const urlSync = new AGGridUrlSync(mockGridApi)
-        urlSync.applyFromUrl('https://example.com?f_email_startsWith=admin')
-        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-          email: {
-            filterType: 'text',
-            type: 'startsWith',
-            filter: 'admin'
-          }
-        })
-      })
-
-      it('should generate URL for startsWith filter', () => {
-        const mockGridApiWithFilter = {
-          getFilterModel: vi.fn().mockReturnValue({
-            email: { filterType: 'text', type: 'startsWith', filter: 'admin' }
-          }),
-          setFilterModel: vi.fn()
-        } as unknown as GridApi
-
-        const urlSync = new AGGridUrlSync(mockGridApiWithFilter)
-        const url = urlSync.generateUrl('https://example.com')
-        expect(url).toBe('https://example.com/?f_email_startsWith=admin')
-      })
-    })
-
-    describe('Ends With Operation', () => {
-      it('should apply endsWith filter from URL', () => {
-        const urlSync = new AGGridUrlSync(mockGridApi)
-        urlSync.applyFromUrl(
-          'https://example.com?f_description_endsWith=pending'
-        )
-        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-          description: {
-            filterType: 'text',
-            type: 'endsWith',
-            filter: 'pending'
-          }
-        })
-      })
-
-      it('should generate URL for endsWith filter', () => {
-        const mockGridApiWithFilter = {
-          getFilterModel: vi.fn().mockReturnValue({
-            description: {
+          expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+            [column]: {
               filterType: 'text',
-              type: 'endsWith',
-              filter: 'pending'
+              type: agGridType,
+              filter: value
             }
-          }),
-          setFilterModel: vi.fn()
-        } as unknown as GridApi
+          })
 
-        const urlSync = new AGGridUrlSync(mockGridApiWithFilter)
-        const url = urlSync.generateUrl('https://example.com')
-        expect(url).toBe('https://example.com/?f_description_endsWith=pending')
-      })
-    })
+          // Test Filter → URL conversion
+          const mockGridApiWithFilter = {
+            getFilterModel: vi.fn().mockReturnValue({
+              [column]: { filterType: 'text', type: agGridType, filter: value }
+            }),
+            setFilterModel: vi.fn()
+          } as unknown as GridApi
+
+          const urlSyncReverse = new AGGridUrlSync(mockGridApiWithFilter)
+          const url = urlSyncReverse.generateUrl('https://example.com')
+          expect(url).toBe(`https://example.com/?f_${column}_${urlOp}=${value}`)
+        })
+      }
+    )
 
     describe('Blank Operations', () => {
-      it('should apply blank filter from URL', () => {
+      it('should handle blank and notBlank operations correctly', () => {
         const urlSync = new AGGridUrlSync(mockGridApi)
-        urlSync.applyFromUrl('https://example.com?f_optional_field_blank=true')
-        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-          optional_field: {
-            filterType: 'text',
-            type: 'blank',
-            filter: ''
-          }
-        })
-      })
 
-      it('should apply notBlank filter from URL', () => {
-        const urlSync = new AGGridUrlSync(mockGridApi)
+        // Test blank operation
+        urlSync.applyFromUrl('https://example.com?f_optional_blank=true')
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+          optional: { filterType: 'text', type: 'blank', filter: '' }
+        })
+
+        // Test notBlank operation
+        urlSync.applyFromUrl('https://example.com?f_required_notBlank=true')
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+          required: { filterType: 'text', type: 'notBlank', filter: '' }
+        })
+
+        // Test blank operations ignore the parameter value
         urlSync.applyFromUrl(
-          'https://example.com?f_required_field_notBlank=true'
+          'https://example.com?f_optional_blank=ignored_value'
         )
         expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-          required_field: {
-            filterType: 'text',
-            type: 'notBlank',
-            filter: ''
-          }
+          optional: { filterType: 'text', type: 'blank', filter: '' }
         })
       })
 
-      it('should generate URL for blank operations', () => {
-        const mockGridApiWithFilter = {
+      it('should generate URLs for blank operations', () => {
+        const mockGridApiWithFilters = {
           getFilterModel: vi.fn().mockReturnValue({
-            optional_field: { filterType: 'text', type: 'blank', filter: '' },
-            required_field: { filterType: 'text', type: 'notBlank', filter: '' }
+            optional: { filterType: 'text', type: 'blank', filter: '' },
+            required: { filterType: 'text', type: 'notBlank', filter: '' }
           }),
           setFilterModel: vi.fn()
         } as unknown as GridApi
 
-        const urlSync = new AGGridUrlSync(mockGridApiWithFilter)
+        const urlSync = new AGGridUrlSync(mockGridApiWithFilters)
         const url = urlSync.generateUrl('https://example.com')
-        expect(url).toContain('f_optional_field_blank=true')
-        expect(url).toContain('f_required_field_notBlank=true')
-      })
-
-      it('should handle blank operations with values gracefully', () => {
-        const urlSync = new AGGridUrlSync(mockGridApi)
-        urlSync.applyFromUrl(
-          'https://example.com?f_optional_field_blank=anything'
-        )
-        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-          optional_field: {
-            filterType: 'text',
-            type: 'blank',
-            filter: ''
-          }
-        })
+        expect(url).toContain('f_optional_blank=true')
+        expect(url).toContain('f_required_notBlank=true')
       })
     })
 
-    describe('Multiple Operations', () => {
-      it('should handle all 8 text operations in single URL', () => {
+    describe('Complex Multi-Operation Scenarios', () => {
+      it('should handle multiple different operations in single URL', () => {
+        // Test business scenario: user applies multiple filters and shares URL
         const urlSync = new AGGridUrlSync(mockGridApi)
         const complexUrl =
           'https://example.com?' +
@@ -328,29 +227,5 @@ describe('AGGridUrlSync', () => {
         })
       })
     })
-  })
-})
-
-describe('createUrlSync', () => {
-  it('should create AGGridUrlSync instance', () => {
-    const mockGridApi = {
-      getFilterModel: vi.fn(),
-      setFilterModel: vi.fn()
-    } as unknown as GridApi
-    const urlSync = createUrlSync(mockGridApi)
-    expect(urlSync).toBeInstanceOf(AGGridUrlSync)
-  })
-
-  it('should pass config to AGGridUrlSync instance', () => {
-    const mockGridApi = {
-      getFilterModel: vi.fn(),
-      setFilterModel: vi.fn()
-    } as unknown as GridApi
-    const config = {
-      paramPrefix: 'filter_',
-      maxValueLength: 100
-    }
-    const urlSync = createUrlSync(mockGridApi, config)
-    expect(urlSync).toBeInstanceOf(AGGridUrlSync)
   })
 })

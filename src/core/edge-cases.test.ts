@@ -198,6 +198,57 @@ describe('Edge Cases - Grid Integration', () => {
     expect(() => urlSync.clearFilters()).not.toThrow()
   })
 
+  it('should handle filter model with non-text filters gracefully', () => {
+    // Critical scenario: Grid has mixed filter types, only text filters should be processed
+    const mockGridApi = {
+      getFilterModel: vi.fn().mockReturnValue({
+        textColumn: { filterType: 'text', type: 'contains', filter: 'value' },
+        numberColumn: { filterType: 'number', type: 'equals', filter: 123 },
+        dateColumn: {
+          filterType: 'date',
+          type: 'equals',
+          filterDateFrom: '2023-01-01'
+        },
+        setColumn: { filterType: 'set', values: ['option1', 'option2'] }
+      }),
+      setFilterModel: vi.fn()
+    } as unknown as GridApi
+
+    const urlSync = new AGGridUrlSync(mockGridApi)
+    const url = urlSync.generateUrl('https://example.com')
+
+    // Should only include text filters in URL
+    expect(url).toContain('f_textColumn_contains=value')
+    expect(url).not.toContain('numberColumn')
+    expect(url).not.toContain('dateColumn')
+    expect(url).not.toContain('setColumn')
+  })
+
+  it('should handle unknown AG Grid operation types', () => {
+    // Critical scenario: AG Grid introduces new operation types
+    const mockGridApi = {
+      getFilterModel: vi.fn().mockReturnValue({
+        column1: {
+          filterType: 'text',
+          type: 'unknownOperation',
+          filter: 'value'
+        },
+        column2: { filterType: 'text', type: 'contains', filter: 'validValue' }
+      }),
+      setFilterModel: vi.fn()
+    } as unknown as GridApi
+
+    const urlSync = new AGGridUrlSync(mockGridApi)
+
+    // Should handle unknown operations gracefully and process known ones
+    expect(() => urlSync.generateUrl('https://example.com')).not.toThrow()
+
+    const url = urlSync.generateUrl('https://example.com')
+    expect(url).toContain('f_column2_contains=validValue')
+    // Unknown operation should be filtered out
+    expect(url).not.toContain('unknownOperation')
+  })
+
   it('should handle non-existent columns in URL', () => {
     const mockGridApi = {
       getFilterModel: vi.fn().mockReturnValue({}),

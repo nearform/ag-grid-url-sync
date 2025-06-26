@@ -34,6 +34,8 @@ Supports **all AG Grid text filter operations** (8 total) with clean, human-read
 | **Text**    | Blank        | `f_column_blank=true`        | `f_optional_blank=true`    | Field is empty/null         |
 | **Text**    | Not Blank    | `f_column_notBlank=true`     | `f_required_notBlank=true` | Field has any value         |
 
+> **💡 Naming Convention Note**: URL parameters use short, clean names for better readability (`eq` for equals, `neq` for not equal). These are automatically converted to the proper AG Grid operation names (`equals`, `notEqual`) internally. This design keeps URLs concise while maintaining full compatibility with AG Grid's filter API.
+
 ### Filter Detection
 
 The library automatically works with:

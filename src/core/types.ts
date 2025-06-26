@@ -90,33 +90,48 @@ export type ParsedFilterParam = {
 // Re-export GridApi for convenience
 export type GridApi = AGGridApi
 
-// Internal operation mapping - URL parameter names to internal types
+/**
+ * Operation Mapping Strategy:
+ *
+ * We use three different naming conventions for better user experience:
+ *
+ * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq')
+ * 2. Internal Types: Consistent naming for our FilterOperation type
+ * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual')
+ *
+ * This approach keeps URLs readable while maintaining compatibility with AG Grid.
+ */
+
+// URL parameter names to internal operation types
+// Uses short names for cleaner URLs: 'eq' instead of 'equals', 'neq' instead of 'notEqual'
 export const OPERATION_MAP = {
   contains: 'contains',
-  eq: 'eq',
+  eq: 'eq', // Short form for URL brevity
   notContains: 'notContains',
-  neq: 'notEqual',
+  neq: 'notEqual', // Short form: 'neq' -> 'notEqual'
   startsWith: 'startsWith',
   endsWith: 'endsWith',
   blank: 'blank',
   notBlank: 'notBlank'
 } as const
 
+// Internal operation types to URL parameter names (reverse mapping)
 export const REVERSE_OPERATION_MAP = {
   contains: 'contains',
   eq: 'eq',
   notContains: 'notContains',
-  notEqual: 'neq',
+  notEqual: 'neq', // Internal 'notEqual' -> URL 'neq'
   startsWith: 'startsWith',
   endsWith: 'endsWith',
   blank: 'blank',
   notBlank: 'notBlank'
 } as const
 
-// AG Grid operation name mappings - internal types to AG Grid operations
+// Internal operation types to AG Grid operation names
+// AG Grid expects 'equals' not 'eq', 'notEqual' not 'neq'
 export const AG_GRID_OPERATION_NAMES = {
   contains: 'contains',
-  eq: 'equals',
+  eq: 'equals', // Internal 'eq' -> AG Grid 'equals'
   notContains: 'notContains',
   notEqual: 'notEqual',
   startsWith: 'startsWith',
@@ -125,9 +140,10 @@ export const AG_GRID_OPERATION_NAMES = {
   notBlank: 'notBlank'
 } as const
 
+// AG Grid operation names to internal operation types (reverse mapping)
 export const REVERSE_AG_GRID_OPERATION_NAMES = {
   contains: 'contains',
-  equals: 'eq',
+  equals: 'eq', // AG Grid 'equals' -> Internal 'eq'
   notContains: 'notContains',
   notEqual: 'notEqual',
   startsWith: 'startsWith',

@@ -190,8 +190,19 @@ export const simpleColumnDefs = [
     field: 'name',
     headerName: 'Name',
     filter: 'agTextColumnFilter',
+    floatingFilter: true,
     filterParams: {
-      filterOptions: ['contains', 'equals'],
+      // Allow all text filter operations to showcase the complete functionality
+      filterOptions: [
+        'equals',
+        'notEqual',
+        'contains',
+        'notContains',
+        'startsWith',
+        'endsWith',
+        'blank',
+        'notBlank'
+      ],
       defaultOption: 'contains'
     }
   },
@@ -199,6 +210,7 @@ export const simpleColumnDefs = [
     field: 'age',
     headerName: 'Age',
     filter: 'agNumberColumnFilter',
+    floatingFilter: true,
     filterParams: {
       filterOptions: ['equals', 'greaterThan', 'lessThan'],
       defaultOption: 'equals'
@@ -208,8 +220,19 @@ export const simpleColumnDefs = [
     field: 'city',
     headerName: 'City',
     filter: 'agTextColumnFilter',
+    floatingFilter: true,
     filterParams: {
-      filterOptions: ['contains', 'equals'],
+      // Allow all text filter operations to showcase the complete functionality
+      filterOptions: [
+        'equals',
+        'notEqual',
+        'contains',
+        'notContains',
+        'startsWith',
+        'endsWith',
+        'blank',
+        'notBlank'
+      ],
       defaultOption: 'contains'
     }
   }

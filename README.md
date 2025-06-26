@@ -561,59 +561,39 @@ interface AGGridUrlSyncConfig {
 
 Check out the [examples](./examples) directory for comprehensive working demos:
 
-### Vanilla JavaScript Examples
+### 🚀 [Vanilla JavaScript Demo](./examples/vanilla-js/demo.html)
 
-### 📝 [Basic Example](./examples/vanilla-js/basic-example.html)
+Comprehensive demonstration showcasing all features:
 
-Simple HTML/JS implementation showing core functionality:
+- **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
+- **Filter scenarios** - Pre-configured examples (Sales team, Engineering, Executive view, etc.)
+- **New operation demos** - Dedicated buttons for startsWith, endsWith, and notContains filters
+- **URL sharing workflow** - Copy to clipboard, email, and Slack integration
+- **Performance monitoring** - Real-time benchmarks and stress testing
+- **Error handling** - Malformed URL and invalid filter testing
+- **Complete API showcase** - Generate URLs, apply filters, clear filters
 
-- Initialize URL sync with AG Grid
-- Generate shareable URLs
-- Apply filters from URLs
-- Handle filter changes
+### ⚛️ [React Integration](./examples/react-basic/basic-grid.tsx)
 
-### 🚀 [Advanced Demo](./examples/vanilla-js/advanced-demo.html)
-
-Feature-rich demonstration including:
-
-- Performance monitoring and benchmarks
-- Multiple filter scenarios (Sales, Engineering, Executive views)
-- URL sharing workflow with copy/email/Slack functionality
-- Error testing with malformed URLs and invalid filters
-- Memory and stress testing capabilities
-
-### 🔗 [Multi-Grid Demo](./examples/vanilla-js/multi-grid-demo.html)
-
-Complex example with multiple independent grids:
-
-- Four separate grids (Employees, Projects, Departments, Metrics)
-- Individual URL namespacing with different prefixes
-- Combined URL generation merging all grid states
-- Independent grid controls and clearing functions
-
-### React Examples
-
-### ⚛️ [Basic React Grid](./examples/react-basic/basic-grid.tsx)
-
-Complete React component showing the `useAGGridUrlSync` hook:
+Clean React component showing the `useAGGridUrlSync` hook:
 
 - React hook integration with AG Grid
 - Automatic filter state management
 - Share button with clipboard functionality
 - Filter status indicators and controls
 - Auto-apply filters on component mount
+- Full TypeScript support
 
-### 🛣️ [React Router Integration](./examples/react-router/router-grid.tsx)
+### 📊 [Shared Data](./examples/shared-data.js)
 
-Advanced React example with React Router:
+Common data and column definitions used across examples:
 
-- Browser URL synchronization
-- Navigation-aware filter persistence
-- Automatic filter restoration on page refresh
-- Clean URL management with multiple parameters
-- User-controlled URL updates
+- Employee data with realistic company information
+- Project data with status and priority fields
+- Column definitions with complete text filter support
+- All 8 text filter operations enabled by default
 
-All examples work out-of-the-box. HTML files can be opened directly in your browser, while React examples show complete implementation patterns.
+All examples work out-of-the-box and demonstrate the complete functionality. The HTML demo can be opened directly in your browser, while the React example shows clean integration patterns.
 
 ## Contributing
 

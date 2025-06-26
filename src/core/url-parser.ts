@@ -1,9 +1,4 @@
-import type {
-  FilterState,
-  ColumnFilter,
-  FilterOperation,
-  InternalConfig
-} from './types.js'
+import type { FilterState, ColumnFilter, InternalConfig } from './types.js'
 import { InvalidFilterError, InvalidURLError, OPERATION_MAP } from './types.js'
 import { validateFilterValue, DEFAULT_CONFIG } from './validation.js'
 

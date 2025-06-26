@@ -1,6 +1,6 @@
 import type { FilterState, InternalConfig } from './types.js'
 import { validateFilterValue } from './validation.js'
-import { REVERSE_OPERATION_MAP } from './types.js'
+import { INTERNAL_TO_URL_OPERATION_MAP } from './types.js'
 
 /**
  * Converts a filter state object into URL search parameters
@@ -15,7 +15,9 @@ export function serializeFilters(
     if (filter.filterType !== 'text') continue
 
     const operation =
-      REVERSE_OPERATION_MAP[filter.type as keyof typeof REVERSE_OPERATION_MAP]
+      INTERNAL_TO_URL_OPERATION_MAP[
+        filter.type as keyof typeof INTERNAL_TO_URL_OPERATION_MAP
+      ]
     if (!operation) continue
 
     const paramName = `${config.paramPrefix}${column}_${operation}`

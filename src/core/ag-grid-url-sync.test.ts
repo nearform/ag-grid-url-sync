@@ -103,6 +103,33 @@ describe('AGGridUrlSync', () => {
   })
 
   describe('Text Filter Operations', () => {
+    describe('Equals Operation', () => {
+      it('should apply eq filter from URL', () => {
+        const urlSync = new AGGridUrlSync(mockGridApi)
+        urlSync.applyFromUrl('https://example.com?f_status_eq=active')
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+          status: {
+            filterType: 'text',
+            type: 'equals',
+            filter: 'active'
+          }
+        })
+      })
+
+      it('should generate URL for eq filter', () => {
+        const mockGridApiWithFilter = {
+          getFilterModel: vi.fn().mockReturnValue({
+            status: { filterType: 'text', type: 'equals', filter: 'active' }
+          }),
+          setFilterModel: vi.fn()
+        } as unknown as GridApi
+
+        const urlSync = new AGGridUrlSync(mockGridApiWithFilter)
+        const url = urlSync.generateUrl('https://example.com')
+        expect(url).toBe('https://example.com/?f_status_eq=active')
+      })
+    })
+
     describe('Not Contains Operation', () => {
       it('should apply notContains filter from URL', () => {
         const urlSync = new AGGridUrlSync(mockGridApi)

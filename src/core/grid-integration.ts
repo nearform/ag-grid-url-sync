@@ -1,4 +1,4 @@
-import type { FilterState, InternalConfig } from './types.js'
+import type { FilterState, InternalConfig, FilterOperation } from './types.js'
 import {
   AG_GRID_OPERATION_NAMES,
   REVERSE_AG_GRID_OPERATION_NAMES
@@ -31,7 +31,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
       if (internalOperation) {
         filterState[column] = {
           filterType: 'text',
-          type: internalOperation as any,
+          type: internalOperation as FilterOperation,
           filter: value || ''
         }
       }

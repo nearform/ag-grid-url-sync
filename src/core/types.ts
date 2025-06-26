@@ -115,8 +115,8 @@ export const OPERATION_MAP = {
   notBlank: 'notBlank'
 } as const
 
-// Internal operation types to URL parameter names (reverse mapping)
-export const REVERSE_OPERATION_MAP = {
+// Internal operation types to URL parameter names
+export const INTERNAL_TO_URL_OPERATION_MAP = {
   contains: 'contains',
   eq: 'eq',
   notContains: 'notContains',

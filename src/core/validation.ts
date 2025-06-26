@@ -11,6 +11,12 @@ export const DEFAULT_CONFIG = {
 
 /**
  * Validates a filter value against configuration constraints
+ *
+ * @param value - The filter value to validate
+ * @param config - Internal configuration with validation rules
+ * @param operation - Optional filter operation type. Blank operations (blank/notBlank) bypass value validation
+ * @returns The validated filter value (empty string for blank operations)
+ * @throws InvalidFilterError if value exceeds maximum length
  */
 export function validateFilterValue(
   value: string,

@@ -560,6 +560,20 @@
                 updatePerformanceStats()
               }
             })
+
+            // Apply filters from URL on page load
+            try {
+              urlSync.applyFromUrl()
+              const filterCount = Object.keys(gridApi.getFilterModel()).length
+              if (filterCount > 0) {
+                showSuccess(
+                  `Applied ${filterCount} filter(s) from URL on page load`
+                )
+              }
+            } catch (error) {
+              console.warn('Failed to apply filters from URL:', error)
+            }
+
             updatePerformanceMonitor()
           }
         }, 100)

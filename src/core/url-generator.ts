@@ -46,6 +46,20 @@ function serializeColumnFilter(
 }
 
 /**
+ * Helper function to append a serialized parameter to URLSearchParams
+ */
+function appendSerializedParam(
+  serialized: string,
+  params: URLSearchParams
+): void {
+  const [paramName, paramValue] = serialized.split('=')
+  if (paramName && paramValue) {
+    // Decode the parameter value to handle commas correctly
+    params.append(paramName, decodeURIComponent(paramValue))
+  }
+}
+
+/**
  * Converts a filter state object into URL search parameters
  */
 export function serializeFilters(
@@ -72,11 +86,7 @@ export function serializeFilters(
         config.paramPrefix
       )
       if (serialized) {
-        const [paramName, paramValue] = serialized.split('=')
-        if (paramName && paramValue) {
-          // Decode the parameter value to handle commas correctly
-          params.append(paramName, decodeURIComponent(paramValue))
-        }
+        appendSerializedParam(serialized, params)
       }
     } else {
       // Number filters don't need additional validation as they're already validated
@@ -86,11 +96,7 @@ export function serializeFilters(
         config.paramPrefix
       )
       if (serialized) {
-        const [paramName, paramValue] = serialized.split('=')
-        if (paramName && paramValue) {
-          // Decode the parameter value to handle commas correctly
-          params.append(paramName, decodeURIComponent(paramValue))
-        }
+        appendSerializedParam(serialized, params)
       }
     }
   }

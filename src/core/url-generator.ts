@@ -20,10 +20,12 @@ function serializeColumnFilter(
 
   // Handle range operations
   if (filter.type === 'inRange' && filter.filterType === 'number') {
-    const numberFilter = filter as any
-    if (numberFilter.filterTo === undefined) return ''
-    // Don't encode the comma for range values - handle this directly
-    return `${paramName}=${filter.filter},${numberFilter.filterTo}`
+    // Type guard: ensure this is a NumberColumnFilter with inRange operation
+    if ('filterTo' in filter && filter.filterTo !== undefined) {
+      // Don't encode the comma for range values - handle this directly
+      return `${paramName}=${filter.filter},${filter.filterTo}`
+    }
+    return ''
   }
 
   // Handle blank operations

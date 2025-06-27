@@ -153,7 +153,7 @@ export function applyFilterModel(
       // Validate filter type compatibility
       if (filter.filterType === 'number' && expectedType !== 'number') {
         console.warn(
-          `Column '${column}' expects text filter but got number filter`
+          `Column '${column}' expects a text filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`
         )
         continue
       }

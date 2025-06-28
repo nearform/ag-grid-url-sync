@@ -323,65 +323,6 @@ function GridComponent() {
 }
 ```
 
-### React Router Integration
-
-For single-page applications using React Router, you can sync filters with the browser URL:
-
-```tsx
-import React, { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
-
-function RouterGridComponent() {
-  const [gridApi, setGridApi] = useState(null)
-  const navigate = useNavigate()
-  const location = useLocation()
-
-  const { shareUrl, clearFilters, hasFilters, isReady } = useAGGridUrlSync(
-    gridApi,
-    {
-      autoApplyOnMount: true, // Automatically apply filters from URL on mount
-      paramPrefix: 'f_'
-    }
-  )
-
-  // Update browser URL with current filters
-  const updateUrlWithFilters = () => {
-    const url = shareUrl()
-    const urlParams = new URL(url).searchParams
-    const currentParams = new URLSearchParams(location.search)
-
-    // Clear existing filter params
-    for (const [key] of currentParams) {
-      if (key.startsWith('f_')) {
-        currentParams.delete(key)
-      }
-    }
-
-    // Add current filter params
-    for (const [key, value] of urlParams) {
-      currentParams.set(key, value)
-    }
-
-    navigate(`${location.pathname}?${currentParams.toString()}`, {
-      replace: true
-    })
-  }
-
-  return (
-    <div>
-      <button onClick={updateUrlWithFilters} disabled={!isReady}>
-        Update URL with Filters
-      </button>
-      <button onClick={clearFilters} disabled={!hasFilters}>
-        Clear All Filters
-      </button>
-      {/* Grid component */}
-    </div>
-  )
-}
-```
-
 ### React Hook API
 
 #### `useAGGridUrlSync(gridApi, options?)`

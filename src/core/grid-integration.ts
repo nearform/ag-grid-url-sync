@@ -1,9 +1,36 @@
-import type { FilterState, InternalConfig, ColumnFilter } from './types.js'
+import type {
+  FilterState,
+  InternalConfig,
+  ColumnFilter,
+  TextFilterOperation,
+  NumberFilterOperation,
+  FilterOperation
+} from './types.js'
 import {
   AG_GRID_OPERATION_NAMES,
-  REVERSE_AG_GRID_OPERATION_NAMES
+  REVERSE_AG_GRID_OPERATION_NAMES,
+  TEXT_FILTER_OPERATIONS,
+  NUMBER_FILTER_OPERATIONS
 } from './types.js'
 import type { GridApi } from 'ag-grid-community'
+
+/**
+ * Type predicate to check if an operation is a valid text filter operation
+ */
+function isTextFilterOperation(
+  operation: FilterOperation
+): operation is TextFilterOperation {
+  return TEXT_FILTER_OPERATIONS.includes(operation as TextFilterOperation)
+}
+
+/**
+ * Type predicate to check if an operation is a valid number filter operation
+ */
+function isNumberFilterOperation(
+  operation: FilterOperation
+): operation is NumberFilterOperation {
+  return NUMBER_FILTER_OPERATIONS.includes(operation as NumberFilterOperation)
+}
 
 /**
  * Detects the expected filter type for a column based on AG Grid configuration
@@ -58,10 +85,11 @@ export function getFilterModel(config: InternalConfig): FilterState {
             type as keyof typeof REVERSE_AG_GRID_OPERATION_NAMES
           ]
 
-        if (internalOperation) {
+        // Use type predicate to validate and narrow the type
+        if (internalOperation && isTextFilterOperation(internalOperation)) {
           filterState[column] = {
             filterType: 'text',
-            type: internalOperation as any,
+            type: internalOperation, // Now properly typed as TextFilterOperation
             filter: value || ''
           }
         }
@@ -72,10 +100,11 @@ export function getFilterModel(config: InternalConfig): FilterState {
             type as keyof typeof REVERSE_AG_GRID_OPERATION_NAMES
           ]
 
-        if (internalOperation) {
+        // Use type predicate to validate and narrow the type
+        if (internalOperation && isNumberFilterOperation(internalOperation)) {
           const numberFilter: ColumnFilter = {
             filterType: 'number',
-            type: internalOperation as any,
+            type: internalOperation, // Now properly typed as NumberFilterOperation
             filter: typeof value === 'number' ? value : 0
           }
 

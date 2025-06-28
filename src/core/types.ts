@@ -39,31 +39,43 @@ export type FilterOperation =
   | 'inRange' // Number only
 
 /**
+ * Valid text filter operations as const array
+ */
+export const TEXT_FILTER_OPERATIONS = [
+  'contains',
+  'eq',
+  'notContains',
+  'notEqual',
+  'startsWith',
+  'endsWith',
+  'blank',
+  'notBlank'
+] as const
+
+/**
+ * Valid number filter operations as const array
+ */
+export const NUMBER_FILTER_OPERATIONS = [
+  'eq',
+  'notEqual',
+  'lessThan',
+  'lessThanOrEqual',
+  'greaterThan',
+  'greaterThanOrEqual',
+  'inRange',
+  'blank',
+  'notBlank'
+] as const
+
+/**
  * Text-specific filter operations
  */
-export type TextFilterOperation =
-  | 'contains'
-  | 'eq'
-  | 'notContains'
-  | 'notEqual'
-  | 'startsWith'
-  | 'endsWith'
-  | 'blank'
-  | 'notBlank'
+export type TextFilterOperation = (typeof TEXT_FILTER_OPERATIONS)[number]
 
 /**
  * Number-specific filter operations
  */
-export type NumberFilterOperation =
-  | 'eq'
-  | 'notEqual'
-  | 'lessThan'
-  | 'lessThanOrEqual'
-  | 'greaterThan'
-  | 'greaterThanOrEqual'
-  | 'inRange'
-  | 'blank'
-  | 'notBlank'
+export type NumberFilterOperation = (typeof NUMBER_FILTER_OPERATIONS)[number]
 
 /**
  * Base interface for column filters
@@ -158,40 +170,12 @@ export type GridApi = AGGridApi
  * This approach keeps URLs readable while maintaining compatibility with AG Grid.
  */
 
-// URL parameter names to internal operation types
-// Uses short names for cleaner URLs: 'eq' instead of 'equals', 'neq' instead of 'notEqual'
-export const OPERATION_MAP = {
-  // Text operations (unchanged)
-  contains: 'contains',
-  eq: 'eq', // Short form for URL brevity
-  notContains: 'notContains',
-  neq: 'notEqual', // Short form: 'neq' -> 'notEqual'
-  startsWith: 'startsWith',
-  endsWith: 'endsWith',
-  blank: 'blank',
-  notBlank: 'notBlank',
-
-  // New number operations
-  lt: 'lessThan',
-  lte: 'lessThanOrEqual',
-  gt: 'greaterThan',
-  gte: 'greaterThanOrEqual',
-  range: 'inRange'
-} as const
-
-// Internal operation types to URL parameter names
-export const INTERNAL_TO_URL_OPERATION_MAP = {
-  // Text operations (unchanged)
-  contains: 'contains',
-  eq: 'eq',
-  notContains: 'notContains',
-  notEqual: 'neq', // Internal 'notEqual' -> URL 'neq'
-  startsWith: 'startsWith',
-  endsWith: 'endsWith',
-  blank: 'blank',
-  notBlank: 'notBlank',
-
-  // New number operations
+/**
+ * Define special URL shorthand mappings (internal -> URL)
+ * Operations not listed here use their internal name as URL param
+ */
+const URL_SHORTHAND_MAPPINGS = {
+  notEqual: 'neq',
   lessThan: 'lt',
   lessThanOrEqual: 'lte',
   greaterThan: 'gt',
@@ -199,43 +183,62 @@ export const INTERNAL_TO_URL_OPERATION_MAP = {
   inRange: 'range'
 } as const
 
-// Internal operation types to AG Grid operation names
-// AG Grid expects 'equals' not 'eq', 'notEqual' not 'neq'
-export const AG_GRID_OPERATION_NAMES = {
-  // Text operations (unchanged)
-  contains: 'contains',
-  eq: 'equals', // Internal 'eq' -> AG Grid 'equals'
-  notContains: 'notContains',
-  notEqual: 'notEqual',
-  startsWith: 'startsWith',
-  endsWith: 'endsWith',
-  blank: 'blank',
-  notBlank: 'notBlank',
-
-  // New number operations
-  lessThan: 'lessThan',
-  lessThanOrEqual: 'lessThanOrEqual',
-  greaterThan: 'greaterThan',
-  greaterThanOrEqual: 'greaterThanOrEqual',
-  inRange: 'inRange'
+/**
+ * Define special AG Grid name mappings (internal -> AG Grid)
+ * Operations not listed here use their internal name for AG Grid
+ */
+const AG_GRID_NAME_MAPPINGS = {
+  eq: 'equals'
 } as const
 
-// AG Grid operation names to internal operation types (reverse mapping)
-export const REVERSE_AG_GRID_OPERATION_NAMES = {
-  // Text operations (unchanged)
-  contains: 'contains',
-  equals: 'eq', // AG Grid 'equals' -> Internal 'eq'
-  notContains: 'notContains',
-  notEqual: 'notEqual',
-  startsWith: 'startsWith',
-  endsWith: 'endsWith',
-  blank: 'blank',
-  notBlank: 'notBlank',
+/**
+ * Helper function to create operation mappings dynamically
+ */
+function createOperationMaps() {
+  const allOperations = [...TEXT_FILTER_OPERATIONS, ...NUMBER_FILTER_OPERATIONS]
 
-  // New number operations
-  lessThan: 'lessThan',
-  lessThanOrEqual: 'lessThanOrEqual',
-  greaterThan: 'greaterThan',
-  greaterThanOrEqual: 'greaterThanOrEqual',
-  inRange: 'inRange'
-} as const
+  // Remove duplicates (like 'eq', 'blank', etc. that appear in both arrays)
+  const uniqueOperations = [...new Set(allOperations)]
+
+  // Generate URL mappings
+  const operationMap = {} as Record<string, FilterOperation>
+  const internalToUrlMap = {} as Record<FilterOperation, string>
+
+  uniqueOperations.forEach(operation => {
+    const urlName =
+      URL_SHORTHAND_MAPPINGS[
+        operation as keyof typeof URL_SHORTHAND_MAPPINGS
+      ] || operation
+    operationMap[urlName] = operation
+    internalToUrlMap[operation] = urlName
+  })
+
+  // Generate AG Grid mappings
+  const agGridMap = {} as Record<FilterOperation, string>
+  const reverseAgGridMap = {} as Record<string, FilterOperation>
+
+  uniqueOperations.forEach(operation => {
+    const agGridName =
+      AG_GRID_NAME_MAPPINGS[operation as keyof typeof AG_GRID_NAME_MAPPINGS] ||
+      operation
+    agGridMap[operation] = agGridName
+    reverseAgGridMap[agGridName] = operation
+  })
+
+  return {
+    operationMap,
+    internalToUrlMap,
+    agGridMap,
+    reverseAgGridMap
+  }
+}
+
+// Generate all mappings dynamically
+const { operationMap, internalToUrlMap, agGridMap, reverseAgGridMap } =
+  createOperationMaps()
+
+// Export the dynamically generated maps
+export const OPERATION_MAP = operationMap
+export const INTERNAL_TO_URL_OPERATION_MAP = internalToUrlMap
+export const AG_GRID_OPERATION_NAMES = agGridMap
+export const REVERSE_AG_GRID_OPERATION_NAMES = reverseAgGridMap

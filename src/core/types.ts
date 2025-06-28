@@ -1,4 +1,8 @@
-import type { GridApi as AGGridApi } from 'ag-grid-community'
+import type {
+  GridApi as AGGridApi,
+  TextFilterModel,
+  NumberFilterModel
+} from 'ag-grid-community'
 
 /**
  * Configuration options for AG Grid URL Sync
@@ -157,6 +161,11 @@ export type ParsedFilterParam = {
 
 // Re-export GridApi for convenience
 export type GridApi = AGGridApi
+
+/**
+ * Union type for AG Grid filters using official AG Grid types
+ */
+export type AGGridFilter = TextFilterModel | NumberFilterModel
 
 /**
  * Operation Mapping Strategy:

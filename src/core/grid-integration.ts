@@ -4,8 +4,10 @@ import type {
   ColumnFilter,
   TextFilterOperation,
   NumberFilterOperation,
-  FilterOperation
+  FilterOperation,
+  AGGridFilter
 } from './types.js'
+import type { ISimpleFilterModelType } from 'ag-grid-community'
 import {
   AG_GRID_OPERATION_NAMES,
   REVERSE_AG_GRID_OPERATION_NAMES,
@@ -130,20 +132,23 @@ export function getFilterModel(config: InternalConfig): FilterState {
 /**
  * Converts internal filter to AG Grid filter format
  */
-function convertToAGGridFilter(filter: ColumnFilter): any {
+function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
   if (filter.filterType === 'number') {
-    const agGridOperation =
-      AG_GRID_OPERATION_NAMES[
-        filter.type as keyof typeof AG_GRID_OPERATION_NAMES
-      ]
+    const agGridOperation = AG_GRID_OPERATION_NAMES[
+      filter.type as keyof typeof AG_GRID_OPERATION_NAMES
+    ] as ISimpleFilterModelType
 
     if (filter.type === 'inRange') {
-      return {
+      const baseFilter = {
         filterType: 'number',
         type: agGridOperation,
-        filter: filter.filter,
-        filterTo: (filter as any).filterTo
-      }
+        filter: filter.filter
+      } as const
+
+      // Only include filterTo if it's defined
+      return filter.filterTo !== undefined
+        ? { ...baseFilter, filterTo: filter.filterTo }
+        : baseFilter
     }
 
     return {
@@ -153,11 +158,12 @@ function convertToAGGridFilter(filter: ColumnFilter): any {
     }
   }
 
-  // Text filter handling (existing logic)
-  const agGridOperation =
-    AG_GRID_OPERATION_NAMES[filter.type as keyof typeof AG_GRID_OPERATION_NAMES]
+  // Text filter handling
+  const agGridOperation = AG_GRID_OPERATION_NAMES[
+    filter.type as keyof typeof AG_GRID_OPERATION_NAMES
+  ] as ISimpleFilterModelType
   return {
-    filterType: filter.filterType,
+    filterType: 'text',
     type: agGridOperation,
     filter: filter.filter
   }

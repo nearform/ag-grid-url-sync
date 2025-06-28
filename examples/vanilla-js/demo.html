@@ -594,6 +594,7 @@
           }
         ],
         rowData: sampleData,
+        theme: 'legacy', // Use legacy theming to work with CSS files
         defaultColDef: {
           resizable: true,
           sortable: true,
@@ -601,8 +602,7 @@
           minWidth: 100
         },
         onFilterChanged: updatePerformanceMonitor,
-        animateRows: true,
-        enableRangeSelection: true
+        animateRows: true
       }
 
       // Performance monitoring

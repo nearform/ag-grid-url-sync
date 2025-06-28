@@ -105,6 +105,13 @@
       .btn-success:hover {
         background: #2e7d32;
       }
+      .btn-warning {
+        background: #f57c00;
+        color: white;
+      }
+      .btn-warning:hover {
+        background: #ef6c00;
+      }
       .url-display {
         background: #f9f9f9;
         border: 1px solid #ddd;
@@ -113,8 +120,30 @@
         font-family: 'Courier New', monospace;
         font-size: 12px;
         word-break: break-all;
-        margin: 10px 0;
+        margin: 5px 0 15px 0;
         min-height: 20px;
+      }
+      .url-input {
+        width: 100%;
+        padding: 8px;
+        margin: 5px 0 15px 0;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        box-sizing: border-box;
+      }
+      .url-input:focus {
+        outline: none;
+        border-color: #1976d2;
+        box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+      }
+      .url-label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #333;
+        font-size: 14px;
       }
       .performance-monitor {
         background: #e8f5e8;
@@ -180,6 +209,13 @@
         font-size: 12px;
         padding: 4px 8px;
       }
+      .url-action-btn {
+        min-width: 120px;
+        padding: 8px 12px;
+        font-size: 14px;
+        text-align: center;
+        white-space: nowrap;
+      }
     </style>
   </head>
   <body>
@@ -187,7 +223,8 @@
       <div class="header">
         <h1>🔗 AG Grid URL Sync - Advanced Demo</h1>
         <div class="subtitle">
-          Comprehensive demonstration of URL state synchronization features
+          Comprehensive demonstration of text & number filter URL
+          synchronization
         </div>
       </div>
 
@@ -218,7 +255,52 @@
         </div>
 
         <div class="control-section">
-          <h3>🎯 Filter Scenarios</h3>
+          <h3>🔗 URL Sharing & Testing</h3>
+          <div class="control-group">
+            <button class="btn btn-success" onclick="generateShareableUrl()">
+              📋 Generate Shareable URL
+            </button>
+            <button
+              class="btn btn-secondary url-action-btn"
+              onclick="copyUrlToClipboard()"
+            >
+              📄 Copy URL
+            </button>
+            <button
+              class="btn btn-secondary url-action-btn"
+              onclick="applyUrlFromInput()"
+            >
+              🔄 Apply URL
+            </button>
+            <button
+              class="btn btn-secondary url-action-btn"
+              onclick="clearUrlAndRefresh()"
+            >
+              🧹 Clear & Refresh
+            </button>
+          </div>
+          <div>
+            <label for="urlInput" class="url-label">
+              📝 URL Input (paste and apply):
+            </label>
+            <input
+              type="text"
+              id="urlInput"
+              placeholder="Paste a URL here to apply its filters..."
+              class="url-input"
+            />
+          </div>
+          <div>
+            <label class="url-label"> 🔗 Generated URL: </label>
+            <div id="urlDisplay" class="url-display">
+              Apply filters and click "Generate Shareable URL" to see the
+              result...
+            </div>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>🎯 Text Filter Scenarios</h3>
           <div class="control-group">
             <button
               class="btn btn-primary scenario-btn"
@@ -231,12 +313,6 @@
               onclick="applyScenario('engineering')"
             >
               ⚙️ Engineering
-            </button>
-            <button
-              class="btn btn-primary scenario-btn"
-              onclick="applyScenario('executive')"
-            >
-              👔 Executive View
             </button>
             <button
               class="btn btn-primary scenario-btn"
@@ -262,6 +338,65 @@
             >
               🚫 Not Contains 'a'
             </button>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>🔢 Number Filter Scenarios</h3>
+          <p style="margin: 0 0 15px; color: #666; font-size: 14px">
+            Demonstrates all 9 number filter operations: equals, notEqual,
+            greaterThan, greaterThanOrEqual, lessThan, lessThanOrEqual, inRange,
+            blank, notBlank
+          </p>
+          <div class="control-group">
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('highSalary')"
+            >
+              💎 High Salary (≥$90K)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('midSalary')"
+            >
+              💰 Mid Salary ($60K-$90K)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('entrySalary')"
+            >
+              🎯 Entry Level (<$65K)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('exactSalary')"
+            >
+              🎪 Exact Salary ($75K)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('notEqualSalary')"
+            >
+              ❌ Not $60K
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('executive')"
+            >
+              👔 Executive View (>$100K + Excellent)
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('blankSalary')"
+            >
+              🕳️ Blank Salary
+            </button>
+            <button
+              class="btn btn-success scenario-btn"
+              onclick="applyScenario('notBlankSalary')"
+            >
+              ✅ Not Blank Salary
+            </button>
             <button class="btn btn-secondary" onclick="clearAllFilters()">
               🧹 Clear All
             </button>
@@ -269,27 +404,45 @@
         </div>
 
         <div class="control-section">
-          <h3>🔗 URL Sharing</h3>
+          <h3>🎭 Mixed Filter Scenarios</h3>
+          <p style="margin: 0 0 15px; color: #666; font-size: 14px">
+            Demonstrates complex filtering combining both text and number
+            filters
+          </p>
           <div class="control-group">
-            <button class="btn btn-success" onclick="generateShareableUrl()">
-              📋 Generate Shareable URL
+            <button
+              class="btn btn-warning scenario-btn"
+              onclick="applyScenario('engineeringHighSalary')"
+            >
+              ⚙️💎 Engineering + High Salary
             </button>
             <button
-              class="btn btn-secondary copy-btn"
-              onclick="copyUrlToClipboard()"
+              class="btn btn-warning scenario-btn"
+              onclick="applyScenario('salesMidRange')"
             >
-              📄 Copy
+              💰📊 Sales + Mid Salary
             </button>
-            <button class="btn btn-secondary" onclick="shareViaEmail()">
-              📧 Email
+            <button
+              class="btn btn-warning scenario-btn"
+              onclick="applyScenario('managerExcellent')"
+            >
+              👔⭐ Manager + Excellent
             </button>
-            <button class="btn btn-secondary" onclick="shareViaSlack()">
-              💬 Slack
+            <button
+              class="btn btn-warning scenario-btn"
+              onclick="applyScenario('remoteHighPerformer')"
+            >
+              🏠🚀 Remote + High Performer
             </button>
-          </div>
-          <div id="urlDisplay" class="url-display">
-            Apply filters and click "Generate Shareable URL" to see the
-            result...
+            <button
+              class="btn btn-warning scenario-btn"
+              onclick="applyScenario('newHiresSalaryRange')"
+            >
+              🆕💰 New Hires + Salary Range
+            </button>
+            <button class="btn btn-secondary" onclick="clearAllFilters()">
+              🧹 Clear All
+            </button>
           </div>
         </div>
 
@@ -472,6 +625,24 @@
           location: 'Austin',
           hireDate: '2018-09-14',
           performance: 'Excellent'
+        },
+        {
+          name: 'Alex Johnson',
+          department: 'Intern',
+          position: 'Summer Intern',
+          salary: null, // For demonstrating blank filters
+          location: 'Remote',
+          hireDate: '2023-06-01',
+          performance: 'Good'
+        },
+        {
+          name: 'Sam Wilson',
+          department: 'Contractor',
+          position: 'Freelance Developer',
+          salary: undefined, // For demonstrating blank filters
+          location: 'Remote',
+          hireDate: '2023-01-15',
+          performance: 'Good'
         }
       ]
 
@@ -522,6 +693,7 @@
           }
         ],
         rowData: sampleData,
+        theme: 'legacy', // Use legacy theming to work with CSS files
         defaultColDef: {
           resizable: true,
           sortable: true,
@@ -529,8 +701,7 @@
           minWidth: 100
         },
         onFilterChanged: updatePerformanceMonitor,
-        animateRows: true,
-        enableRangeSelection: true
+        animateRows: true
       }
 
       // Performance monitoring
@@ -569,6 +740,10 @@
                 showSuccess(
                   `Applied ${filterCount} filter(s) from URL on page load`
                 )
+                // Show the current URL in the input and display
+                const currentUrl = window.location.href
+                document.getElementById('urlInput').value = currentUrl
+                document.getElementById('urlDisplay').textContent = currentUrl
               }
             } catch (error) {
               console.warn('Failed to apply filters from URL:', error)
@@ -607,17 +782,13 @@
           let filters = {}
 
           switch (scenario) {
+            // Text filter scenarios
             case 'sales':
               filters = {
                 department: {
                   filterType: 'text',
                   type: 'equals',
                   filter: 'Sales'
-                },
-                salary: {
-                  filterType: 'number',
-                  type: 'greaterThan',
-                  filter: 60000
                 }
               }
               break
@@ -632,20 +803,6 @@
                   filterType: 'text',
                   type: 'contains',
                   filter: 'San'
-                }
-              }
-              break
-            case 'executive':
-              filters = {
-                salary: {
-                  filterType: 'number',
-                  type: 'greaterThan',
-                  filter: 100000
-                },
-                performance: {
-                  filterType: 'text',
-                  type: 'equals',
-                  filter: 'Excellent'
                 }
               }
               break
@@ -685,6 +842,159 @@
                 }
               }
               break
+
+            // Number filter scenarios
+            case 'highSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'greaterThanOrEqual',
+                  filter: 90000
+                }
+              }
+              break
+            case 'midSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'inRange',
+                  filter: 60000,
+                  filterTo: 90000
+                }
+              }
+              break
+            case 'entrySalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'lessThan',
+                  filter: 65000
+                }
+              }
+              break
+            case 'exactSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'equals',
+                  filter: 75000
+                }
+              }
+              break
+            case 'notEqualSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'notEqual',
+                  filter: 60000
+                }
+              }
+              break
+            case 'executive':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'greaterThan',
+                  filter: 100000
+                },
+                performance: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Excellent'
+                }
+              }
+              break
+            case 'blankSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'blank',
+                  filter: null
+                }
+              }
+              break
+            case 'notBlankSalary':
+              filters = {
+                salary: {
+                  filterType: 'number',
+                  type: 'notBlank',
+                  filter: null
+                }
+              }
+              break
+
+            // Mixed filter scenarios
+            case 'engineeringHighSalary':
+              filters = {
+                department: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Engineering'
+                },
+                salary: {
+                  filterType: 'number',
+                  type: 'greaterThanOrEqual',
+                  filter: 90000
+                }
+              }
+              break
+            case 'salesMidRange':
+              filters = {
+                department: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Sales'
+                },
+                salary: {
+                  filterType: 'number',
+                  type: 'inRange',
+                  filter: 60000,
+                  filterTo: 90000
+                }
+              }
+              break
+            case 'managerExcellent':
+              filters = {
+                position: {
+                  filterType: 'text',
+                  type: 'contains',
+                  filter: 'Manager'
+                },
+                performance: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Excellent'
+                }
+              }
+              break
+            case 'remoteHighPerformer':
+              filters = {
+                location: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Remote'
+                },
+                performance: {
+                  filterType: 'text',
+                  type: 'equals',
+                  filter: 'Good'
+                }
+              }
+              break
+            case 'newHiresSalaryRange':
+              filters = {
+                hireDate: {
+                  filterType: 'text',
+                  type: 'contains',
+                  filter: '2023'
+                },
+                salary: {
+                  filterType: 'number',
+                  type: 'lessThan',
+                  filter: 70000
+                }
+              }
+              break
           }
 
           gridApi.setFilterModel(filters)
@@ -710,9 +1020,14 @@
           )
           document.getElementById('urlDisplay').textContent = currentUrl
 
+          // Also populate the input field for easy editing
+          document.getElementById('urlInput').value = currentUrl
+
           performanceStats.lastUrlGenerationTime = performance.now() - start
           performanceStats.operationCount++
           updatePerformanceStats()
+
+          showSuccess('Shareable URL generated!')
         } catch (error) {
           showError(`URL generation failed: ${error.message}`)
           performanceStats.errorCount++
@@ -738,37 +1053,37 @@
         }
       }
 
-      function shareViaEmail() {
-        const url = document.getElementById('urlDisplay').textContent
-        if (
-          url &&
-          url !==
-            'Apply filters and click "Generate Shareable URL" to see the result...'
-        ) {
-          const subject = encodeURIComponent(
-            'Check out this filtered data view'
-          )
-          const body = encodeURIComponent(
-            `I've shared a filtered view of our data with you:\n\n${url}`
-          )
-          window.open(`mailto:?subject=${subject}&body=${body}`)
+      function applyUrlFromInput() {
+        if (!urlSync) return
+
+        const urlInput = document.getElementById('urlInput')
+        const url = urlInput.value.trim()
+
+        if (!url) {
+          showError('Please enter a URL to apply')
+          return
+        }
+
+        try {
+          const start = performance.now()
+
+          // Parse URL and extract search params
+          const urlObj = new URL(url)
+          const newUrl =
+            window.location.origin + window.location.pathname + urlObj.search
+
+          // Navigate to the new URL which will trigger a page refresh with the new filters
+          window.location.href = newUrl
+        } catch (error) {
+          showError(`Failed to apply URL: ${error.message}`)
+          performanceStats.errorCount++
+          updatePerformanceStats()
         }
       }
 
-      function shareViaSlack() {
-        const url = document.getElementById('urlDisplay').textContent
-        if (
-          url &&
-          url !==
-            'Apply filters and click "Generate Shareable URL" to see the result...'
-        ) {
-          const text = encodeURIComponent(
-            `Check out this filtered data view: ${url}`
-          )
-          window.open(
-            `https://slack.com/share?url=${encodeURIComponent(url)}&text=${text}`
-          )
-        }
+      function clearUrlAndRefresh() {
+        // Clear the URL and refresh the page without any search parameters
+        window.location.href = window.location.origin + window.location.pathname
       }
 
       function clearAllFilters() {

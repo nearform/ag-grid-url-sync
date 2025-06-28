@@ -1,4 +1,8 @@
-import type { GridApi as AGGridApi } from 'ag-grid-community'
+import type {
+  GridApi as AGGridApi,
+  TextFilterModel,
+  NumberFilterModel
+} from 'ag-grid-community'
 
 /**
  * Configuration options for AG Grid URL Sync
@@ -21,26 +25,92 @@ export interface AGGridUrlSyncConfig {
 }
 
 /**
- * Supported filter operations
+ * Supported filter operations for both text and number filters
  */
 export type FilterOperation =
-  | 'contains'
-  | 'eq'
-  | 'notContains'
-  | 'notEqual'
-  | 'startsWith'
-  | 'endsWith'
-  | 'blank'
-  | 'notBlank'
+  | 'contains' // Text only
+  | 'eq' // Both text and number (shared)
+  | 'notContains' // Text only
+  | 'notEqual' // Both text and number (shared)
+  | 'startsWith' // Text only
+  | 'endsWith' // Text only
+  | 'blank' // Both text and number (shared)
+  | 'notBlank' // Both text and number (shared)
+  | 'lessThan' // Number only
+  | 'lessThanOrEqual' // Number only
+  | 'greaterThan' // Number only
+  | 'greaterThanOrEqual' // Number only
+  | 'inRange' // Number only
 
 /**
- * Filter state for a single column
+ * Valid text filter operations as const array
  */
-export interface ColumnFilter {
-  filterType: 'text'
+export const TEXT_FILTER_OPERATIONS = [
+  'contains',
+  'eq',
+  'notContains',
+  'notEqual',
+  'startsWith',
+  'endsWith',
+  'blank',
+  'notBlank'
+] as const
+
+/**
+ * Valid number filter operations as const array
+ */
+export const NUMBER_FILTER_OPERATIONS = [
+  'eq',
+  'notEqual',
+  'lessThan',
+  'lessThanOrEqual',
+  'greaterThan',
+  'greaterThanOrEqual',
+  'inRange',
+  'blank',
+  'notBlank'
+] as const
+
+/**
+ * Text-specific filter operations
+ */
+export type TextFilterOperation = (typeof TEXT_FILTER_OPERATIONS)[number]
+
+/**
+ * Number-specific filter operations
+ */
+export type NumberFilterOperation = (typeof NUMBER_FILTER_OPERATIONS)[number]
+
+/**
+ * Base interface for column filters
+ */
+interface BaseColumnFilter {
   type: FilterOperation
+}
+
+/**
+ * Text filter configuration
+ */
+export interface TextColumnFilter extends BaseColumnFilter {
+  filterType: 'text'
+  type: TextFilterOperation
   filter: string
 }
+
+/**
+ * Number filter configuration
+ */
+export interface NumberColumnFilter extends BaseColumnFilter {
+  filterType: 'number'
+  type: NumberFilterOperation
+  filter: number
+  filterTo?: number // For inRange operations
+}
+
+/**
+ * Filter state for a single column (union of text and number filters)
+ */
+export type ColumnFilter = TextColumnFilter | NumberColumnFilter
 
 /**
  * Complete filter state mapping
@@ -83,7 +153,9 @@ export class InvalidURLError extends URLSyncError {
 export type ParsedFilterParam = {
   columnName: string
   operation: FilterOperation
-  value: string
+  filterType: 'text' | 'number' | 'auto' // 'auto' for operations that work with both
+  value: string | number
+  filterTo?: number // For range operations
   action: 'apply' | 'remove'
 }
 
@@ -91,63 +163,91 @@ export type ParsedFilterParam = {
 export type GridApi = AGGridApi
 
 /**
+ * Union type for AG Grid filters using official AG Grid types
+ */
+export type AGGridFilter = TextFilterModel | NumberFilterModel
+
+/**
  * Operation Mapping Strategy:
  *
  * We use three different naming conventions for better user experience:
  *
- * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq')
+ * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq', 'lt', 'gt')
  * 2. Internal Types: Consistent naming for our FilterOperation type
  * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual')
  *
  * This approach keeps URLs readable while maintaining compatibility with AG Grid.
  */
 
-// URL parameter names to internal operation types
-// Uses short names for cleaner URLs: 'eq' instead of 'equals', 'neq' instead of 'notEqual'
-export const OPERATION_MAP = {
-  contains: 'contains',
-  eq: 'eq', // Short form for URL brevity
-  notContains: 'notContains',
-  neq: 'notEqual', // Short form: 'neq' -> 'notEqual'
-  startsWith: 'startsWith',
-  endsWith: 'endsWith',
-  blank: 'blank',
-  notBlank: 'notBlank'
+/**
+ * Define special URL shorthand mappings (internal -> URL)
+ * Operations not listed here use their internal name as URL param
+ */
+const URL_SHORTHAND_MAPPINGS = {
+  notEqual: 'neq',
+  lessThan: 'lt',
+  lessThanOrEqual: 'lte',
+  greaterThan: 'gt',
+  greaterThanOrEqual: 'gte',
+  inRange: 'range'
 } as const
 
-// Internal operation types to URL parameter names
-export const INTERNAL_TO_URL_OPERATION_MAP = {
-  contains: 'contains',
-  eq: 'eq',
-  notContains: 'notContains',
-  notEqual: 'neq', // Internal 'notEqual' -> URL 'neq'
-  startsWith: 'startsWith',
-  endsWith: 'endsWith',
-  blank: 'blank',
-  notBlank: 'notBlank'
+/**
+ * Define special AG Grid name mappings (internal -> AG Grid)
+ * Operations not listed here use their internal name for AG Grid
+ */
+const AG_GRID_NAME_MAPPINGS = {
+  eq: 'equals'
 } as const
 
-// Internal operation types to AG Grid operation names
-// AG Grid expects 'equals' not 'eq', 'notEqual' not 'neq'
-export const AG_GRID_OPERATION_NAMES = {
-  contains: 'contains',
-  eq: 'equals', // Internal 'eq' -> AG Grid 'equals'
-  notContains: 'notContains',
-  notEqual: 'notEqual',
-  startsWith: 'startsWith',
-  endsWith: 'endsWith',
-  blank: 'blank',
-  notBlank: 'notBlank'
-} as const
+/**
+ * Helper function to create operation mappings dynamically
+ */
+function createOperationMaps() {
+  const allOperations = [...TEXT_FILTER_OPERATIONS, ...NUMBER_FILTER_OPERATIONS]
 
-// AG Grid operation names to internal operation types (reverse mapping)
-export const REVERSE_AG_GRID_OPERATION_NAMES = {
-  contains: 'contains',
-  equals: 'eq', // AG Grid 'equals' -> Internal 'eq'
-  notContains: 'notContains',
-  notEqual: 'notEqual',
-  startsWith: 'startsWith',
-  endsWith: 'endsWith',
-  blank: 'blank',
-  notBlank: 'notBlank'
-} as const
+  // Remove duplicates (like 'eq', 'blank', etc. that appear in both arrays)
+  const uniqueOperations = [...new Set(allOperations)]
+
+  // Generate URL mappings
+  const operationMap = {} as Record<string, FilterOperation>
+  const internalToUrlMap = {} as Record<FilterOperation, string>
+
+  uniqueOperations.forEach(operation => {
+    const urlName =
+      URL_SHORTHAND_MAPPINGS[
+        operation as keyof typeof URL_SHORTHAND_MAPPINGS
+      ] || operation
+    operationMap[urlName] = operation
+    internalToUrlMap[operation] = urlName
+  })
+
+  // Generate AG Grid mappings
+  const agGridMap = {} as Record<FilterOperation, string>
+  const reverseAgGridMap = {} as Record<string, FilterOperation>
+
+  uniqueOperations.forEach(operation => {
+    const agGridName =
+      AG_GRID_NAME_MAPPINGS[operation as keyof typeof AG_GRID_NAME_MAPPINGS] ||
+      operation
+    agGridMap[operation] = agGridName
+    reverseAgGridMap[agGridName] = operation
+  })
+
+  return {
+    operationMap,
+    internalToUrlMap,
+    agGridMap,
+    reverseAgGridMap
+  }
+}
+
+// Generate all mappings dynamically
+const { operationMap, internalToUrlMap, agGridMap, reverseAgGridMap } =
+  createOperationMaps()
+
+// Export the dynamically generated maps
+export const OPERATION_MAP = operationMap
+export const INTERNAL_TO_URL_OPERATION_MAP = internalToUrlMap
+export const AG_GRID_OPERATION_NAMES = agGridMap
+export const REVERSE_AG_GRID_OPERATION_NAMES = reverseAgGridMap

@@ -49,12 +49,14 @@ export default function BasicGrid() {
 
   return (
     <div style={{ padding: '20px' }}>
-      <h1>AG Grid URL Sync - Basic React Example</h1>
+      <h1>AG Grid URL Sync - React Text & Number Filters</h1>
 
       <div style={{ marginBottom: '20px' }}>
         <h3>Instructions:</h3>
         <ol>
-          <li>Apply some text filters using the floating filter inputs</li>
+          <li>
+            Apply text and number filters using the floating filter inputs
+          </li>
           <li>Click "Share Filters" to copy a URL with your filters</li>
           <li>
             Open the URL in a new tab to see filters automatically applied
@@ -145,20 +147,56 @@ export default function BasicGrid() {
 
       <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
         <h4>Try these example filters:</h4>
-        <ul>
-          <li>
-            <strong>Name contains "John":</strong> Filter the Name column with
-            "John"
-          </li>
-          <li>
-            <strong>Status equals "active":</strong> Filter the Status column
-            with "active"
-          </li>
-          <li>
-            <strong>Department contains "Eng":</strong> Filter the Department
-            column with "Eng"
-          </li>
-        </ul>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '20px'
+          }}
+        >
+          <div>
+            <h5>📝 Text Filters:</h5>
+            <ul>
+              <li>
+                <strong>Name contains "John":</strong> Filter the Name column
+                with "John"
+              </li>
+              <li>
+                <strong>Status equals "active":</strong> Filter the Status
+                column with "active"
+              </li>
+              <li>
+                <strong>Department equals "Engineering":</strong> Filter the
+                Department column with "Engineering"
+              </li>
+              <li>
+                <strong>Email starts with "j":</strong> Filter the Email column
+                with "j"
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h5>🔢 Number Filters:</h5>
+            <ul>
+              <li>
+                <strong>Salary &gt; $75,000:</strong> Filter the Salary column
+                greater than 75000
+              </li>
+              <li>
+                <strong>Age between 25-35:</strong> Use range filter on Age
+                column
+              </li>
+              <li>
+                <strong>Experience ≥ 5 years:</strong> Filter Experience greater
+                than or equal to 5
+              </li>
+              <li>
+                <strong>Salary is blank:</strong> Use blank filter to find null
+                salaries
+              </li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   )

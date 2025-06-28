@@ -198,8 +198,8 @@ describe('Edge Cases - Grid Integration', () => {
     expect(() => urlSync.clearFilters()).not.toThrow()
   })
 
-  it('should handle filter model with non-text filters gracefully', () => {
-    // Critical scenario: Grid has mixed filter types, only text filters should be processed
+  it('should handle filter model with mixed filter types gracefully', () => {
+    // Critical scenario: Grid has mixed filter types, text and number filters should be processed
     const mockGridApi = {
       getFilterModel: vi.fn().mockReturnValue({
         textColumn: { filterType: 'text', type: 'contains', filter: 'value' },
@@ -217,9 +217,10 @@ describe('Edge Cases - Grid Integration', () => {
     const urlSync = new AGGridUrlSync(mockGridApi)
     const url = urlSync.generateUrl('https://example.com')
 
-    // Should only include text filters in URL
+    // Should include text and number filters in URL
     expect(url).toContain('f_textColumn_contains=value')
-    expect(url).not.toContain('numberColumn')
+    expect(url).toContain('f_numberColumn_eq=123')
+    // Should exclude unsupported filter types
     expect(url).not.toContain('dateColumn')
     expect(url).not.toContain('setColumn')
   })

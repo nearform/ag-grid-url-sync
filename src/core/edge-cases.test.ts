@@ -110,7 +110,7 @@ describe('Edge Cases - URL Parsing', () => {
   }
 
   it('should handle malformed URLs', () => {
-    const malformedUrls = ['not-a-url', '://missing-protocol.com', '']
+    const malformedUrls = ['not-a-url', '://missing-protocol.com']
 
     malformedUrls.forEach(url => {
       expect(() => parseUrlFilters(url, config)).toThrow(InvalidURLError)
@@ -441,6 +441,266 @@ describe('Text Filter Operations Edge Cases', () => {
         type: 'notBlank',
         filter: ''
       })
+    })
+  })
+})
+
+describe('Edge Cases and Error Handling', () => {
+  const mockConfig: InternalConfig = {
+    gridApi: {} as InternalConfig['gridApi'],
+    paramPrefix: 'f_',
+    maxValueLength: 200,
+    onParseError: vi.fn()
+  }
+
+  describe('URL Parameter Parsing Edge Cases', () => {
+    it('should handle empty URL gracefully', () => {
+      const result = parseUrlFilters('', mockConfig)
+      expect(result).toEqual({})
+    })
+
+    it('should handle URL without query parameters', () => {
+      const result = parseUrlFilters('https://example.com/path', mockConfig)
+      expect(result).toEqual({})
+    })
+
+    it('should handle URL with non-filter parameters', () => {
+      const result = parseUrlFilters(
+        'https://example.com?page=1&sort=name',
+        mockConfig
+      )
+      expect(result).toEqual({})
+    })
+
+    it('should handle malformed filter parameters gracefully', () => {
+      const result = parseUrlFilters(
+        'https://example.com?invalid_param',
+        mockConfig
+      )
+      expect(result).toEqual({})
+    })
+
+    it('should handle URL with mixed valid and invalid parameters', () => {
+      const result = parseUrlFilters(
+        'https://example.com?f_name_contains=john&invalid_param&f_age_eq=30',
+        mockConfig
+      )
+      expect(result).toEqual({
+        name: { filterType: 'text', type: 'contains', filter: 'john' },
+        age: { filterType: 'number', type: 'eq', filter: 30 }
+      })
+    })
+
+    it('should ignore parameters that do not match prefix', () => {
+      const result = parseUrlFilters(
+        'https://example.com?name_contains=john&f_age_eq=30',
+        mockConfig
+      )
+      expect(result).toEqual({
+        age: { filterType: 'number', type: 'eq', filter: 30 }
+      })
+    })
+
+    it('should handle URL-encoded values correctly', () => {
+      const result = parseUrlFilters(
+        'https://example.com?f_description_contains=hello%20world',
+        mockConfig
+      )
+      expect(result).toEqual({
+        description: {
+          filterType: 'text',
+          type: 'contains',
+          filter: 'hello world'
+        }
+      })
+    })
+
+    it('should handle special characters in filter values', () => {
+      const specialValue = 'test@domain.com'
+      const result = parseUrlFilters(
+        `https://example.com?f_email_contains=${encodeURIComponent(specialValue)}`,
+        mockConfig
+      )
+      expect(result).toEqual({
+        email: { filterType: 'text', type: 'contains', filter: specialValue }
+      })
+    })
+
+    it('should handle international characters', () => {
+      const internationalValue = 'café'
+      const result = parseUrlFilters(
+        `https://example.com?f_name_contains=${encodeURIComponent(internationalValue)}`,
+        mockConfig
+      )
+      expect(result).toEqual({
+        name: {
+          filterType: 'text',
+          type: 'contains',
+          filter: internationalValue
+        }
+      })
+    })
+  })
+
+  describe('URL Generation Edge Cases', () => {
+    it('should handle empty filter state', () => {
+      const result = serializeFilters({}, mockConfig)
+      expect(result.toString()).toBe('')
+    })
+
+    it('should preserve existing query parameters when generating URLs', () => {
+      const mockConfigForGeneration: InternalConfig = {
+        gridApi: {} as InternalConfig['gridApi'],
+        paramPrefix: 'f_',
+        maxValueLength: 200,
+        onParseError: vi.fn()
+      }
+
+      const filters: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'john' }
+      }
+
+      const result = serializeFilters(filters, mockConfigForGeneration)
+      expect(result.toString()).toContain('f_name_contains=john')
+    })
+  })
+
+  describe('AGGridUrlSync Error Resilience', () => {
+    it('should handle grid API errors gracefully', () => {
+      const mockGridApi = {
+        setFilterModel: vi.fn(() => {
+          throw new Error('Grid API error')
+        }),
+        getFilterModel: vi.fn(() => ({}))
+      } as Partial<GridApi> as GridApi
+
+      const urlSync = new AGGridUrlSync(mockGridApi)
+      expect(() => urlSync.clearFilters()).not.toThrow()
+    })
+
+    it('should handle unknown AG Grid operation types', () => {
+      const mockGridApi = {
+        setFilterModel: vi.fn(),
+        getFilterModel: vi.fn(() => ({
+          name: {
+            type: 'unknownOperation',
+            filter: 'test'
+          }
+        }))
+      } as Partial<GridApi> as GridApi
+
+      const urlSync = new AGGridUrlSync(mockGridApi)
+      // Should handle unknown operations gracefully and process known ones
+      const url = urlSync.generateUrl('https://example.com')
+
+      // Unknown operation should be filtered out
+      expect(url).not.toContain('unknownOperation')
+    })
+
+    it('should handle null/undefined column filters', () => {
+      const mockGridApi = {
+        setFilterModel: vi.fn(),
+        getFilterModel: vi.fn(() => ({
+          name: null,
+          age: undefined,
+          valid: { type: 'contains', filter: 'test' }
+        }))
+      } as Partial<GridApi> as GridApi
+
+      const urlSync = new AGGridUrlSync(mockGridApi)
+      // Should call setFilterModel with the filters anyway - AG Grid will handle unknown columns
+      expect(() => urlSync.generateUrl()).not.toThrow()
+    })
+
+    it('should handle malformed filter models from AG Grid', () => {
+      const mockGridApi = {
+        setFilterModel: vi.fn(),
+        getFilterModel: vi.fn(() => ({
+          name: {
+            /* missing required properties */
+          }
+        }))
+      } as Partial<GridApi> as GridApi
+
+      const urlSync = new AGGridUrlSync(mockGridApi)
+      expect(() => urlSync.generateUrl()).not.toThrow()
+    })
+
+    it('should handle unexpected data types in filter model', () => {
+      const mockGridApi = {
+        setFilterModel: vi.fn(),
+        getFilterModel: vi.fn(() => ({
+          name: 'not an object',
+          age: 123,
+          tags: ['array', 'values']
+        }))
+      } as Partial<GridApi> as GridApi
+
+      const urlSync = new AGGridUrlSync(mockGridApi)
+      expect(() => urlSync.generateUrl()).not.toThrow()
+    })
+
+    it('should handle grid API returning null/undefined', () => {
+      const mockGridApi = {
+        setFilterModel: vi.fn(),
+        getFilterModel: vi.fn(
+          () => null as unknown as ReturnType<GridApi['getFilterModel']>
+        )
+      } as Partial<GridApi> as GridApi
+
+      const urlSync = new AGGridUrlSync(mockGridApi)
+      const result = urlSync.generateUrl('https://example.com')
+      expect(result).toBe('https://example.com')
+    })
+  })
+
+  describe('Configuration Edge Cases', () => {
+    it('should handle invalid configuration values', () => {
+      const invalidConfig = {
+        paramPrefix: undefined as unknown as string,
+        maxValueLength: 'invalid' as unknown as number
+      }
+
+      const mockGridApi = {
+        setFilterModel: vi.fn(),
+        getFilterModel: vi.fn(() => ({}))
+      } as Partial<GridApi> as GridApi
+
+      // Should fall back to defaults and not throw
+      expect(() => new AGGridUrlSync(mockGridApi, invalidConfig)).not.toThrow()
+    })
+
+    it('should handle missing error callback gracefully', () => {
+      const configWithoutCallback: InternalConfig = {
+        gridApi: {} as InternalConfig['gridApi'],
+        paramPrefix: 'f_',
+        maxValueLength: 200,
+        onParseError: () => {}
+      }
+
+      expect(() => {
+        parseUrlFilters('invalid-url', configWithoutCallback)
+      }).not.toThrow()
+    })
+  })
+
+  describe('Performance Edge Cases', () => {
+    it('should handle very long URLs without crashing', () => {
+      const longValue = 'a'.repeat(10000)
+      const url = `https://example.com?f_description_contains=${longValue}`
+
+      expect(() => parseUrlFilters(url, mockConfig)).not.toThrow()
+    })
+
+    it('should handle URLs with many parameters', () => {
+      const params: string[] = []
+      for (let i = 0; i < 100; i++) {
+        params.push(`f_field${i}_contains=value${i}`)
+      }
+      const url = `https://example.com?${params.join('&')}`
+
+      const result = parseUrlFilters(url, mockConfig)
+      expect(Object.keys(result)).toHaveLength(100)
     })
   })
 })

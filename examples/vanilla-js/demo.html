@@ -404,6 +404,73 @@
         </div>
 
         <div class="control-section">
+          <h3>📅 Date Filter Scenarios</h3>
+          <p style="margin: 0 0 15px; color: #666; font-size: 14px">
+            Demonstrates all 9 date filter operations: equals, notEqual, before,
+            beforeOrEqual, after, afterOrEqual, inRange, blank, notBlank
+          </p>
+          <div class="control-group">
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateEquals')"
+            >
+              📅 Hired On 2021-03-15
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateNotEqual')"
+            >
+              ❌ Not Hired On 2020-07-22
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateBefore')"
+            >
+              ⏪ Hired Before 2020-01-01
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateBeforeEq')"
+            >
+              ⏮️ Hired On/Before 2021-09-05
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateAfter')"
+            >
+              ⏩ Hired After 2022-01-01
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateAfterEq')"
+            >
+              ⏭️ Hired On/After 2019-01-10
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateRange')"
+            >
+              🔄 Hired in 2020
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateBlank')"
+            >
+              🕳️ Hire Date Blank
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="applyScenario('dateNotBlank')"
+            >
+              ✅ Hire Date Not Blank
+            </button>
+            <button class="btn btn-secondary" onclick="clearAllFilters()">
+              🧹 Clear All
+            </button>
+          </div>
+        </div>
+
+        <div class="control-section">
           <h3>🎭 Mixed Filter Scenarios</h3>
           <p style="margin: 0 0 15px; color: #666; font-size: 14px">
             Demonstrates complex filtering combining both text and number
@@ -919,6 +986,88 @@
                   filterType: 'number',
                   type: 'notBlank',
                   filter: null
+                }
+              }
+              break
+
+            // Date filter scenarios
+            case 'dateEquals':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'equals',
+                  dateFrom: '2021-03-15'
+                }
+              }
+              break
+            case 'dateNotEqual':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'notEqual',
+                  dateFrom: '2020-07-22'
+                }
+              }
+              break
+            case 'dateBefore':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'lessThan',
+                  dateFrom: '2020-01-01'
+                }
+              }
+              break
+            case 'dateBeforeEq':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'lessThanOrEqual',
+                  dateFrom: '2021-09-05'
+                }
+              }
+              break
+            case 'dateAfter':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'greaterThan',
+                  dateFrom: '2022-01-01'
+                }
+              }
+              break
+            case 'dateAfterEq':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'greaterThanOrEqual',
+                  dateFrom: '2019-01-10'
+                }
+              }
+              break
+            case 'dateRange':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'inRange',
+                  dateFrom: '2020-01-01',
+                  dateTo: '2020-12-31'
+                }
+              }
+              break
+            case 'dateBlank':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'blank'
+                }
+              }
+              break
+            case 'dateNotBlank':
+              filters = {
+                hireDate: {
+                  filterType: 'date',
+                  type: 'notBlank'
                 }
               }
               break

@@ -25,22 +25,27 @@ export interface AGGridUrlSyncConfig {
 }
 
 /**
- * Supported filter operations for both text and number filters
+ * Supported filter operations for text, number, and date filters
  */
 export type FilterOperation =
   | 'contains' // Text only
-  | 'eq' // Both text and number (shared)
+  | 'eq' // Shared across text, number, and date
   | 'notContains' // Text only
-  | 'notEqual' // Both text and number (shared)
+  | 'notEqual' // Shared across number and date (text uses 'neq')
   | 'startsWith' // Text only
   | 'endsWith' // Text only
-  | 'blank' // Both text and number (shared)
-  | 'notBlank' // Both text and number (shared)
+  | 'blank' // Shared across text, number, and date
+  | 'notBlank' // Shared across text, number, and date
   | 'lessThan' // Number only
   | 'lessThanOrEqual' // Number only
   | 'greaterThan' // Number only
   | 'greaterThanOrEqual' // Number only
   | 'inRange' // Number only
+  | 'dateBefore' // Date only (lessThan equivalent)
+  | 'dateBeforeOrEqual' // Date only (lessThanOrEqual equivalent)
+  | 'dateAfter' // Date only (greaterThan equivalent)
+  | 'dateAfterOrEqual' // Date only (greaterThanOrEqual equivalent)
+  | 'dateRange' // Date only (inRange equivalent)
 
 /**
  * Valid text filter operations as const array
@@ -72,6 +77,21 @@ export const NUMBER_FILTER_OPERATIONS = [
 ] as const
 
 /**
+ * Valid date filter operations as const array
+ */
+export const DATE_FILTER_OPERATIONS = [
+  'eq', // Shared with text/number (equals)
+  'notEqual', // Shared with number
+  'dateBefore', // Date-specific (lessThan)
+  'dateBeforeOrEqual', // Date-specific (lessThanOrEqual)
+  'dateAfter', // Date-specific (greaterThan)
+  'dateAfterOrEqual', // Date-specific (greaterThanOrEqual)
+  'dateRange', // Date-specific (inRange)
+  'blank', // Shared with text/number
+  'notBlank' // Shared with text/number
+] as const
+
+/**
  * Text-specific filter operations
  */
 export type TextFilterOperation = (typeof TEXT_FILTER_OPERATIONS)[number]
@@ -80,6 +100,11 @@ export type TextFilterOperation = (typeof TEXT_FILTER_OPERATIONS)[number]
  * Number-specific filter operations
  */
 export type NumberFilterOperation = (typeof NUMBER_FILTER_OPERATIONS)[number]
+
+/**
+ * Date-specific filter operations
+ */
+export type DateFilterOperation = (typeof DATE_FILTER_OPERATIONS)[number]
 
 /**
  * Base interface for column filters
@@ -108,9 +133,22 @@ export interface NumberColumnFilter extends BaseColumnFilter {
 }
 
 /**
- * Filter state for a single column (union of text and number filters)
+ * Date filter configuration
  */
-export type ColumnFilter = TextColumnFilter | NumberColumnFilter
+export interface DateColumnFilter extends BaseColumnFilter {
+  filterType: 'date'
+  type: DateFilterOperation
+  filter: string // ISO date string (YYYY-MM-DD)
+  filterTo?: string // For dateRange operations
+}
+
+/**
+ * Filter state for a single column (union of text, number, and date filters)
+ */
+export type ColumnFilter =
+  | TextColumnFilter
+  | NumberColumnFilter
+  | DateColumnFilter
 
 /**
  * Complete filter state mapping
@@ -150,12 +188,19 @@ export class InvalidURLError extends URLSyncError {
   }
 }
 
+export class InvalidDateError extends InvalidFilterError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'InvalidDateError'
+  }
+}
+
 export type ParsedFilterParam = {
   columnName: string
   operation: FilterOperation
-  filterType: 'text' | 'number' | 'auto' // 'auto' for operations that work with both
+  filterType: 'text' | 'number' | 'date' | 'auto' // 'auto' for operations that work across types
   value: string | number
-  filterTo?: number // For range operations
+  filterTo?: number | string // For range operations
   action: 'apply' | 'remove'
 }
 
@@ -172,9 +217,9 @@ export type AGGridFilter = TextFilterModel | NumberFilterModel
  *
  * We use three different naming conventions for better user experience:
  *
- * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq', 'lt', 'gt')
+ * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq', 'before', 'after')
  * 2. Internal Types: Consistent naming for our FilterOperation type
- * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual')
+ * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual', 'lessThan')
  *
  * This approach keeps URLs readable while maintaining compatibility with AG Grid.
  */
@@ -189,7 +234,13 @@ const URL_SHORTHAND_MAPPINGS = {
   lessThanOrEqual: 'lte',
   greaterThan: 'gt',
   greaterThanOrEqual: 'gte',
-  inRange: 'range'
+  inRange: 'range',
+  // Date-specific mappings
+  dateBefore: 'before',
+  dateBeforeOrEqual: 'beforeEq',
+  dateAfter: 'after',
+  dateAfterOrEqual: 'afterEq',
+  dateRange: 'daterange'
 } as const
 
 /**
@@ -197,16 +248,26 @@ const URL_SHORTHAND_MAPPINGS = {
  * Operations not listed here use their internal name for AG Grid
  */
 const AG_GRID_NAME_MAPPINGS = {
-  eq: 'equals'
+  eq: 'equals',
+  // Date-specific AG Grid mappings
+  dateBefore: 'lessThan',
+  dateBeforeOrEqual: 'lessThanOrEqual',
+  dateAfter: 'greaterThan',
+  dateAfterOrEqual: 'greaterThanOrEqual',
+  dateRange: 'inRange'
 } as const
 
 /**
  * Helper function to create operation mappings dynamically
  */
 function createOperationMaps() {
-  const allOperations = [...TEXT_FILTER_OPERATIONS, ...NUMBER_FILTER_OPERATIONS]
+  const allOperations = [
+    ...TEXT_FILTER_OPERATIONS,
+    ...NUMBER_FILTER_OPERATIONS,
+    ...DATE_FILTER_OPERATIONS
+  ]
 
-  // Remove duplicates (like 'eq', 'blank', etc. that appear in both arrays)
+  // Remove duplicates (like 'eq', 'blank', etc. that appear in multiple arrays)
   const uniqueOperations = [...new Set(allOperations)]
 
   // Generate URL mappings

@@ -23,6 +23,7 @@ export function useAGGridUrlSync(
   const {
     autoApplyOnMount = false,
     enabledWhenReady = true,
+    onError,
     ...coreOptions
   } = options
 
@@ -35,6 +36,19 @@ export function useAGGridUrlSync(
   const urlSyncRef = useRef<AGGridUrlSync | null>(null)
   const autoAppliedRef = useRef(false)
   const lastGridApiRef = useRef<GridApi | null>(null)
+
+  // Helper function to handle errors consistently
+  const handleError = useCallback(
+    (error: unknown, context: string) => {
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      if (onError) {
+        onError(errorObj, context)
+      } else if (process.env.NODE_ENV === 'development') {
+        console.error(`AG Grid URL Sync Error [${context}]:`, errorObj)
+      }
+    },
+    [onError]
+  )
 
   // Initialize or update URL sync instance when grid API changes
   useEffect(() => {
@@ -53,7 +67,7 @@ export function useAGGridUrlSync(
           setIsReady(true)
           lastGridApiRef.current = gridApi
         } catch (error) {
-          console.error('Failed to initialize AG Grid URL Sync:', error)
+          handleError(error, 'initialization')
           setIsReady(false)
         }
       }
@@ -67,7 +81,7 @@ export function useAGGridUrlSync(
       setIsReady(false)
       lastGridApiRef.current = null
     }
-  }, [gridApi, enabledWhenReady, coreOptions])
+  }, [gridApi, enabledWhenReady, coreOptions, handleError])
 
   // Auto-apply URL filters on mount if enabled
   useEffect(() => {
@@ -81,11 +95,11 @@ export function useAGGridUrlSync(
         urlSyncRef.current.applyFromUrl()
         autoAppliedRef.current = true
       } catch (error) {
-        console.error('Failed to auto-apply URL filters:', error)
+        handleError(error, 'auto-apply-filters')
         coreOptions.onParseError?.(error as Error)
       }
     }
-  }, [isReady, autoApplyOnMount, coreOptions])
+  }, [isReady, autoApplyOnMount, coreOptions, handleError])
 
   // Update current URL and filter state on filter changes
   useEffect(() => {
@@ -103,9 +117,9 @@ export function useAGGridUrlSync(
         // Check if there are active filters by comparing query params
         const queryParams = urlSyncRef.current!.getQueryParams()
         const searchParams = new URLSearchParams(queryParams)
-        setHasFilters([...searchParams.entries()].length > 0) // Check if there are any query parameters
+        setHasFilters([...searchParams.entries()].length > 0)
       } catch (error) {
-        console.error('Failed to update URL state:', error)
+        handleError(error, 'update-state')
       }
     }
 
@@ -120,7 +134,7 @@ export function useAGGridUrlSync(
     return () => {
       gridApi.removeEventListener('filterChanged', onFilterChanged)
     }
-  }, [isReady, gridApi])
+  }, [isReady, gridApi, handleError])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -133,21 +147,24 @@ export function useAGGridUrlSync(
   }, [])
 
   // Memoized API methods
-  const shareUrl = useCallback((baseUrl?: string): string => {
-    if (!urlSyncRef.current) {
-      return (
-        baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
-      )
-    }
-    try {
-      return urlSyncRef.current.generateUrl(baseUrl)
-    } catch (error) {
-      console.error('Failed to generate share URL:', error)
-      return (
-        baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
-      )
-    }
-  }, [])
+  const shareUrl = useCallback(
+    (baseUrl?: string): string => {
+      if (!urlSyncRef.current) {
+        return (
+          baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+        )
+      }
+      try {
+        return urlSyncRef.current.generateUrl(baseUrl)
+      } catch (error) {
+        handleError(error, 'generate-share-url')
+        return (
+          baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+        )
+      }
+    },
+    [handleError]
+  )
 
   const getQueryParams = useCallback((): string => {
     if (!urlSyncRef.current) {
@@ -156,44 +173,41 @@ export function useAGGridUrlSync(
     try {
       return urlSyncRef.current.getQueryParams()
     } catch (error) {
-      console.error('Failed to get query params:', error)
+      handleError(error, 'get-query-params')
       return ''
     }
-  }, [])
+  }, [handleError])
 
   const applyUrlFilters = useCallback(
     (url?: string): void => {
       if (!urlSyncRef.current) {
-        console.warn('AG Grid URL Sync not ready')
-        return
+        return // Silently ignore if not ready
       }
       try {
         urlSyncRef.current.applyFromUrl(url)
       } catch (error) {
-        console.error('Failed to apply URL filters:', error)
+        handleError(error, 'apply-url-filters')
         coreOptions.onParseError?.(error as Error)
       }
     },
-    [coreOptions]
+    [coreOptions, handleError]
   )
 
   const clearFilters = useCallback((): void => {
     if (!urlSyncRef.current) {
-      console.warn('AG Grid URL Sync not ready')
-      return
+      return // Silently ignore if not ready
     }
     try {
       urlSyncRef.current.clearFilters()
     } catch (error) {
-      console.error('Failed to clear filters:', error)
+      handleError(error, 'clear-filters')
     }
-  }, [])
+  }, [handleError])
 
   const parseUrlFilters = useCallback(
     (url: string): FilterState => {
       if (!gridApi) {
-        console.warn('AG Grid API not available')
-        return {}
+        return {} // Silently return empty state if grid API not available
       }
       try {
         const config = {
@@ -205,25 +219,27 @@ export function useAGGridUrlSync(
         }
         return parseFilters(url, config)
       } catch (error) {
-        console.error('Failed to parse URL filters:', error)
+        handleError(error, 'parse-url-filters')
         coreOptions.onParseError?.(error as Error)
         return {}
       }
     },
-    [coreOptions, gridApi]
+    [coreOptions, gridApi, handleError]
   )
 
-  const applyFilters = useCallback((filters: FilterState): void => {
-    if (!urlSyncRef.current) {
-      console.warn('AG Grid URL Sync not ready')
-      return
-    }
-    try {
-      urlSyncRef.current.applyFilters(filters)
-    } catch (error) {
-      console.error('Failed to apply filters:', error)
-    }
-  }, [])
+  const applyFilters = useCallback(
+    (filters: FilterState): void => {
+      if (!urlSyncRef.current) {
+        return // Silently ignore if not ready
+      }
+      try {
+        urlSyncRef.current.applyFilters(filters)
+      } catch (error) {
+        handleError(error, 'apply-filters')
+      }
+    },
+    [handleError]
+  )
 
   // Return the hook API
   return useMemo(

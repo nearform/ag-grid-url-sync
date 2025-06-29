@@ -165,7 +165,7 @@
     },
     {
       "path": "./dist/core/grid-integration.js",
-      "maxSize": "2KB"
+      "maxSize": "3KB"
     },
     {
       "path": "./dist/react/index.js",

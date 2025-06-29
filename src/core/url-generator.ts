@@ -18,7 +18,17 @@ function serializeColumnFilter(
 
   const paramName = `${paramPrefix}${columnName}_${urlOperation}`
 
-  // Handle range operations
+  // Handle date range operations
+  if (filter.type === 'dateRange' && filter.filterType === 'date') {
+    // Type guard: ensure this is a DateColumnFilter with dateRange operation
+    if ('filterTo' in filter && filter.filterTo !== undefined) {
+      // Don't encode the comma for range values - handle this directly
+      return `${paramName}=${filter.filter},${filter.filterTo}`
+    }
+    return ''
+  }
+
+  // Handle number range operations
   if (filter.type === 'inRange' && filter.filterType === 'number') {
     // Type guard: ensure this is a NumberColumnFilter with inRange operation
     if ('filterTo' in filter && filter.filterTo !== undefined) {
@@ -28,9 +38,14 @@ function serializeColumnFilter(
     return ''
   }
 
-  // Handle blank operations
+  // Handle blank operations (shared across text, number, and date)
   if (filter.type === 'blank' || filter.type === 'notBlank') {
     return `${paramName}=true`
+  }
+
+  // Handle date operations (ISO date format preservation)
+  if (filter.filterType === 'date') {
+    return `${paramName}=${filter.filter}` // ISO dates don't need URL encoding
   }
 
   // Handle number operations
@@ -52,12 +67,18 @@ function serializeColumnFilter(
  */
 function appendSerializedParam(
   serialized: string,
-  params: URLSearchParams
+  params: URLSearchParams,
+  isRangeOperation = false
 ): void {
   const [paramName, paramValue] = serialized.split('=')
   if (paramName && paramValue) {
-    // Decode the parameter value to handle commas correctly
-    params.append(paramName, decodeURIComponent(paramValue))
+    if (isRangeOperation) {
+      // For range operations (which contain commas), don't decode
+      params.append(paramName, paramValue)
+    } else {
+      // For regular operations, decode special characters for text filters
+      params.append(paramName, decodeURIComponent(paramValue))
+    }
   }
 }
 
@@ -71,8 +92,13 @@ export function serializeFilters(
   const params = new URLSearchParams()
 
   for (const [column, filter] of Object.entries(filterState)) {
-    // Support both text and number filters
-    if (filter.filterType !== 'text' && filter.filterType !== 'number') continue
+    // Support text, number, and date filters
+    if (
+      filter.filterType !== 'text' &&
+      filter.filterType !== 'number' &&
+      filter.filterType !== 'date'
+    )
+      continue
 
     // Apply validation for text filters before serialization
     if (filter.filterType === 'text') {
@@ -88,17 +114,20 @@ export function serializeFilters(
         config.paramPrefix
       )
       if (serialized) {
-        appendSerializedParam(serialized, params)
+        appendSerializedParam(serialized, params, false) // Text filters are not range operations
       }
     } else {
-      // Number filters don't need additional validation as they're already validated
+      // Number and date filters don't need additional validation as they're already validated
       const serialized = serializeColumnFilter(
         column,
         filter,
         config.paramPrefix
       )
       if (serialized) {
-        appendSerializedParam(serialized, params)
+        // Check if this is a range operation
+        const isRangeOp =
+          filter.type === 'inRange' || filter.type === 'dateRange'
+        appendSerializedParam(serialized, params, isRangeOp)
       }
     }
   }

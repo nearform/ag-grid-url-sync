@@ -1,5 +1,9 @@
-import type { InternalConfig, FilterOperation } from './types.js'
-import { InvalidFilterError } from './types.js'
+import type {
+  InternalConfig,
+  FilterOperation,
+  DateFilterOperation
+} from './types.js'
+import { InvalidFilterError, InvalidDateError } from './types.js'
 
 /**
  * Default configuration values
@@ -113,4 +117,140 @@ export function validateAndParseNumber(value: string): number {
   }
 
   return numValue
+}
+
+/**
+ * Validates and parses a date string in ISO format (YYYY-MM-DD)
+ *
+ * @param value - String representation of date in ISO format
+ * @returns Validated ISO date string
+ * @throws InvalidDateError if date format is invalid or date doesn't exist
+ */
+export function validateAndParseDate(value: string): string {
+  if (!value || value.trim() === '') {
+    throw new InvalidDateError('Date filter value cannot be empty')
+  }
+
+  const trimmedValue = value.trim()
+
+  // Validate ISO date format (YYYY-MM-DD)
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/
+  if (!isoDateRegex.test(trimmedValue)) {
+    throw new InvalidDateError(
+      `Invalid date format '${value}'. Expected ISO format YYYY-MM-DD (e.g., 2024-01-15)`
+    )
+  }
+
+  // Validate that it's a real date by parsing
+  const date = new Date(trimmedValue + 'T00:00:00.000Z') // Force UTC to avoid timezone issues
+  if (isNaN(date.getTime())) {
+    throw new InvalidDateError(
+      `Invalid date '${value}'. Date does not exist in the calendar`
+    )
+  }
+
+  // Additional validation: ensure the parsed date matches the input
+  // This catches edge cases like February 30th that might parse differently
+  const [year, month, day] = trimmedValue.split('-').map(Number)
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() + 1 !== month ||
+    date.getUTCDate() !== day
+  ) {
+    throw new InvalidDateError(
+      `Invalid date '${value}'. Date components don't match calendar date`
+    )
+  }
+
+  return trimmedValue
+}
+
+/**
+ * Validates a date filter value
+ *
+ * @param value - The date value to validate
+ * @param operation - The date filter operation
+ * @returns Validation result
+ */
+export function validateDateFilter(
+  value: string,
+  operation: DateFilterOperation
+): ValidationResult {
+  // Blank operations don't require date validation
+  if (operation === 'blank' || operation === 'notBlank') {
+    return { valid: true }
+  }
+
+  try {
+    validateAndParseDate(value)
+    return { valid: true }
+  } catch (error) {
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : 'Invalid date'
+    }
+  }
+}
+
+/**
+ * Validates a date range filter
+ *
+ * @param startDate - The start date (ISO format)
+ * @param endDate - The end date (ISO format)
+ * @returns Validation result
+ */
+export function validateDateRange(
+  startDate: string,
+  endDate: string
+): ValidationResult {
+  try {
+    const validStartDate = validateAndParseDate(startDate)
+    const validEndDate = validateAndParseDate(endDate)
+
+    // Check that start date <= end date
+    if (validStartDate > validEndDate) {
+      return {
+        valid: false,
+        error: `Date range invalid: start date '${startDate}' must be before or equal to end date '${endDate}'`
+      }
+    }
+
+    return { valid: true }
+  } catch (error) {
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : 'Invalid date range'
+    }
+  }
+}
+
+/**
+ * Validates a date range from comma-separated string input
+ *
+ * @param rangeValue - Comma-separated date range (e.g., "2024-01-01,2024-12-31")
+ * @returns Tuple of [startDate, endDate] or throws InvalidDateError
+ */
+export function validateAndParseDateRange(
+  rangeValue: string
+): [string, string] {
+  if (!rangeValue || rangeValue.trim() === '') {
+    throw new InvalidDateError('Date range value cannot be empty')
+  }
+
+  const rangeParts = rangeValue.split(',')
+  if (rangeParts.length !== 2) {
+    throw new InvalidDateError(
+      'Date range must contain exactly two dates separated by comma (e.g., "2024-01-01,2024-12-31")'
+    )
+  }
+
+  const startDate = validateAndParseDate(rangeParts[0]?.trim() || '')
+  const endDate = validateAndParseDate(rangeParts[1]?.trim() || '')
+
+  const rangeValidation = validateDateRange(startDate, endDate)
+  if (!rangeValidation.valid) {
+    throw new InvalidDateError(rangeValidation.error || 'Invalid date range')
+  }
+
+  return [startDate, endDate]
 }

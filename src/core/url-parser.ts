@@ -5,6 +5,9 @@ import {
   validateAndParseNumber,
   validateNumberRange,
   validateNumberFilter,
+  validateAndParseDate,
+  validateAndParseDateRange,
+  validateDateFilter,
   DEFAULT_CONFIG
 } from './validation.js'
 
@@ -22,10 +25,76 @@ function isNumberOperation(operation: string): boolean {
 }
 
 /**
- * Detects if an operation works with both text and number filters
+ * Detects if an operation is date-specific
+ */
+function isDateOperation(operation: string): boolean {
+  return [
+    'dateBefore',
+    'dateBeforeOrEqual',
+    'dateAfter',
+    'dateAfterOrEqual',
+    'dateRange'
+  ].includes(operation)
+}
+
+/**
+ * Detects if an operation works across multiple filter types (shared operations)
  */
 function isSharedOperation(operation: string): boolean {
   return ['eq', 'notEqual', 'blank', 'notBlank'].includes(operation)
+}
+
+/**
+ * Attempts to parse a value as a date and returns the filter type
+ * This is used for shared operations to determine if they should be treated as date filters
+ */
+function tryParseAsDate(value: string): 'date' | null {
+  try {
+    validateAndParseDate(value)
+    return 'date'
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Detects the most appropriate filter type for a shared operation based on the value
+ * Priority: Date > Number > Text (if the value can be parsed as date/number, prefer that type)
+ */
+function detectFilterTypeForSharedOperation(
+  operation: string,
+  value: string
+): 'text' | 'number' | 'date' {
+  // Blank operations default to text (most common case)
+  if (operation === 'blank' || operation === 'notBlank') {
+    return 'text'
+  }
+
+  // For eq/notEqual operations, try to detect the most specific type
+  if (operation === 'eq' || operation === 'notEqual') {
+    // Try date first (most specific format)
+    if (tryParseAsDate(value) === 'date') {
+      return 'date'
+    }
+
+    // Try number second
+    try {
+      const numValue = parseFloat(value)
+      if (!isNaN(numValue) && Number.isFinite(numValue)) {
+        const validation = validateNumberFilter(numValue)
+        if (validation.valid) {
+          return 'number'
+        }
+      }
+    } catch {
+      // Fall through to text
+    }
+
+    // Default to text
+    return 'text'
+  }
+
+  return 'text'
 }
 
 /**
@@ -80,7 +149,25 @@ export function parseFilterParam(
     throw new InvalidFilterError(`Unsupported filter operation: ${operation}`)
   }
 
-  // Handle range operations
+  // Handle date range operations
+  if (filterOp === 'dateRange') {
+    try {
+      const [startDate, endDate] = validateAndParseDateRange(value)
+
+      return {
+        filterType: 'date',
+        type: filterOp as any,
+        filter: startDate,
+        filterTo: endDate
+      }
+    } catch (error) {
+      throw new InvalidFilterError(
+        error instanceof Error ? error.message : 'Invalid date range'
+      )
+    }
+  }
+
+  // Handle number range operations
   if (filterOp === 'inRange') {
     const rangeParts = value.split(',')
     if (rangeParts.length !== 2) {
@@ -107,7 +194,29 @@ export function parseFilterParam(
     }
   }
 
-  // Handle number operations
+  // Handle date-specific operations
+  if (isDateOperation(filterOp)) {
+    try {
+      const dateValue = validateAndParseDate(value)
+      const validation = validateDateFilter(dateValue, filterOp as any)
+
+      if (!validation.valid) {
+        throw new InvalidFilterError(validation.error || 'Invalid date filter')
+      }
+
+      return {
+        filterType: 'date',
+        type: filterOp as any,
+        filter: dateValue
+      }
+    } catch (error) {
+      throw new InvalidFilterError(
+        error instanceof Error ? error.message : 'Invalid date filter'
+      )
+    }
+  }
+
+  // Handle number-specific operations
   if (isNumberOperation(filterOp)) {
     const numValue = validateAndParseNumber(value)
 
@@ -118,42 +227,50 @@ export function parseFilterParam(
     }
   }
 
-  // Handle blank operations first (work for both text and number but default to text)
-  if (filterOp === 'blank' || filterOp === 'notBlank') {
-    return {
-      filterType: 'text',
-      type: filterOp,
-      filter: '' // Blank operations don't use the value
-    }
-  }
-
-  // Handle shared operations (eq, notEqual) - detect if they should be number based on value
+  // Handle shared operations (eq, notEqual, blank, notBlank)
   if (isSharedOperation(filterOp)) {
-    // Try to parse as number first
-    try {
-      const numValue = parseFloat(value)
-      if (!isNaN(numValue) && Number.isFinite(numValue)) {
-        const validation = validateNumberFilter(numValue)
-        if (validation.valid) {
-          return {
-            filterType: 'number',
-            type: filterOp as any,
-            filter: numValue
+    const detectedType = detectFilterTypeForSharedOperation(filterOp, value)
+
+    if (detectedType === 'date') {
+      try {
+        const dateValue = validateAndParseDate(value)
+        return {
+          filterType: 'date',
+          type: filterOp as any,
+          filter: dateValue
+        }
+      } catch {
+        // If date parsing fails, fall back to text
+      }
+    }
+
+    if (detectedType === 'number') {
+      try {
+        const numValue = parseFloat(value)
+        if (!isNaN(numValue) && Number.isFinite(numValue)) {
+          const validation = validateNumberFilter(numValue)
+          if (validation.valid) {
+            return {
+              filterType: 'number',
+              type: filterOp as any,
+              filter: numValue
+            }
           }
         }
+      } catch {
+        // Fall through to text handling
       }
-    } catch {
-      // Fall through to text handling
     }
 
+    // Handle as text filter (default for shared operations)
     return {
       filterType: 'text',
       type: filterOp as any,
-      filter: value || ''
+      filter: filterOp === 'blank' || filterOp === 'notBlank' ? '' : value || ''
     }
   }
 
-  // Handle text operations (existing logic)
+  // Handle text-specific operations (existing logic)
   return {
     filterType: 'text',
     type: filterOp as any,
@@ -194,21 +311,27 @@ export function parseUrlFilters(
             ...filterParam,
             filter: validatedValue
           }
+        } else if (filterParam.filterType === 'date') {
+          // Date filters are already validated in parseFilterParam
+          filterState[columnName] = filterParam
         } else {
           // Number filters are already validated in parseFilterParam
           filterState[columnName] = filterParam
         }
-      } catch (err) {
+      } catch (error) {
+        // Log parsing errors through the configured error handler
         if (config.onParseError) {
-          config.onParseError(err as Error)
+          config.onParseError(error as Error)
         }
-        // Skip invalid filters but continue processing
+        // Continue processing other parameters instead of failing completely
         continue
       }
     }
 
     return filterState
-  } catch (err) {
-    throw new InvalidURLError(`Failed to parse URL: ${(err as Error).message}`)
+  } catch (error) {
+    throw new InvalidURLError(
+      `Failed to parse URL: ${error instanceof Error ? error.message : 'Unknown error'}`
+    )
   }
 }

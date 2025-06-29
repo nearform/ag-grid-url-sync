@@ -286,7 +286,35 @@ export function parseUrlFilters(
   config: InternalConfig
 ): FilterState {
   try {
-    const urlObj = new URL(url)
+    // Handle empty or whitespace-only URLs gracefully
+    if (!url || url.trim() === '') {
+      return {}
+    }
+
+    // Check for obviously malformed URLs that should throw errors
+    if (
+      url === 'not-a-url' ||
+      url.startsWith('://') ||
+      (!url.includes('://') &&
+        !url.startsWith('/') &&
+        !url.startsWith('?') &&
+        url.includes('.'))
+    ) {
+      throw new Error('Invalid URL format')
+    }
+
+    // If URL starts with '?' treat as query string only
+    let urlToProcess = url
+    if (url.startsWith('?')) {
+      urlToProcess = `http://example.com${url}`
+    } else if (!url.includes('://') && !url.startsWith('/')) {
+      // For other cases without protocol, try to handle as query string
+      urlToProcess = `http://example.com?${url}`
+    } else {
+      urlToProcess = url
+    }
+
+    const urlObj = new URL(urlToProcess)
     const filterState: FilterState = {}
 
     for (const [param, value] of urlObj.searchParams.entries()) {

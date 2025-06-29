@@ -153,6 +153,18 @@ export function generateUrl(
     }
   }
 
-  url.search = filterParams.toString()
+  const queryString = filterParams.toString()
+
+  // If no filters, return the base URL without query string or trailing slash
+  if (!queryString) {
+    let result = url.toString().replace(/\?$/, '')
+    // Remove trailing slash for root paths when no query parameters
+    if (result.endsWith('/') && result === url.origin + '/') {
+      result = result.slice(0, -1)
+    }
+    return result
+  }
+
+  url.search = queryString
   return url.toString()
 }

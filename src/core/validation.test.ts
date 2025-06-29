@@ -20,7 +20,8 @@ import type {
 describe('Validation Functions', () => {
   describe('validateFilterValue', () => {
     const mockConfig: InternalConfig = {
-      gridApi: {} as any,
+      ...DEFAULT_CONFIG,
+      gridApi: {} as InternalConfig['gridApi'],
       paramPrefix: 'f_',
       maxValueLength: 10, // Small length for testing
       onParseError: () => {}
@@ -128,6 +129,34 @@ describe('Validation Functions', () => {
         expect(validateFilterValue('\t\n', mockConfig)).toBe('\t\n')
         expect(validateFilterValue(' hello ', mockConfig)).toBe(' hello ')
       })
+    })
+
+    it('should return the value unchanged if within limits', () => {
+      const result = validateFilterValue('test', mockConfig)
+      expect(result).toBe('test')
+    })
+
+    it('should return empty string for blank operations', () => {
+      expect(validateFilterValue('any-value', mockConfig, 'blank')).toBe('')
+      expect(validateFilterValue('any-value', mockConfig, 'notBlank')).toBe('')
+    })
+
+    it('should throw InvalidFilterError if value exceeds maxValueLength', () => {
+      const longValue = 'a'.repeat(201)
+      expect(() => validateFilterValue(longValue, mockConfig)).toThrow(
+        InvalidFilterError
+      )
+    })
+
+    it('should respect custom maxValueLength', () => {
+      const customConfig: InternalConfig = {
+        ...mockConfig,
+        maxValueLength: 10
+      }
+      const longValue = 'a'.repeat(11)
+      expect(() => validateFilterValue(longValue, customConfig)).toThrow(
+        InvalidFilterError
+      )
     })
   })
 

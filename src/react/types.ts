@@ -15,6 +15,12 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
    * Default: true
    */
   enabledWhenReady?: boolean
+
+  /**
+   * Optional error handler for hook-level errors (initialization, URL operations, etc.)
+   * This supplements the core onParseError callback for comprehensive error handling
+   */
+  onError?: (error: Error, context: string) => void
 }
 
 /**

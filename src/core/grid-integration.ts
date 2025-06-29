@@ -19,6 +19,17 @@ import {
 import type { GridApi } from 'ag-grid-community'
 
 /**
+ * Converts a date string to ISO format (YYYY-MM-DD)
+ * Handles both date strings and undefined values
+ * Returns an empty string if the input is undefined or invalid
+ */
+function toIsoDateString(val: string | undefined): string {
+  if (!val) return ''
+  const match = val.match(/^(\d{4}-\d{2}-\d{2})/)
+  return match && match[1] ? match[1] : val || ''
+}
+
+/**
  * Type predicate to check if an operation is a valid text filter operation
  */
 function isTextFilterOperation(
@@ -163,13 +174,13 @@ export function getFilterModel(config: InternalConfig): FilterState {
         if (mappedOperation && isDateFilterOperation(mappedOperation)) {
           const dateFilter: ColumnFilter = {
             filterType: 'date',
-            type: mappedOperation, // Now properly typed as DateFilterOperation
-            filter: dateFrom || value || ''
+            type: mappedOperation,
+            filter: toIsoDateString(dateFrom || value || '')
           }
 
           // Handle date range operations (AG Grid uses dateFrom/dateTo)
           if (mappedOperation === 'dateRange' && dateTo) {
-            ;(dateFilter as any).filterTo = dateTo
+            ;(dateFilter as any).filterTo = toIsoDateString(dateTo)
           }
 
           filterState[column] = dateFilter

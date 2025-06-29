@@ -106,7 +106,16 @@ export function validateAndParseNumber(value: string): number {
     throw new InvalidFilterError('Number filter value cannot be empty')
   }
 
-  const numValue = parseFloat(value)
+  const trimmedValue = value.trim()
+
+  // Use a regex to validate proper number format before parsing
+  // This prevents parseFloat from accepting partial numbers like "42abc" -> 42
+  const numberRegex = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
+  if (!numberRegex.test(trimmedValue)) {
+    throw new InvalidFilterError(`Invalid number format: ${value}`)
+  }
+
+  const numValue = parseFloat(trimmedValue)
   if (isNaN(numValue)) {
     throw new InvalidFilterError(`Invalid number format: ${value}`)
   }

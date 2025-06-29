@@ -143,8 +143,6 @@ describe('serializeFilters', () => {
     // URLSearchParams uses + for spaces and %26 for &, both are valid URL encoding
     expect(params.toString()).toBe('f_name_contains=john+%26+doe')
   })
-
-  // Removed trivial empty state test - just tests obvious URLSearchParams behavior
 })
 
 describe('generateUrl', () => {

@@ -284,20 +284,16 @@ export function applyFilterModel(
 
       // Validate filter type compatibility
       if (filter.filterType === 'date' && expectedType !== 'date') {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn(
-            `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`
-          )
-        }
+        console.warn(
+          `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`
+        )
         continue
       }
 
       if (filter.filterType === 'number' && expectedType !== 'number') {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn(
-            `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`
-          )
-        }
+        console.warn(
+          `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`
+        )
         continue
       }
 

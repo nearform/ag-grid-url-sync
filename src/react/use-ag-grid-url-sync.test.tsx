@@ -24,9 +24,38 @@ vi.mock('../core/ag-grid-url-sync.js', () => ({
 
 // Mock the URL parser
 vi.mock('../core/url-parser.js', () => ({
-  parseUrlFilters: vi.fn(() => ({
-    name: { filterType: 'text', type: 'contains', filter: 'test' }
-  }))
+  parseUrlFilters: vi.fn((url: string) => {
+    if (url.includes('f_created_eq=2024-01-15')) {
+      return {
+        created: { filterType: 'date', type: 'eq', filter: '2024-01-15' },
+        deadline: {
+          filterType: 'date',
+          type: 'dateBefore',
+          filter: '2024-12-31'
+        },
+        period: {
+          filterType: 'date',
+          type: 'dateRange',
+          filter: '2024-01-01',
+          filterTo: '2024-12-31'
+        }
+      }
+    }
+    if (url.includes('f_salary_gte=50000')) {
+      return {
+        salary: {
+          filterType: 'number',
+          type: 'greaterThanOrEqual',
+          filter: 50000
+        },
+        age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
+      }
+    }
+    // Default text filter response
+    return {
+      name: { filterType: 'text', type: 'contains', filter: 'test' }
+    }
+  })
 }))
 
 // Create proper mock types
@@ -223,6 +252,58 @@ describe('useAGGridUrlSync', () => {
       })
     })
 
+    test('parseUrlFilters handles date filters', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await act(async () => {
+        await setTimeout(0)
+      })
+
+      const filters = result.current.parseUrlFilters(
+        'http://test.com?f_created_eq=2024-01-15&f_deadline_before=2024-12-31&f_period_daterange=2024-01-01,2024-12-31'
+      )
+
+      expect(filters).toEqual({
+        created: { filterType: 'date', type: 'eq', filter: '2024-01-15' },
+        deadline: {
+          filterType: 'date',
+          type: 'dateBefore',
+          filter: '2024-12-31'
+        },
+        period: {
+          filterType: 'date',
+          type: 'dateRange',
+          filter: '2024-01-01',
+          filterTo: '2024-12-31'
+        }
+      })
+    })
+
+    test('parseUrlFilters handles number filters', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await act(async () => {
+        await setTimeout(0)
+      })
+
+      const filters = result.current.parseUrlFilters(
+        'http://test.com?f_salary_gte=50000&f_age_range=25,45'
+      )
+
+      expect(filters).toEqual({
+        salary: {
+          filterType: 'number',
+          type: 'greaterThanOrEqual',
+          filter: 50000
+        },
+        age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
+      })
+    })
+
     test('applyFilters calls core method', async () => {
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi)
@@ -245,9 +326,131 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockInstance.applyFilters).toHaveBeenCalledWith(filters)
     })
+
+    test('applyFilters handles date filters', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await act(async () => {
+        await setTimeout(0)
+      })
+
+      const dateFilters = {
+        created: {
+          filterType: 'date' as const,
+          type: 'eq' as const,
+          filter: '2024-01-15'
+        },
+        deadline: {
+          filterType: 'date' as const,
+          type: 'dateBefore' as const,
+          filter: '2024-12-31'
+        },
+        period: {
+          filterType: 'date' as const,
+          type: 'dateRange' as const,
+          filter: '2024-01-01',
+          filterTo: '2024-12-31'
+        }
+      }
+
+      act(() => {
+        result.current.applyFilters(dateFilters)
+      })
+
+      expect(mockInstance.applyFilters).toHaveBeenCalledWith(dateFilters)
+    })
+
+    test('applyUrlFilters handles URLs with date filters', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await act(async () => {
+        await setTimeout(0)
+      })
+
+      const urlWithDateFilters =
+        'http://test.com?f_created_eq=2024-01-15&f_deadline_before=2024-12-31&f_period_daterange=2024-01-01,2024-12-31'
+
+      act(() => {
+        result.current.applyUrlFilters(urlWithDateFilters)
+      })
+
+      expect(mockInstance.applyFromUrl).toHaveBeenCalledWith(urlWithDateFilters)
+    })
   })
 
   describe('Error Handling', () => {
+    test('warns when applyUrlFilters called while not ready', () => {
+      const onParseError = vi.fn()
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {})
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { onParseError })
+      )
+
+      act(() => {
+        result.current.applyUrlFilters('http://test.com?f_name_contains=test')
+      })
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'applyUrlFilters called while the hook is not ready.'
+      )
+      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
+
+      consoleWarnSpy.mockRestore()
+    })
+
+    test('warns when clearFilters called while not ready', () => {
+      const onParseError = vi.fn()
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {})
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { onParseError })
+      )
+
+      act(() => {
+        result.current.clearFilters()
+      })
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'clearFilters called while the hook is not ready.'
+      )
+      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
+
+      consoleWarnSpy.mockRestore()
+    })
+
+    test('warns when applyFilters called while not ready', () => {
+      const onParseError = vi.fn()
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {})
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { onParseError })
+      )
+
+      act(() => {
+        result.current.applyFilters({
+          name: { filterType: 'text', type: 'contains', filter: 'test' }
+        })
+      })
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'applyFilters called while the hook is not ready.'
+      )
+      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
+
+      consoleWarnSpy.mockRestore()
+    })
+
     test('handles initialization errors gracefully', async () => {
       const onError = vi.fn()
 

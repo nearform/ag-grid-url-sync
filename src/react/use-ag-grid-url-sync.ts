@@ -181,7 +181,11 @@ export function useAGGridUrlSync(
   const applyUrlFilters = useCallback(
     (url?: string): void => {
       if (!urlSyncRef.current) {
-        return // Silently ignore if not ready
+        const warningMessage =
+          'applyUrlFilters called while the hook is not ready.'
+        console.warn(warningMessage)
+        coreOptions.onParseError?.(new Error(warningMessage))
+        return
       }
       try {
         urlSyncRef.current.applyFromUrl(url)
@@ -195,14 +199,17 @@ export function useAGGridUrlSync(
 
   const clearFilters = useCallback((): void => {
     if (!urlSyncRef.current) {
-      return // Silently ignore if not ready
+      const warningMessage = 'clearFilters called while the hook is not ready.'
+      console.warn(warningMessage)
+      coreOptions.onParseError?.(new Error(warningMessage))
+      return
     }
     try {
       urlSyncRef.current.clearFilters()
     } catch (error) {
       handleError(error, 'clear-filters')
     }
-  }, [handleError])
+  }, [handleError, coreOptions])
 
   const parseUrlFilters = useCallback(
     (url: string): FilterState => {
@@ -230,7 +237,11 @@ export function useAGGridUrlSync(
   const applyFilters = useCallback(
     (filters: FilterState): void => {
       if (!urlSyncRef.current) {
-        return // Silently ignore if not ready
+        const warningMessage =
+          'applyFilters called while the hook is not ready.'
+        console.warn(warningMessage)
+        coreOptions.onParseError?.(new Error(warningMessage))
+        return
       }
       try {
         urlSyncRef.current.applyFilters(filters)
@@ -238,7 +249,7 @@ export function useAGGridUrlSync(
         handleError(error, 'apply-filters')
       }
     },
-    [handleError]
+    [handleError, coreOptions]
   )
 
   // Return the hook API

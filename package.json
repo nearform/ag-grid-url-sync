@@ -98,7 +98,7 @@
     "react"
   ],
   "author": "NearForm",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/nearform/ag-grid-url-state-sync/issues"
   },

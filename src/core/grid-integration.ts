@@ -200,7 +200,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
 /**
  * Converts internal filter to AG Grid filter format
  */
-function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter | any {
+function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
   if (filter.filterType === 'date') {
     // Handle date range operations
     if (filter.type === 'dateRange') {
@@ -208,7 +208,7 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter | any {
         filterType: 'date',
         type: 'inRange' as ISimpleFilterModelType, // AG Grid uses 'inRange' for date ranges
         dateFrom: filter.filter,
-        dateTo: filter.filterTo
+        dateTo: filter.filterTo || null
       }
     }
 
@@ -216,7 +216,9 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter | any {
     if (filter.type === 'blank' || filter.type === 'notBlank') {
       return {
         filterType: 'date',
-        type: filter.type as ISimpleFilterModelType
+        type: filter.type as ISimpleFilterModelType,
+        dateFrom: null,
+        dateTo: null
       }
     }
 
@@ -237,7 +239,8 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter | any {
     return {
       filterType: 'date',
       type: agOperation as ISimpleFilterModelType,
-      dateFrom: filter.filter
+      dateFrom: filter.filter,
+      dateTo: null
     }
   }
 

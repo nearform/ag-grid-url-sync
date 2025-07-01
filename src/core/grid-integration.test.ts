@@ -274,11 +274,17 @@ describe('Grid Integration', () => {
       applyFilterModel(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-        created: { filterType: 'date', type: 'equals', dateFrom: '2024-01-15' },
+        created: {
+          filterType: 'date',
+          type: 'equals',
+          dateFrom: '2024-01-15',
+          dateTo: null
+        },
         deadline: {
           filterType: 'date',
           type: 'lessThan',
-          dateFrom: '2024-12-31'
+          dateFrom: '2024-12-31',
+          dateTo: null
         },
         period: {
           filterType: 'date',
@@ -302,8 +308,18 @@ describe('Grid Integration', () => {
       applyFilterModel(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-        optional: { filterType: 'date', type: 'blank' },
-        required: { filterType: 'date', type: 'notBlank' }
+        optional: {
+          filterType: 'date',
+          type: 'blank',
+          dateFrom: null,
+          dateTo: null
+        },
+        required: {
+          filterType: 'date',
+          type: 'notBlank',
+          dateFrom: null,
+          dateTo: null
+        }
       })
     })
 
@@ -422,22 +438,26 @@ describe('Grid Integration', () => {
         before: {
           filterType: 'date',
           type: 'lessThan',
-          dateFrom: '2024-12-31'
+          dateFrom: '2024-12-31',
+          dateTo: null
         },
         beforeEq: {
           filterType: 'date',
           type: 'lessThanOrEqual',
-          dateFrom: '2024-12-31'
+          dateFrom: '2024-12-31',
+          dateTo: null
         },
         after: {
           filterType: 'date',
           type: 'greaterThan',
-          dateFrom: '2024-01-01'
+          dateFrom: '2024-01-01',
+          dateTo: null
         },
         afterEq: {
           filterType: 'date',
           type: 'greaterThanOrEqual',
-          dateFrom: '2024-01-01'
+          dateFrom: '2024-01-01',
+          dateTo: null
         }
       })
     })

@@ -492,7 +492,7 @@ Parameter structure:
 - Format: `f_{columnName}_{operation}={value}`
 - **Text Operations**: `contains`, `eq`, `neq`, `startsWith`, `endsWith`, `notContains`, `blank`, `notBlank`
 - **Number Operations**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `range`, `blank`, `notBlank`
-- **Date Operations**: `eq`, `neq`, `before`, `beforeEq`, `after`, `afterEq`, `range`, `blank`, `notBlank`
+- **Date Operations**: `eq`, `neq`, `before`, `beforeEq`, `after`, `afterEq`, `daterange`, `blank`, `notBlank`
 - **Range Format**: `f_column_range=min,max` (comma-separated values)
 - Standard URL encoding for special characters
 - Supports column names with underscores (e.g., `user_id`, `salary_base`, `created_date`)

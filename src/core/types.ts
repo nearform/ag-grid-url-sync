@@ -366,6 +366,19 @@ export type GridApi = AGGridApi
  */
 export type AGGridFilter = TextFilterModel | NumberFilterModel | DateFilterModel
 
+/**
+ * Raw AG Grid filter object structure from getFilterModel()
+ * Used for type-safe destructuring of filter objects
+ */
+export interface RawAGGridFilter {
+  filterType?: string
+  type?: string
+  filter?: string | number
+  filterTo?: string | number
+  dateFrom?: string
+  dateTo?: string
+}
+
 // ============================================================================
 // OPERATION MAPPINGS
 // ============================================================================

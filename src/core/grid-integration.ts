@@ -6,7 +6,8 @@ import type {
   NumberFilterOperation,
   DateFilterOperation,
   FilterOperation,
-  AGGridFilter
+  AGGridFilter,
+  RawAGGridFilter
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
 import {
@@ -108,14 +109,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
         filterTo,
         dateFrom,
         dateTo
-      } = filter as {
-        filterType?: string
-        type?: string
-        filter?: string | number
-        filterTo?: string | number
-        dateFrom?: string
-        dateTo?: string
-      }
+      } = filter as RawAGGridFilter
 
       // Handle text filters
       if (filterType === 'text') {

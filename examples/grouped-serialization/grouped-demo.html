@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AG Grid URL Sync - Grouped Serialization Demo</title>
     <script src="https://unpkg.com/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
-    <script src="https://unpkg.com/ag-grid-url-sync@latest/dist/ag-grid-url-sync.umd.js"></script>
+    <script type="module">
+      // Import our library from dist
+      import { createUrlSync } from '../../dist/index.js'
+      window.createUrlSync = createUrlSync
+    </script>
     <link
       rel="stylesheet"
       href="https://unpkg.com/ag-grid-community@31.0.0/styles/ag-grid.css"
@@ -150,8 +154,7 @@
         </div>
 
         <div id="urlDisplay" class="url-display">
-          Apply some filters and click "Generate Shareable URL" to see the
-          result...
+          <span id="status">🔄 Initializing...</span>
         </div>
       </div>
 
@@ -283,15 +286,46 @@
       }
 
       // Initialize grid
-      const gridDiv = document.querySelector('#grid')
-      agGrid.createGrid(gridDiv, gridOptions).then(grid => {
-        window.gridApi = grid.gridApi
-        initializeUrlSync()
-      })
-
+      let gridApi
       let urlSync
 
+      document.addEventListener('DOMContentLoaded', function() {
+        // Create grid
+        const gridDiv = document.querySelector('#grid')
+        gridApi = agGrid.createGrid(gridDiv, gridOptions)
+
+        // Wait for library to load
+        setTimeout(() => {
+          if (window.createUrlSync) {
+            initializeUrlSync()
+
+            // Set up event listeners for mode/format changes AFTER initialization
+            document.querySelectorAll('input[name="mode"]').forEach(radio => {
+              radio.addEventListener('change', initializeUrlSync)
+            })
+
+            document.querySelectorAll('input[name="format"]').forEach(radio => {
+              radio.addEventListener('change', initializeUrlSync)
+            })
+
+            // Show current URL if there are any parameters
+            setTimeout(() => {
+              if (window.location.search) {
+                generateUrl()
+              }
+            }, 200)
+          } else {
+            console.error('createUrlSync not available')
+          }
+        }, 100)
+      })
+
       function initializeUrlSync() {
+        if (!gridApi) {
+          console.error('Grid API not available')
+          return
+        }
+
         const mode = document.querySelector('input[name="mode"]:checked').value
         const format = document.querySelector(
           'input[name="format"]:checked'
@@ -309,110 +343,150 @@
                 serialization: 'individual'
               }
 
-        urlSync = AGGridUrlSync.createUrlSync(window.gridApi, config)
+        try {
+          urlSync = window.createUrlSync(gridApi, config)
 
-        // Apply filters from current URL if any
-        urlSync.applyFromUrl(window.location.href)
+          // Apply filters from current URL if any
+          urlSync.applyFromUrl(window.location.href)
+
+          // Update status
+          document.getElementById('status').textContent = '✅ Ready! Apply some filters and click "Generate Shareable URL"'
+
+          console.log('URL sync initialized with config:', config)
+        } catch (error) {
+          console.error('Failed to initialize URL sync:', error)
+          document.getElementById('status').textContent = '❌ Failed to initialize: ' + error.message
+        }
       }
 
-      // Event listeners for mode/format changes
-      document.querySelectorAll('input[name="mode"]').forEach(radio => {
-        radio.addEventListener('change', initializeUrlSync)
-      })
-
-      document.querySelectorAll('input[name="format"]').forEach(radio => {
-        radio.addEventListener('change', initializeUrlSync)
-      })
-
       function generateUrl() {
-        if (!urlSync) return
+        if (!urlSync) {
+          console.error('URL sync not initialized')
+          return
+        }
 
-        const url = urlSync.generateUrl(
-          window.location.origin + window.location.pathname
-        )
-        document.getElementById('urlDisplay').textContent = url
+        try {
+          const url = urlSync.generateUrl(
+            window.location.origin + window.location.pathname
+          )
 
-        // Update browser URL
-        window.history.replaceState({}, '', url)
+          // Clear status and show URL
+          const displayElement = document.getElementById('urlDisplay')
+          displayElement.innerHTML = `<strong>Generated URL:</strong><br><span style="font-family: monospace; word-break: break-all;">${url}</span>`
+
+          // Update browser URL
+          window.history.replaceState({}, '', url)
+        } catch (error) {
+          console.error('Error generating URL:', error)
+          document.getElementById('urlDisplay').innerHTML = `<span style="color: red;">❌ Error: ${error.message}</span>`
+        }
       }
 
       function applyFromUrl() {
+        if (!urlSync) {
+          console.error('URL sync not initialized')
+          return
+        }
+
         const url = prompt(
           'Enter URL to apply filters from:',
           window.location.href
         )
-        if (url && urlSync) {
-          urlSync.applyFromUrl(url)
-          generateUrl() // Update display
+        if (url) {
+          try {
+            urlSync.applyFromUrl(url)
+            generateUrl() // Update display
+            console.log('Applied filters from URL:', url)
+          } catch (error) {
+            console.error('Error applying filters from URL:', error)
+            alert('Error applying filters: ' + error.message)
+          }
         }
       }
 
       function clearFilters() {
-        if (urlSync) {
+        if (!urlSync) {
+          console.error('URL sync not initialized')
+          return
+        }
+
+        try {
           urlSync.clearFilters()
           generateUrl() // Update display
+          console.log('Filters cleared')
+        } catch (error) {
+          console.error('Error clearing filters:', error)
         }
       }
 
       function addSampleFilters() {
-        if (!urlSync) return
+        if (!urlSync || !gridApi) {
+          console.error('URL sync or Grid API not initialized')
+          return
+        }
 
-        // Add some sample filters to demonstrate
-        urlSync.applyFilters({
-          name: { filterType: 'text', type: 'contains', filter: 'John' },
-          department: {
-            filterType: 'text',
-            type: 'equals',
-            filter: 'Engineering'
-          },
-          salary: { filterType: 'number', type: 'greaterThan', filter: 80000 },
-          age: {
-            filterType: 'number',
-            type: 'inRange',
-            filter: 25,
-            filterTo: 40
-          },
-          startDate: {
-            filterType: 'date',
-            type: 'dateAfter',
-            filter: '2024-01-01'
+        try {
+          // Add some sample filters to demonstrate
+          const sampleFilters = {
+            name: { filterType: 'text', type: 'contains', filter: 'John' },
+            department: {
+              filterType: 'text',
+              type: 'equals',
+              filter: 'Engineering'
+            },
+            salary: { filterType: 'number', type: 'greaterThan', filter: 80000 },
+            age: {
+              filterType: 'number',
+              type: 'inRange',
+              filter: 25,
+              filterTo: 40
+            },
+            startDate: {
+              filterType: 'date',
+              type: 'greaterThan',
+              dateFrom: '2024-01-01'
+            }
           }
-        })
 
-        generateUrl() // Update display
+          urlSync.applyFilters(sampleFilters)
+          generateUrl() // Update display
+          console.log('Sample filters applied:', sampleFilters)
+        } catch (error) {
+          console.error('Error adding sample filters:', error)
+        }
       }
 
       function showFormats() {
-        if (!urlSync) return
-
-        let message = 'Current filters in different formats:\n\n'
+        if (!urlSync) {
+          console.error('URL sync not initialized')
+          return
+        }
 
         try {
+          const filterModel = gridApi.getFilterModel()
+          if (Object.keys(filterModel).length === 0) {
+            alert('No filters are currently active. Please add some filters first.')
+            return
+          }
+
+          let message = 'Current filters in different formats:\n\n'
+
           // Show all formats
           const formats = ['querystring', 'json', 'base64']
           formats.forEach(format => {
-            if (urlSync.getFiltersAsFormat) {
+            try {
               const formatted = urlSync.getFiltersAsFormat(format)
               message += `${format.toUpperCase()}:\n${formatted}\n\n`
+            } catch (error) {
+              message += `${format.toUpperCase()}: Error - ${error.message}\n\n`
             }
           })
 
           alert(message)
         } catch (error) {
+          console.error('Error showing formats:', error)
           alert('Error showing formats: ' + error.message)
         }
-      }
-
-      // Initialize on page load
-      window.addEventListener('load', () => {
-        // Auto-apply any filters from URL on page load
-        setTimeout(() => {
-          const urlParams = new URLSearchParams(window.location.search)
-          if (urlParams.toString()) {
-            generateUrl() // Update display with current URL
-          }
-        }, 1000)
-      })
     </script>
   </body>
 </html>

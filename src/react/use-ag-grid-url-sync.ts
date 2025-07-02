@@ -151,7 +151,7 @@ export function useAGGridUrlSync(
     (baseUrl?: string): string => {
       if (!urlSyncRef.current) {
         return (
-          baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+          baseUrl ?? (typeof window !== 'undefined' ? window.location.href : '')
         )
       }
       try {
@@ -159,7 +159,7 @@ export function useAGGridUrlSync(
       } catch (error) {
         handleError(error, 'generate-share-url')
         return (
-          baseUrl || (typeof window !== 'undefined' ? window.location.href : '')
+          baseUrl ?? (typeof window !== 'undefined' ? window.location.href : '')
         )
       }
     },

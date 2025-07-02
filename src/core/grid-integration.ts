@@ -31,7 +31,7 @@ const AG_GRID_TO_NUMBER_OPERATION_MAP = {
   notEqual: 'notEqual',
   blank: 'blank',
   notBlank: 'notBlank'
-} satisfies Record<string, FilterOperation>
+} as const satisfies Record<string, FilterOperation>
 
 /**
  * Type guard to check if a value is a valid number operation key

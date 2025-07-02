@@ -16,10 +16,12 @@ export const DEFAULT_CONFIG = {
 /**
  * Validation result interface
  */
-export interface ValidationResult {
-  valid: boolean
-  error?: string
-}
+export type ValidationResult =
+  | { valid: true }
+  | {
+      valid: false
+      error: string
+    }
 
 /**
  * Validates a text filter value against configuration constraints

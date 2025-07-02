@@ -532,9 +532,7 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('sets up filterChanged event listener', async () => {
-      const { result } = renderHook(() =>
-        useAGGridUrlSync(mockGridApi as GridApi)
-      )
+      renderHook(() => useAGGridUrlSync(mockGridApi as GridApi))
 
       await waitForEffects()
 

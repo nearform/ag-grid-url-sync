@@ -19,6 +19,20 @@ import {
 } from './types.js'
 import type { GridApi } from 'ag-grid-community'
 
+// Map AG Grid number operations to our internal number operations
+// Since AG Grid uses generic names, we need to be explicit about number operations
+const AG_GRID_TO_NUMBER_OPERATION_MAP: Record<string, FilterOperation> = {
+  lessThan: 'lessThan',
+  lessThanOrEqual: 'lessThanOrEqual',
+  greaterThan: 'greaterThan',
+  greaterThanOrEqual: 'greaterThanOrEqual',
+  inRange: 'inRange',
+  equals: 'eq',
+  notEqual: 'notEqual',
+  blank: 'blank',
+  notBlank: 'notBlank'
+} satisfies Record<string, FilterOperation>
+
 /**
  * Converts a date string to ISO format (YYYY-MM-DD)
  * Handles both date strings and undefined values
@@ -133,21 +147,6 @@ export function getFilterModel(config: InternalConfig): FilterState {
         // For number filters, we need to handle the mapping carefully since
         // AG Grid uses the same operation names for numbers and dates
         let internalOperation = type as FilterOperation
-
-        // Map AG Grid number operations to our internal number operations
-        // Since AG Grid uses generic names, we need to be explicit about number operations
-        const AG_GRID_TO_NUMBER_OPERATION_MAP: Record<string, FilterOperation> =
-          {
-            lessThan: 'lessThan',
-            lessThanOrEqual: 'lessThanOrEqual',
-            greaterThan: 'greaterThan',
-            greaterThanOrEqual: 'greaterThanOrEqual',
-            inRange: 'inRange',
-            equals: 'eq',
-            notEqual: 'notEqual',
-            blank: 'blank',
-            notBlank: 'notBlank'
-          } as const
 
         // Use the explicit number mapping instead of the reverse AG Grid mapping
         internalOperation =

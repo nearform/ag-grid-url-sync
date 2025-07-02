@@ -14,3 +14,18 @@ export { serializeFilters, generateUrl } from './core/url-generator.js'
 
 // AG Grid integration utilities
 export { getFilterModel, applyFilterModel } from './core/grid-integration.js'
+
+// Grouped serialization utilities (Phase 1)
+export {
+  serializeGrouped,
+  deserializeGrouped,
+  detectGroupedSerialization,
+  getAvailableFormats,
+  getFormatSerializer
+} from './core/serialization/grouped.js'
+
+export {
+  QueryStringSerializer,
+  JsonSerializer,
+  Base64Serializer
+} from './core/serialization/formats.js'

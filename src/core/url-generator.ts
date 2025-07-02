@@ -1,6 +1,7 @@
 import type { FilterState, InternalConfig, ColumnFilter } from './types.js'
 import { validateFilterValue } from './validation.js'
 import { INTERNAL_TO_URL_OPERATION_MAP } from './types.js'
+import { serializeGrouped } from './serialization/grouped.js'
 
 const FILTER_TYPES = {
   TEXT: 'text',
@@ -150,6 +151,13 @@ export function generateUrl(
   config: InternalConfig
 ): string {
   const url = new URL(baseUrl)
+
+  // Handle grouped serialization
+  if (config.serialization === 'grouped') {
+    return generateGroupedUrl(baseUrl, filterState, config)
+  }
+
+  // Handle individual serialization (existing logic)
   const filterParams = serializeFilters(filterState, config)
 
   // Preserve existing non-filter parameters
@@ -172,5 +180,56 @@ export function generateUrl(
   }
 
   url.search = queryString
+  return url.toString()
+}
+
+/**
+ * Generates a URL with grouped serialization
+ */
+function generateGroupedUrl(
+  baseUrl: string,
+  filterState: FilterState,
+  config: InternalConfig
+): string {
+  const url = new URL(baseUrl)
+
+  // Serialize filters using grouped format
+  const groupedResult = serializeGrouped(filterState, config)
+
+  // Preserve existing non-filter parameters (but remove the grouped param if it exists)
+  const paramsToKeep = new URLSearchParams()
+  for (const [key, value] of url.searchParams.entries()) {
+    if (key !== config.groupedParam) {
+      paramsToKeep.set(key, value)
+    }
+  }
+
+  // Clear and rebuild search params
+  url.search = ''
+  for (const [key, value] of paramsToKeep.entries()) {
+    url.searchParams.set(key, value)
+  }
+
+  // Add the grouped parameter if there are filters
+  if (groupedResult.value) {
+    url.searchParams.set(groupedResult.paramName, groupedResult.value)
+  }
+
+  // If no filters, ensure the grouped param is removed
+  if (!groupedResult.value && url.searchParams.has(config.groupedParam)) {
+    url.searchParams.delete(config.groupedParam)
+  }
+
+  // Clean up empty query string
+  const queryString = url.searchParams.toString()
+  if (!queryString) {
+    let result = url.toString().replace(/\?$/, '')
+    // Remove trailing slash for root paths when no query parameters
+    if (result.endsWith('/') && result === url.origin + '/') {
+      result = result.slice(0, -1)
+    }
+    return result
+  }
+
   return url.toString()
 }

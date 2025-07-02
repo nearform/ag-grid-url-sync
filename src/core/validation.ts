@@ -258,7 +258,7 @@ export function validateAndParseDateRange(
 
   const rangeValidation = validateDateRange(startDate, endDate)
   if (!rangeValidation.valid) {
-    throw new InvalidDateError(rangeValidation.error || 'Invalid date range')
+    throw new InvalidDateError(rangeValidation.error ?? 'Invalid date range')
   }
 
   return [startDate, endDate]

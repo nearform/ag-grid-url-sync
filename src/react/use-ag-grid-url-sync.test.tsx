@@ -68,15 +68,6 @@ type MockGridApi = Partial<GridApi> &
     | 'removeEventListener'
   >
 
-type MockAGGridUrlSync = {
-  generateUrl: ReturnType<typeof vi.fn>
-  getQueryParams: ReturnType<typeof vi.fn>
-  applyFromUrl: ReturnType<typeof vi.fn>
-  clearFilters: ReturnType<typeof vi.fn>
-  applyFilters: ReturnType<typeof vi.fn>
-  destroy: ReturnType<typeof vi.fn>
-}
-
 // Create a properly typed mock GridApi
 const createMockGridApi = (): MockGridApi => ({
   setFilterModel: vi.fn(),
@@ -147,9 +138,7 @@ describe('useAGGridUrlSync', () => {
       )
 
       // Wait for effects to run
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(() => setTimeout(0))
 
       expect(mockInstance.applyFromUrl).toHaveBeenCalled()
     })
@@ -161,9 +150,7 @@ describe('useAGGridUrlSync', () => {
         })
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(() => setTimeout(0))
 
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
     })
@@ -175,9 +162,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(() => setTimeout(0))
 
       const url = result.current.shareUrl()
       expect(url).toBe('http://example.com?f_name_contains=test')
@@ -195,9 +180,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(() => setTimeout(0))
 
       const params = result.current.getQueryParams()
       expect(params).toBe('?f_name_contains=test')
@@ -208,9 +191,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(() => setTimeout(0))
 
       act(() => {
         result.current.applyUrlFilters('http://test.com')
@@ -224,9 +205,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(() => setTimeout(0))
 
       act(() => {
         result.current.clearFilters()
@@ -240,9 +219,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(() => setTimeout(0))
 
       const filters = result.current.parseUrlFilters(
         'http://test.com?f_name_contains=test'
@@ -257,9 +234,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       const filters = result.current.parseUrlFilters(
         'http://test.com?f_created_eq=2024-01-15&f_deadline_before=2024-12-31&f_period_daterange=2024-01-01,2024-12-31'
@@ -286,9 +261,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       const filters = result.current.parseUrlFilters(
         'http://test.com?f_salary_gte=50000&f_age_range=25,45'
@@ -309,9 +282,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       const filters = {
         name: {
@@ -332,9 +303,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       const dateFilters = {
         created: {
@@ -367,9 +336,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       const urlWithDateFilters =
         'http://test.com?f_created_eq=2024-01-15&f_deadline_before=2024-12-31&f_period_daterange=2024-01-01,2024-12-31'
@@ -478,9 +445,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi, { onError })
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       const url = result.current.shareUrl()
       expect(url).toBe(window.location.href)
@@ -496,9 +461,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi, { onParseError })
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       const mockedParseUrlFilters = vi.mocked(parseUrlFilters)
       mockedParseUrlFilters.mockImplementationOnce(() => {
@@ -519,9 +482,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       unmount()
 
@@ -534,9 +495,7 @@ describe('useAGGridUrlSync', () => {
         { initialProps: { gridApi: mockGridApi as GridApi | null } }
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       const newMockGridApi = createMockGridApi()
       rerender({ gridApi: newMockGridApi as GridApi | null })
@@ -568,9 +527,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       expect(result.current.hasFilters).toBe(false)
     })
@@ -580,9 +537,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       expect(mockGridApi.addEventListener).toHaveBeenCalledWith(
         'filterChanged',
@@ -595,9 +550,7 @@ describe('useAGGridUrlSync', () => {
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await act(async () => await setTimeout(0))
 
       unmount()
 

@@ -2,6 +2,12 @@ import type { FilterState, InternalConfig, ColumnFilter } from './types.js'
 import { validateFilterValue } from './validation.js'
 import { INTERNAL_TO_URL_OPERATION_MAP } from './types.js'
 
+const FILTER_TYPES = {
+  TEXT: 'text',
+  NUMBER: 'number',
+  DATE: 'date'
+} as const
+
 /**
  * Serializes a single column filter to URL parameter
  */
@@ -19,7 +25,7 @@ function serializeColumnFilter(
   const paramName = `${paramPrefix}${columnName}_${urlOperation}`
 
   // Handle date range operations
-  if (filter.type === 'dateRange' && filter.filterType === 'date') {
+  if (filter.type === 'dateRange' && filter.filterType === FILTER_TYPES.DATE) {
     // Type guard: ensure this is a DateColumnFilter with dateRange operation
     if ('filterTo' in filter && filter.filterTo !== undefined) {
       // Don't encode the comma for range values - handle this directly
@@ -29,7 +35,7 @@ function serializeColumnFilter(
   }
 
   // Handle number range operations
-  if (filter.type === 'inRange' && filter.filterType === 'number') {
+  if (filter.type === 'inRange' && filter.filterType === FILTER_TYPES.NUMBER) {
     // Type guard: ensure this is a NumberColumnFilter with inRange operation
     if ('filterTo' in filter && filter.filterTo !== undefined) {
       // Don't encode the comma for range values - handle this directly
@@ -44,17 +50,17 @@ function serializeColumnFilter(
   }
 
   // Handle date operations (ISO date format preservation)
-  if (filter.filterType === 'date') {
+  if (filter.filterType === FILTER_TYPES.DATE) {
     return `${paramName}=${filter.filter}` // ISO dates don't need URL encoding
   }
 
   // Handle number operations
-  if (filter.filterType === 'number') {
+  if (filter.filterType === FILTER_TYPES.NUMBER) {
     return `${paramName}=${filter.filter}`
   }
 
   // Handle text operations (existing logic)
-  if (filter.filterType === 'text' && filter.filter) {
+  if (filter.filterType === FILTER_TYPES.TEXT && filter.filter) {
     // Note: Validation should be done at the serializeFilters level, not here
     return `${paramName}=${encodeURIComponent(filter.filter.toString())}`
   }
@@ -94,14 +100,14 @@ export function serializeFilters(
   for (const [column, filter] of Object.entries(filterState)) {
     // Support text, number, and date filters
     if (
-      filter.filterType !== 'text' &&
-      filter.filterType !== 'number' &&
-      filter.filterType !== 'date'
+      filter.filterType !== FILTER_TYPES.TEXT &&
+      filter.filterType !== FILTER_TYPES.NUMBER &&
+      filter.filterType !== FILTER_TYPES.DATE
     )
       continue
 
     // Apply validation for text filters before serialization
-    if (filter.filterType === 'text') {
+    if (filter.filterType === FILTER_TYPES.TEXT) {
       const validatedValue = validateFilterValue(
         filter.filter,
         config,

@@ -26,7 +26,7 @@ import type { GridApi } from 'ag-grid-community'
 function toIsoDateString(val: string | undefined): string {
   if (!val) return ''
   const match = val.match(/^(\d{4}-\d{2}-\d{2})/)
-  return match && match[1] ? match[1] : val || ''
+  return match?.[1] ? match[1] : val || ''
 }
 
 /**
@@ -108,7 +108,14 @@ export function getFilterModel(config: InternalConfig): FilterState {
         filterTo,
         dateFrom,
         dateTo
-      } = filter as any
+      } = filter as {
+        filterType?: string
+        type?: string
+        filter?: string | number
+        filterTo?: string | number
+        dateFrom?: string
+        dateTo?: string
+      }
 
       // Handle text filters
       if (filterType === 'text') {
@@ -123,7 +130,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
           filterState[column] = {
             filterType: 'text',
             type: internalOperation, // Now properly typed as TextFilterOperation
-            filter: value || ''
+            filter: String(value || '')
           }
         }
       }
@@ -164,18 +171,27 @@ export function getFilterModel(config: InternalConfig): FilterState {
         let mappedOperation = internalOperation
 
         // Map AG Grid generic date operations to our date-specific operations
-        if (type === 'lessThan') mappedOperation = 'dateBefore'
-        if (type === 'lessThanOrEqual') mappedOperation = 'dateBeforeOrEqual'
-        if (type === 'greaterThan') mappedOperation = 'dateAfter'
-        if (type === 'greaterThanOrEqual') mappedOperation = 'dateAfterOrEqual'
-        if (type === 'inRange') mappedOperation = 'dateRange'
+        const AG_GRID_TO_DATE_OPERATION_MAP: Record<
+          string,
+          DateFilterOperation
+        > = {
+          lessThan: 'dateBefore',
+          lessThanOrEqual: 'dateBeforeOrEqual',
+          greaterThan: 'dateAfter',
+          greaterThanOrEqual: 'dateAfterOrEqual',
+          inRange: 'dateRange'
+        } as const
+
+        mappedOperation = type
+          ? AG_GRID_TO_DATE_OPERATION_MAP[type] || internalOperation
+          : internalOperation
 
         // Use type predicate to validate and narrow the type
         if (mappedOperation && isDateFilterOperation(mappedOperation)) {
           const dateFilter: ColumnFilter = {
             filterType: 'date',
             type: mappedOperation,
-            filter: toIsoDateString(dateFrom || value || '')
+            filter: toIsoDateString(dateFrom || String(value || ''))
           }
 
           // Handle date range operations (AG Grid uses dateFrom/dateTo)

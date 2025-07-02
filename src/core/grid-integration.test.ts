@@ -5,7 +5,6 @@ import {
   detectColumnFilterType
 } from './grid-integration.js'
 
-import type { GridApi } from 'ag-grid-community'
 import type { InternalConfig, FilterState } from './types.js'
 
 describe('Grid Integration', () => {

@@ -36,6 +36,7 @@
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.test.js",
-    "**/test-setup.ts"
+    "**/test-setup.ts",
+    "**/test-helpers.ts"
   ]
 }

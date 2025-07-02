@@ -253,8 +253,8 @@ export function validateAndParseDateRange(
     )
   }
 
-  const startDate = validateAndParseDate(rangeParts[0]?.trim() || '')
-  const endDate = validateAndParseDate(rangeParts[1]?.trim() || '')
+  const startDate = validateAndParseDate(rangeParts[0]?.trim() ?? '')
+  const endDate = validateAndParseDate(rangeParts[1]?.trim() ?? '')
 
   const rangeValidation = validateDateRange(startDate, endDate)
   if (!rangeValidation.valid) {

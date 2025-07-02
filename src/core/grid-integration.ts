@@ -21,7 +21,7 @@ import type { GridApi } from 'ag-grid-community'
 
 // Map AG Grid number operations to our internal number operations
 // Since AG Grid uses generic names, we need to be explicit about number operations
-const AG_GRID_TO_NUMBER_OPERATION_MAP: Record<string, FilterOperation> = {
+const AG_GRID_TO_NUMBER_OPERATION_MAP = {
   lessThan: 'lessThan',
   lessThanOrEqual: 'lessThanOrEqual',
   greaterThan: 'greaterThan',

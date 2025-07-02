@@ -1,4 +1,5 @@
 import { act } from '@testing-library/react'
+import { setTimeout } from 'timers/promises'
 
 /**
  * Helper function to wait for React effects to complete in tests.
@@ -15,7 +16,7 @@ import { act } from '@testing-library/react'
  * })
  * ```
  */
-export const waitForEffects = () => act(() => setTimeout(() => {}, 0))
+export const waitForEffects = () => act(() => setTimeout(0))
 
 /**
  * Helper function to wait for multiple effect cycles.

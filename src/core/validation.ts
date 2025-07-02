@@ -104,11 +104,10 @@ export function validateNumberRange(
  * @returns Parsed number or throws InvalidFilterError
  */
 export function validateAndParseNumber(value: string): number {
-  if (!value || value.trim() === '') {
+  const trimmedValue = value?.trim()
+  if (!trimmedValue) {
     throw new InvalidFilterError('Number filter value cannot be empty')
   }
-
-  const trimmedValue = value.trim()
 
   // Use a regex to validate proper number format before parsing
   // This prevents parseFloat from accepting partial numbers like "42abc" -> 42
@@ -138,11 +137,10 @@ export function validateAndParseNumber(value: string): number {
  * @throws InvalidDateError if date format is invalid or date doesn't exist
  */
 export function validateAndParseDate(value: string): string {
-  if (!value || value.trim() === '') {
+  const trimmedValue = value?.trim()
+  if (!trimmedValue) {
     throw new InvalidDateError('Date filter value cannot be empty')
   }
-
-  const trimmedValue = value.trim()
 
   // Validate ISO date format (YYYY-MM-DD)
   const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/
@@ -244,11 +242,12 @@ export function validateDateRange(
 export function validateAndParseDateRange(
   rangeValue: string
 ): [string, string] {
-  if (!rangeValue || rangeValue.trim() === '') {
+  const trimmedValue = rangeValue?.trim()
+  if (!trimmedValue) {
     throw new InvalidDateError('Date range value cannot be empty')
   }
 
-  const rangeParts = rangeValue.split(',')
+  const rangeParts = trimmedValue.split(',')
   if (rangeParts.length !== 2) {
     throw new InvalidDateError(
       'Date range must contain exactly two dates separated by comma (e.g., "2024-01-01,2024-12-31")'

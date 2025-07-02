@@ -8,6 +8,7 @@ A lightweight TypeScript library for synchronizing AG Grid text and number filte
 
 - 🔍 **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - 🔢 **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
+- 🔢 **Complete date filter support** - All 9 AG Grid date operations (equals, not equal, before, before or equal, after, after or equal, in range, blank, not blank) with strict ISO date validation (YYYY-MM-DD)
 - 🔗 Manual URL generation for sharing filter states
 - ↔️ Bidirectional sync between grid and URL
 - 🛠️ Framework agnostic - works with any AG Grid setup
@@ -22,7 +23,7 @@ A lightweight TypeScript library for synchronizing AG Grid text and number filte
 
 ## Supported Filter Types
 
-Supports **all AG Grid text and number filter operations** (17 total) with clean, human-readable URL parameters:
+Supports **all AG Grid text, number, and date filter operations** (26 total) with clean, human-readable URL parameters:
 
 ### Text Filters (8 operations)
 
@@ -51,7 +52,21 @@ Supports **all AG Grid text and number filter operations** (17 total) with clean
 | **Number**  | Blank                 | `f_column_blank=true`    | `f_bonus_blank=true`     | Field is empty/null           |
 | **Number**  | Not Blank             | `f_column_notBlank=true` | `f_salary_notBlank=true` | Field has any numeric value   |
 
-> **💡 Naming Convention Note**: URL parameters use short, clean names for better readability (`eq` for equals, `neq` for not equal). These are automatically converted to the proper AG Grid operation names (`equals`, `notEqual`) internally. This design keeps URLs concise while maintaining full compatibility with AG Grid's filter API.
+### Date Filters (9 operations)
+
+| Filter Type | Operation       | URL Format                     | Example                                    | Description                               |
+| ----------- | --------------- | ------------------------------ | ------------------------------------------ | ----------------------------------------- |
+| **Date**    | Equals          | `f_column_eq=YYYY-MM-DD`       | `f_created_eq=2024-01-15`                  | Date equals value exactly                 |
+| **Date**    | Not Equal       | `f_column_neq=YYYY-MM-DD`      | `f_deadline_neq=2024-12-31`                | Date does not equal value                 |
+| **Date**    | Before          | `f_column_before=YYYY-MM-DD`   | `f_deadline_before=2024-12-31`             | Date is before value                      |
+| **Date**    | Before or Equal | `f_column_beforeEq=YYYY-MM-DD` | `f_archived_beforeEq=2024-12-31`           | Date is before or equal to value          |
+| **Date**    | After           | `f_column_after=YYYY-MM-DD`    | `f_created_after=2024-01-01`               | Date is after value                       |
+| **Date**    | After or Equal  | `f_column_afterEq=YYYY-MM-DD`  | `f_updated_afterEq=2024-06-01`             | Date is after or equal to value           |
+| **Date**    | In Range        | `f_column_daterange=start,end` | `f_period_daterange=2024-01-01,2024-12-31` | Date is between start and end (inclusive) |
+| **Date**    | Blank           | `f_column_blank=true`          | `f_deadline_blank=true`                    | Date field is empty/null                  |
+| **Date**    | Not Blank       | `f_column_notBlank=true`       | `f_created_notBlank=true`                  | Date field has any value                  |
+
+> **🗓️ Date Format Note**: Date filters require strict ISO format (`YYYY-MM-DD`). All date values are validated for real calendar dates, including leap years and month boundaries. Invalid or non-ISO dates will be rejected.
 
 ### Filter Detection
 
@@ -61,9 +76,9 @@ The library automatically works with:
 - **Number columns** configured with `filter: 'agNumberColumnFilter'`
 - **Auto-detection** based on `cellDataType: 'number'` configuration
 - Columns with `filter: true` (AG Grid's default text filter)
-- Any column where users apply text or number-based filters
-- All AG Grid text and number filter operations through the filter menu
-- **Mixed filter types** - combine text and number filters in the same URL
+- Any column where users apply text, number, or date-based filters
+- All AG Grid text, number, and date filter operations through the filter menu
+- **Mixed filter types** - combine text, number, and date filters in the same URL
 
 ### URL Examples
 
@@ -79,34 +94,40 @@ https://app.com/data?f_name_contains=john
 https://app.com/data?f_salary_gt=75000
 ```
 
-**Mixed text and number filters:**
+**Simple date filter:**
 
 ```
-https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_salary_gte=80000&f_age_range=25,45
+https://app.com/data?f_created_eq=2024-01-15
 ```
 
-**Complex filtering with range operations:**
+**Date range filter:**
 
 ```
-https://app.com/data?f_name_contains=manager&f_salary_range=60000,100000&f_experience_gte=5&f_status_eq=active
+https://app.com/data?f_period_daterange=2024-01-01,2024-12-31
 ```
 
-**All text operations:**
+**Date before/after filter:**
 
 ```
-https://app.com/data?f_name_contains=john&f_email_startsWith=admin&f_status_neq=inactive&f_description_endsWith=test&f_optional_blank=true&f_required_notBlank=true&f_tags_notContains=spam&f_title_eq=manager
+https://app.com/data?f_deadline_before=2024-12-31&f_created_after=2024-01-01
 ```
 
-**All number operations:**
+**Mixed text, number, and date filters:**
 
 ```
-https://app.com/data?f_age_eq=30&f_salary_neq=50000&f_experience_gt=5&f_score_gte=85&f_budget_lt=10000&f_hours_lte=40&f_age_range=25,45&f_bonus_blank=true&f_salary_notBlank=true
+https://app.com/data?f_name_contains=john&f_department_eq=Engineering&f_salary_gte=80000&f_age_range=25,45&f_created_after=2024-01-01
 ```
 
-**Blank operations (both text and number):**
+**All date operations:**
 
 ```
-https://app.com/data?f_comments_blank=true&f_bonus_blank=true&f_name_notBlank=true&f_salary_notBlank=true
+https://app.com/data?f_created_eq=2024-01-15&f_deadline_neq=2024-12-31&f_start_after=2024-01-01&f_end_before=2024-12-31&f_updated_afterEq=2024-06-01&f_archived_beforeEq=2024-12-31&f_period_daterange=2024-01-01,2024-12-31&f_optional_blank=true&f_required_notBlank=true
+```
+
+**Blank operations (text, number, and date):**
+
+```
+https://app.com/data?f_comments_blank=true&f_bonus_blank=true&f_name_notBlank=true&f_salary_notBlank=true&f_deadline_blank=true&f_created_notBlank=true
 ```
 
 ## Installation
@@ -471,6 +492,7 @@ Parameter structure:
 - Format: `f_{columnName}_{operation}={value}`
 - **Text Operations**: `contains`, `eq`, `neq`, `startsWith`, `endsWith`, `notContains`, `blank`, `notBlank`
 - **Number Operations**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `range`, `blank`, `notBlank`
+- **Date Operations**: `eq`, `neq`, `before`, `beforeEq`, `after`, `afterEq`, `daterange`, `blank`, `notBlank`
 - **Range Format**: `f_column_range=min,max` (comma-separated values)
 - Standard URL encoding for special characters
 - Supports column names with underscores (e.g., `user_id`, `salary_base`, `created_date`)
@@ -584,22 +606,23 @@ Comprehensive demonstration showcasing all features:
 
 - **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
-- **Mixed filter scenarios** - Text and number filters working together (Sales team + salary filters, Engineering + experience, Executive view with high salaries)
+- **Complete date filter support** - All 9 AG Grid date operations (equals, not equal, before, before or equal, after, after or equal, in range, blank, not blank)
+- **Mixed filter scenarios** - Text, number, and date filters working together (Sales team + salary filters, Engineering + experience, Executive view with high salaries)
 - **Number operation demos** - Dedicated buttons for salary ranges, age filtering, experience thresholds, and blank number fields
 - **URL sharing workflow** - Copy to clipboard, email, and Slack integration
 - **Performance monitoring** - Real-time benchmarks and stress testing with mixed filter types
-- **Error handling** - Malformed URL and invalid filter testing for both text and numbers
+- **Error handling** - Malformed URL and invalid filter testing for both text, number, and date
 - **Complete API showcase** - Generate URLs, apply filters, clear filters with comprehensive examples
 
 ### ⚛️ [React Integration](./examples/react-basic/basic-grid.tsx)
 
 Clean React component showing the `useAGGridUrlSync` hook:
 
-- React hook integration with AG Grid for text and number filters
+- React hook integration with AG Grid for text, number, and date filters
 - Automatic filter state management for mixed filter types
 - Share button with clipboard functionality
 - Filter status indicators and controls
-- Auto-apply filters on component mount with both text and number support
+- Auto-apply filters on component mount with all filter types
 - Enhanced employee data with salary, age, and experience columns
 - Full TypeScript support with comprehensive type coverage
 
@@ -609,9 +632,9 @@ Common data and column definitions used across examples:
 
 - Enhanced employee data with salary, age, and experience number fields
 - Project data with budget and numeric fields for comprehensive testing
-- Column definitions with complete text and number filter support
-- All 8 text filter operations and 9 number filter operations enabled
-- Realistic data ranges for demonstrating number filters (salaries $58K-$95K, ages 26-42, experience 3-15 years)
+- Column definitions with complete text, number, and date filter support
+- All 8 text filter operations, 9 number filter operations, and 9 date filter operations enabled
+- Realistic data ranges for demonstrating number and date filters (salaries $58K-$95K, ages 26-42, experience 3-15 years)
 - Includes null values for demonstrating blank/notBlank operations
 
 All examples work out-of-the-box and demonstrate the complete functionality. The HTML demo can be opened directly in your browser, while the React example shows clean integration patterns.

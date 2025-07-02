@@ -3,57 +3,83 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setTimeout } from 'timers/promises'
 import type { GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
+import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
+import { parseUrlFilters } from '../core/url-parser.js'
+import { waitForEffects } from '../test-helpers.js'
 
-// Mock the core library
-vi.mock('../core/ag-grid-url-sync.js', () => {
-  const mockAGGridUrlSync = {
-    generateUrl: vi.fn(() => 'http://example.com?f_name_contains=test'),
-    getQueryParams: vi.fn(() => '?f_name_contains=test'),
-    applyFromUrl: vi.fn(),
-    applyFilters: vi.fn(),
-    clearFilters: vi.fn(),
-    destroy: vi.fn()
-  }
+// Create a shared mock instance that will be used across all tests
+const mockInstance = {
+  generateUrl: vi.fn(() => 'http://example.com?f_name_contains=test'),
+  getQueryParams: vi.fn(() => '?f_name_contains=test'),
+  applyFromUrl: vi.fn(),
+  clearFilters: vi.fn(),
+  applyFilters: vi.fn(),
+  destroy: vi.fn()
+}
 
-  return {
-    AGGridUrlSync: vi.fn(() => mockAGGridUrlSync)
-  }
+// Mock the core AG Grid URL sync module
+vi.mock('../core/ag-grid-url-sync.js', () => ({
+  AGGridUrlSync: vi.fn(() => mockInstance),
+  createUrlSync: vi.fn(() => mockInstance)
+}))
+
+// Mock the URL parser
+vi.mock('../core/url-parser.js', () => ({
+  parseUrlFilters: vi.fn((url: string) => {
+    if (url.includes('f_created_eq=2024-01-15')) {
+      return {
+        created: { filterType: 'date', type: 'eq', filter: '2024-01-15' },
+        deadline: {
+          filterType: 'date',
+          type: 'dateBefore',
+          filter: '2024-12-31'
+        },
+        period: {
+          filterType: 'date',
+          type: 'dateRange',
+          filter: '2024-01-01',
+          filterTo: '2024-12-31'
+        }
+      }
+    }
+    if (url.includes('f_salary_gte=50000')) {
+      return {
+        salary: {
+          filterType: 'number',
+          type: 'greaterThanOrEqual',
+          filter: 50000
+        },
+        age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
+      }
+    }
+    // Default text filter response
+    return {
+      name: { filterType: 'text', type: 'contains', filter: 'test' }
+    }
+  })
+}))
+
+// Create proper mock types
+type MockGridApi = Partial<GridApi> &
+  Pick<
+    GridApi,
+    | 'setFilterModel'
+    | 'getFilterModel'
+    | 'addEventListener'
+    | 'removeEventListener'
+  >
+
+// Create a properly typed mock GridApi
+const createMockGridApi = (): MockGridApi => ({
+  setFilterModel: vi.fn(),
+  getFilterModel: vi.fn(() => ({})),
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn()
 })
 
-// Mock the url-parser
-vi.mock('../core/url-parser.js', () => ({
-  parseUrlFilters: vi.fn(() => ({
-    name: {
-      filterType: 'text' as const,
-      type: 'contains' as const,
-      filter: 'test'
-    }
-  }))
-}))
-
-// Mock the validation
-vi.mock('../core/validation.js', () => ({
-  DEFAULT_CONFIG: {
-    paramPrefix: 'f_',
-    maxValueLength: 200,
-    onParseError: () => {}
-  }
-}))
-
-// Create a mock GridApi
-const createMockGridApi = (): GridApi =>
-  ({
-    setFilterModel: vi.fn(),
-    getFilterModel: vi.fn(() => ({})),
-    onFilterChanged: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    destroy: vi.fn()
-  }) as any
-
 describe('useAGGridUrlSync', () => {
-  let mockGridApi: GridApi
-  let consoleSpy: any
+  let mockGridApi: MockGridApi
+  let consoleSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     mockGridApi = createMockGridApi()
@@ -82,20 +108,22 @@ describe('useAGGridUrlSync', () => {
 
     test('initializes when gridApi becomes available', () => {
       const { result, rerender } = renderHook(
-        ({ gridApi }: { gridApi: GridApi | null }) => useAGGridUrlSync(gridApi),
-        { initialProps: { gridApi: null } }
+        (props: { gridApi: GridApi | null }) => useAGGridUrlSync(props.gridApi),
+        { initialProps: { gridApi: null as GridApi | null } }
       )
 
       expect(result.current.isReady).toBe(false)
 
-      rerender({ gridApi: mockGridApi as any })
+      rerender({ gridApi: mockGridApi as GridApi | null })
 
       expect(result.current.isReady).toBe(true)
     })
 
     test('respects enabledWhenReady option', () => {
       const { result } = renderHook(() =>
-        useAGGridUrlSync(mockGridApi, { enabledWhenReady: false })
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          enabledWhenReady: false
+        })
       )
 
       expect(result.current.isReady).toBe(false)
@@ -104,32 +132,26 @@ describe('useAGGridUrlSync', () => {
 
   describe('Auto-apply on Mount', () => {
     test('applies URL filters on mount when autoApplyOnMount is true', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
-
       renderHook(() =>
-        useAGGridUrlSync(mockGridApi, { autoApplyOnMount: true })
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          autoApplyOnMount: true
+        })
       )
 
       // Wait for effects to run
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       expect(mockInstance.applyFromUrl).toHaveBeenCalled()
     })
 
     test('does not apply URL filters when autoApplyOnMount is false', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
-
       renderHook(() =>
-        useAGGridUrlSync(mockGridApi, { autoApplyOnMount: false })
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          autoApplyOnMount: false
+        })
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
     })
@@ -137,11 +159,11 @@ describe('useAGGridUrlSync', () => {
 
   describe('API Methods', () => {
     test('shareUrl returns generated URL', async () => {
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       const url = result.current.shareUrl()
       expect(url).toBe('http://example.com?f_name_contains=test')
@@ -155,25 +177,22 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('getQueryParams returns query string', async () => {
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       const params = result.current.getQueryParams()
       expect(params).toBe('?f_name_contains=test')
     })
 
     test('applyUrlFilters calls core method', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
-
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       act(() => {
         result.current.applyUrlFilters('http://test.com')
@@ -183,14 +202,11 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('clearFilters calls core method', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
-
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       act(() => {
         result.current.clearFilters()
@@ -200,11 +216,11 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('parseUrlFilters returns parsed filters', async () => {
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       const filters = result.current.parseUrlFilters(
         'http://test.com?f_name_contains=test'
@@ -214,15 +230,60 @@ describe('useAGGridUrlSync', () => {
       })
     })
 
-    test('applyFilters calls core method', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
+    test('parseUrlFilters handles date filters', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      await waitForEffects()
 
-      await act(async () => {
-        await setTimeout(0)
+      const filters = result.current.parseUrlFilters(
+        'http://test.com?f_created_eq=2024-01-15&f_deadline_before=2024-12-31&f_period_daterange=2024-01-01,2024-12-31'
+      )
+
+      expect(filters).toEqual({
+        created: { filterType: 'date', type: 'eq', filter: '2024-01-15' },
+        deadline: {
+          filterType: 'date',
+          type: 'dateBefore',
+          filter: '2024-12-31'
+        },
+        period: {
+          filterType: 'date',
+          type: 'dateRange',
+          filter: '2024-01-01',
+          filterTo: '2024-12-31'
+        }
       })
+    })
+
+    test('parseUrlFilters handles number filters', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      const filters = result.current.parseUrlFilters(
+        'http://test.com?f_salary_gte=50000&f_age_range=25,45'
+      )
+
+      expect(filters).toEqual({
+        salary: {
+          filterType: 'number',
+          type: 'greaterThanOrEqual',
+          filter: 50000
+        },
+        age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
+      })
+    })
+
+    test('applyFilters calls core method', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
 
       const filters = {
         name: {
@@ -237,58 +298,174 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockInstance.applyFilters).toHaveBeenCalledWith(filters)
     })
+
+    test('applyFilters handles date filters', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      const dateFilters = {
+        created: {
+          filterType: 'date' as const,
+          type: 'eq' as const,
+          filter: '2024-01-15'
+        },
+        deadline: {
+          filterType: 'date' as const,
+          type: 'dateBefore' as const,
+          filter: '2024-12-31'
+        },
+        period: {
+          filterType: 'date' as const,
+          type: 'dateRange' as const,
+          filter: '2024-01-01',
+          filterTo: '2024-12-31'
+        }
+      }
+
+      act(() => {
+        result.current.applyFilters(dateFilters)
+      })
+
+      expect(mockInstance.applyFilters).toHaveBeenCalledWith(dateFilters)
+    })
+
+    test('applyUrlFilters handles URLs with date filters', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      const urlWithDateFilters =
+        'http://test.com?f_created_eq=2024-01-15&f_deadline_before=2024-12-31&f_period_daterange=2024-01-01,2024-12-31'
+
+      act(() => {
+        result.current.applyUrlFilters(urlWithDateFilters)
+      })
+
+      expect(mockInstance.applyFromUrl).toHaveBeenCalledWith(urlWithDateFilters)
+    })
   })
 
   describe('Error Handling', () => {
+    test('warns when applyUrlFilters called while not ready', () => {
+      const onParseError = vi.fn()
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {})
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { onParseError })
+      )
+
+      act(() => {
+        result.current.applyUrlFilters('http://test.com?f_name_contains=test')
+      })
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'applyUrlFilters called while the hook is not ready.'
+      )
+      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
+
+      consoleWarnSpy.mockRestore()
+    })
+
+    test('warns when clearFilters called while not ready', () => {
+      const onParseError = vi.fn()
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {})
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { onParseError })
+      )
+
+      act(() => {
+        result.current.clearFilters()
+      })
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'clearFilters called while the hook is not ready.'
+      )
+      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
+
+      consoleWarnSpy.mockRestore()
+    })
+
+    test('warns when applyFilters called while not ready', () => {
+      const onParseError = vi.fn()
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {})
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { onParseError })
+      )
+
+      act(() => {
+        result.current.applyFilters({
+          name: { filterType: 'text', type: 'contains', filter: 'test' }
+        })
+      })
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'applyFilters called while the hook is not ready.'
+      )
+      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
+
+      consoleWarnSpy.mockRestore()
+    })
+
     test('handles initialization errors gracefully', async () => {
+      const onError = vi.fn()
+
       // Temporarily make the AGGridUrlSync constructor throw
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      ;(AGGridUrlSync as any).mockImplementationOnce(() => {
+      const MockedAGGridUrlSync = vi.mocked(AGGridUrlSync)
+      MockedAGGridUrlSync.mockImplementationOnce(() => {
         throw new Error('Initialization failed')
       })
 
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { onError })
+      )
 
       expect(result.current.isReady).toBe(false)
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to initialize AG Grid URL Sync:',
-        expect.any(Error)
-      )
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'initialization')
     })
 
     test('handles method errors gracefully', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
+      const onError = vi.fn()
       mockInstance.generateUrl.mockImplementation(() => {
         throw new Error('URL generation failed')
       })
 
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { onError })
+      )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       const url = result.current.shareUrl()
       expect(url).toBe(window.location.href)
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to generate share URL:',
-        expect.any(Error)
+      expect(onError).toHaveBeenCalledWith(
+        expect.any(Error),
+        'generate-share-url'
       )
     })
 
     test('calls onParseError callback', async () => {
       const onParseError = vi.fn()
       const { result } = renderHook(() =>
-        useAGGridUrlSync(mockGridApi, { onParseError })
+        useAGGridUrlSync(mockGridApi as GridApi, { onParseError })
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
-      const { parseUrlFilters } = await import('../core/url-parser.js')
-      ;(parseUrlFilters as any).mockImplementationOnce(() => {
+      const mockedParseUrlFilters = vi.mocked(parseUrlFilters)
+      mockedParseUrlFilters.mockImplementationOnce(() => {
         throw new Error('Parse error')
       })
 
@@ -302,14 +479,11 @@ describe('useAGGridUrlSync', () => {
 
   describe('Cleanup', () => {
     test('cleans up on unmount', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
+      const { unmount } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      const { unmount } = renderHook(() => useAGGridUrlSync(mockGridApi))
-
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       unmount()
 
@@ -317,20 +491,15 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('cleans up when gridApi changes', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
-
       const { rerender } = renderHook(
-        ({ gridApi }: { gridApi: GridApi | null }) => useAGGridUrlSync(gridApi),
-        { initialProps: { gridApi: mockGridApi } }
+        (props: { gridApi: GridApi | null }) => useAGGridUrlSync(props.gridApi),
+        { initialProps: { gridApi: mockGridApi as GridApi | null } }
       )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       const newMockGridApi = createMockGridApi()
-      rerender({ gridApi: newMockGridApi })
+      rerender({ gridApi: newMockGridApi as GridApi | null })
 
       expect(mockInstance.destroy).toHaveBeenCalled()
     })
@@ -338,11 +507,11 @@ describe('useAGGridUrlSync', () => {
 
   describe('State Updates', () => {
     test('updates currentUrl and hasFilters reactively', async () => {
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      await act(async () => {
-        await setTimeout(0) // Wait for initial state update
-      })
+      await waitForEffects()
 
       // Since mocks might not work perfectly in this test environment,
       // we just check that the state is managed correctly
@@ -351,25 +520,21 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('handles empty query params correctly', async () => {
-      const { AGGridUrlSync } = await import('../core/ag-grid-url-sync.js')
-      const mockInstance = new (AGGridUrlSync as any)()
       mockInstance.getQueryParams.mockReturnValue('')
 
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       expect(result.current.hasFilters).toBe(false)
     })
 
     test('sets up filterChanged event listener', async () => {
-      const { result } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      renderHook(() => useAGGridUrlSync(mockGridApi as GridApi))
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       expect(mockGridApi.addEventListener).toHaveBeenCalledWith(
         'filterChanged',
@@ -378,11 +543,11 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('removes filterChanged event listener on cleanup', async () => {
-      const { unmount } = renderHook(() => useAGGridUrlSync(mockGridApi))
+      const { unmount } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
 
-      await act(async () => {
-        await setTimeout(0)
-      })
+      await waitForEffects()
 
       unmount()
 

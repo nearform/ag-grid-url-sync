@@ -1,75 +1,137 @@
 import type {
   GridApi as AGGridApi,
   TextFilterModel,
-  NumberFilterModel
+  NumberFilterModel,
+  DateFilterModel
 } from 'ag-grid-community'
+
+// ============================================================================
+// CONFIGURATION TYPES
+// ============================================================================
 
 /**
  * Configuration options for AG Grid URL Sync
+ *
+ * @example
+ * ```typescript
+ * const config: AGGridUrlSyncConfig = {
+ *   paramPrefix: 'filter_',
+ *   maxValueLength: 500,
+ *   onParseError: (error) => console.warn('Filter parse error:', error)
+ * }
+ * ```
  */
 export interface AGGridUrlSyncConfig {
   /**
-   * Prefix for URL parameters. Default: 'f_'
+   * Prefix for URL parameters
+   * @default 'f_'
+   * @example 'filter_' results in URLs like '?filter_name_contains=john'
    */
   paramPrefix?: string
 
   /**
-   * Maximum length for filter values. Default: 200
+   * Maximum length for filter values to prevent URL length issues
+   * @default 200
    */
   maxValueLength?: number
 
   /**
-   * Optional error handler for parsing errors
+   * Optional error handler for parsing errors.
+   * Allows graceful error handling without breaking the application.
    */
   onParseError?: (error: Error) => void
 }
 
 /**
- * Supported filter operations for both text and number filters
+ * Internal configuration with all required fields and runtime dependencies
  */
-export type FilterOperation =
-  | 'contains' // Text only
-  | 'eq' // Both text and number (shared)
-  | 'notContains' // Text only
-  | 'notEqual' // Both text and number (shared)
-  | 'startsWith' // Text only
-  | 'endsWith' // Text only
-  | 'blank' // Both text and number (shared)
-  | 'notBlank' // Both text and number (shared)
-  | 'lessThan' // Number only
-  | 'lessThanOrEqual' // Number only
-  | 'greaterThan' // Number only
-  | 'greaterThanOrEqual' // Number only
-  | 'inRange' // Number only
+export interface InternalConfig extends Required<AGGridUrlSyncConfig> {
+  /** AG Grid API instance for filter operations */
+  gridApi: AGGridApi
+}
+
+// ============================================================================
+// FILTER OPERATION DEFINITIONS
+// ============================================================================
 
 /**
- * Valid text filter operations as const array
+ * Text-only filter operations for string-based filtering
  */
-export const TEXT_FILTER_OPERATIONS = [
+export const TEXT_ONLY_OPERATIONS = [
   'contains',
-  'eq',
   'notContains',
-  'notEqual',
   'startsWith',
-  'endsWith',
-  'blank',
-  'notBlank'
+  'endsWith'
 ] as const
 
 /**
- * Valid number filter operations as const array
+ * Number-only filter operations for numeric comparisons
  */
-export const NUMBER_FILTER_OPERATIONS = [
-  'eq',
-  'notEqual',
+export const NUMBER_ONLY_OPERATIONS = [
   'lessThan',
   'lessThanOrEqual',
   'greaterThan',
   'greaterThanOrEqual',
-  'inRange',
+  'inRange'
+] as const
+
+/**
+ * Date-specific filter operations for temporal comparisons
+ */
+export const DATE_ONLY_OPERATIONS = [
+  'dateBefore',
+  'dateBeforeOrEqual',
+  'dateAfter',
+  'dateAfterOrEqual',
+  'dateRange'
+] as const
+
+/**
+ * Operations shared across multiple filter types
+ */
+export const SHARED_OPERATIONS = [
+  'eq',
+  'notEqual',
   'blank',
   'notBlank'
 ] as const
+
+/**
+ * All supported filter operations across text, number, and date filters
+ */
+export type FilterOperation =
+  | (typeof TEXT_ONLY_OPERATIONS)[number]
+  | (typeof NUMBER_ONLY_OPERATIONS)[number]
+  | (typeof DATE_ONLY_OPERATIONS)[number]
+  | (typeof SHARED_OPERATIONS)[number]
+
+/**
+ * Complete list of valid text filter operations
+ */
+export const TEXT_FILTER_OPERATIONS = [
+  ...TEXT_ONLY_OPERATIONS,
+  ...SHARED_OPERATIONS
+] as const
+
+/**
+ * Complete list of valid number filter operations
+ */
+export const NUMBER_FILTER_OPERATIONS = [
+  ...NUMBER_ONLY_OPERATIONS,
+  ...SHARED_OPERATIONS
+] as const
+
+/**
+ * Valid date filter operations as const array
+ */
+export const DATE_FILTER_OPERATIONS = [
+  ...DATE_ONLY_OPERATIONS,
+  ...SHARED_OPERATIONS
+] as const
+
+// ============================================================================
+// OPERATION TYPE DEFINITIONS
+// ============================================================================
 
 /**
  * Text-specific filter operations
@@ -82,135 +144,311 @@ export type TextFilterOperation = (typeof TEXT_FILTER_OPERATIONS)[number]
 export type NumberFilterOperation = (typeof NUMBER_FILTER_OPERATIONS)[number]
 
 /**
- * Base interface for column filters
+ * Date-specific filter operations
  */
-interface BaseColumnFilter {
-  type: FilterOperation
+export type DateFilterOperation = (typeof DATE_FILTER_OPERATIONS)[number]
+
+/**
+ * Range operations that require two values (from/to)
+ */
+export type RangeOperation = 'inRange' | 'dateRange'
+
+/**
+ * Operations that don't require a filter value
+ */
+export type BlankOperation = 'blank' | 'notBlank'
+
+/**
+ * Supported filter types
+ */
+export type FilterType = 'text' | 'number' | 'date'
+
+// ============================================================================
+// FILTER CONFIGURATION INTERFACES
+// ============================================================================
+
+/**
+ * Base interface for all column filters with common properties
+ */
+interface BaseColumnFilter<T extends FilterOperation = FilterOperation> {
+  /** The filter operation type */
+  type: T
 }
 
 /**
- * Text filter configuration
+ * Text filter configuration for string-based filtering
  */
-export interface TextColumnFilter extends BaseColumnFilter {
+export interface TextColumnFilter
+  extends BaseColumnFilter<TextFilterOperation> {
   filterType: 'text'
-  type: TextFilterOperation
+  /** The text value to filter by */
   filter: string
 }
 
 /**
- * Number filter configuration
+ * Number filter configuration for numeric filtering
  */
-export interface NumberColumnFilter extends BaseColumnFilter {
+export interface NumberColumnFilter
+  extends BaseColumnFilter<NumberFilterOperation> {
   filterType: 'number'
-  type: NumberFilterOperation
+  /** The numeric value to filter by */
   filter: number
-  filterTo?: number // For inRange operations
+  /** Optional second value for range operations */
+  filterTo?: number
 }
 
 /**
- * Filter state for a single column (union of text and number filters)
+ * Date filter configuration for temporal filtering.
+ * Uses ISO date format (YYYY-MM-DD) for consistency and parseability.
  */
-export type ColumnFilter = TextColumnFilter | NumberColumnFilter
+export interface DateColumnFilter
+  extends BaseColumnFilter<DateFilterOperation> {
+  filterType: 'date'
+  /** ISO date string (YYYY-MM-DD) */
+  filter: string
+  /** Optional end date for range operations (ISO format) */
+  filterTo?: string
+}
 
 /**
- * Complete filter state mapping
+ * Union type for all possible column filters
+ */
+export type ColumnFilter =
+  | TextColumnFilter
+  | NumberColumnFilter
+  | DateColumnFilter
+
+/**
+ * Complete filter state mapping column IDs to their filters
  */
 export interface FilterState {
   [columnId: string]: ColumnFilter
 }
 
+// ============================================================================
+// TYPE GUARDS
+// ============================================================================
+
 /**
- * Internal configuration with defaults
+ * Type guard to check if an operation is text-specific
  */
-export interface InternalConfig extends Required<AGGridUrlSyncConfig> {
-  gridApi: AGGridApi
+export function isTextFilterOperation(
+  op: FilterOperation
+): op is TextFilterOperation {
+  return TEXT_FILTER_OPERATIONS.includes(op as TextFilterOperation)
 }
 
 /**
- * Error types for URL sync operations
+ * Type guard to check if an operation is number-specific
+ */
+export function isNumberFilterOperation(
+  op: FilterOperation
+): op is NumberFilterOperation {
+  return NUMBER_FILTER_OPERATIONS.includes(op as NumberFilterOperation)
+}
+
+/**
+ * Type guard to check if an operation is date-specific
+ */
+export function isDateFilterOperation(
+  op: FilterOperation
+): op is DateFilterOperation {
+  return DATE_FILTER_OPERATIONS.includes(op as DateFilterOperation)
+}
+
+/**
+ * Type guard to check if an operation requires a range (two values)
+ */
+export function isRangeOperation(op: FilterOperation): op is RangeOperation {
+  return op === 'inRange' || op === 'dateRange'
+}
+
+/**
+ * Type guard to check if an operation is a blank operation
+ */
+export function isBlankOperation(op: FilterOperation): op is BlankOperation {
+  return op === 'blank' || op === 'notBlank'
+}
+
+/**
+ * Type guard to check if a filter is a text filter
+ */
+export function isTextFilter(filter: ColumnFilter): filter is TextColumnFilter {
+  return filter.filterType === 'text'
+}
+
+/**
+ * Type guard to check if a filter is a number filter
+ */
+export function isNumberFilter(
+  filter: ColumnFilter
+): filter is NumberColumnFilter {
+  return filter.filterType === 'number'
+}
+
+/**
+ * Type guard to check if a filter is a date filter
+ */
+export function isDateFilter(filter: ColumnFilter): filter is DateColumnFilter {
+  return filter.filterType === 'date'
+}
+
+// ============================================================================
+// ERROR TYPES
+// ============================================================================
+
+/**
+ * Base error class for all URL sync operations
  */
 export class URLSyncError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public override readonly cause?: Error
+  ) {
     super(message)
     this.name = 'URLSyncError'
   }
 }
 
+/**
+ * Error thrown when filter validation fails
+ */
 export class InvalidFilterError extends URLSyncError {
-  constructor(message: string) {
-    super(message)
+  constructor(message: string, cause?: Error) {
+    super(message, cause)
     this.name = 'InvalidFilterError'
   }
 }
 
+/**
+ * Error thrown when URL parsing fails
+ */
 export class InvalidURLError extends URLSyncError {
-  constructor(message: string) {
-    super(message)
+  constructor(message: string, cause?: Error) {
+    super(message, cause)
     this.name = 'InvalidURLError'
   }
 }
 
-export type ParsedFilterParam = {
+/**
+ * Error thrown when date validation fails
+ */
+export class InvalidDateError extends InvalidFilterError {
+  constructor(message: string, cause?: Error) {
+    super(message, cause)
+    this.name = 'InvalidDateError'
+  }
+}
+
+// ============================================================================
+// UTILITY TYPES
+// ============================================================================
+
+/**
+ * Parsed filter parameter information for internal processing
+ */
+export interface ParsedFilterParam {
   columnName: string
   operation: FilterOperation
-  filterType: 'text' | 'number' | 'auto' // 'auto' for operations that work with both
+  filterType: FilterType | 'auto' // 'auto' for operations that work across types
   value: string | number
-  filterTo?: number // For range operations
+  filterTo?: number | string // For range operations
   action: 'apply' | 'remove'
 }
 
-// Re-export GridApi for convenience
+/**
+ * Re-export GridApi for convenience
+ */
 export type GridApi = AGGridApi
 
 /**
  * Union type for AG Grid filters using official AG Grid types
  */
-export type AGGridFilter = TextFilterModel | NumberFilterModel
+export type AGGridFilter = TextFilterModel | NumberFilterModel | DateFilterModel
+
+/**
+ * Raw AG Grid filter object structure from getFilterModel()
+ * Used for type-safe destructuring of filter objects
+ */
+export interface RawAGGridFilter {
+  filterType?: string
+  type?: string
+  filter?: string | number
+  filterTo?: string | number
+  dateFrom?: string
+  dateTo?: string
+}
+
+// ============================================================================
+// OPERATION MAPPINGS
+// ============================================================================
 
 /**
  * Operation Mapping Strategy:
  *
  * We use three different naming conventions for better user experience:
  *
- * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq', 'lt', 'gt')
+ * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq', 'before', 'after')
  * 2. Internal Types: Consistent naming for our FilterOperation type
- * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual')
+ * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual', 'lessThan')
  *
  * This approach keeps URLs readable while maintaining compatibility with AG Grid.
  */
 
 /**
- * Define special URL shorthand mappings (internal -> URL)
- * Operations not listed here use their internal name as URL param
+ * URL shorthand mappings for cleaner URLs.
+ * Maps internal operation names to shorter URL parameter names.
+ * Operations not listed here use their internal name as URL param.
  */
 const URL_SHORTHAND_MAPPINGS = {
+  // Shared operations
   notEqual: 'neq',
+  // Number operations
   lessThan: 'lt',
   lessThanOrEqual: 'lte',
   greaterThan: 'gt',
   greaterThanOrEqual: 'gte',
-  inRange: 'range'
+  inRange: 'range',
+  // Date operations
+  dateBefore: 'before',
+  dateBeforeOrEqual: 'beforeEq',
+  dateAfter: 'after',
+  dateAfterOrEqual: 'afterEq',
+  dateRange: 'daterange'
 } as const
 
 /**
- * Define special AG Grid name mappings (internal -> AG Grid)
- * Operations not listed here use their internal name for AG Grid
+ * AG Grid operation name mappings.
+ * Maps internal operation names to AG Grid API operation names.
+ * Operations not listed here use their internal name for AG Grid.
  */
 const AG_GRID_NAME_MAPPINGS = {
-  eq: 'equals'
+  // Shared operations
+  eq: 'equals',
+  // Date operations (AG Grid uses generic names)
+  dateBefore: 'lessThan',
+  dateBeforeOrEqual: 'lessThanOrEqual',
+  dateAfter: 'greaterThan',
+  dateAfterOrEqual: 'greaterThanOrEqual',
+  dateRange: 'inRange'
 } as const
 
 /**
- * Helper function to create operation mappings dynamically
+ * Creates operation mapping tables for URL and AG Grid integration
  */
 function createOperationMaps() {
-  const allOperations = [...TEXT_FILTER_OPERATIONS, ...NUMBER_FILTER_OPERATIONS]
+  // Get all unique operations across filter types
+  const allOperations = [
+    ...TEXT_FILTER_OPERATIONS,
+    ...NUMBER_FILTER_OPERATIONS,
+    ...DATE_FILTER_OPERATIONS
+  ]
 
-  // Remove duplicates (like 'eq', 'blank', etc. that appear in both arrays)
+  // Remove duplicates (operations like 'eq', 'blank' appear in multiple arrays)
   const uniqueOperations = [...new Set(allOperations)]
 
-  // Generate URL mappings
-  const operationMap = {} as Record<string, FilterOperation>
+  // Generate URL mappings (bidirectional)
+  const operationMap: Record<string, FilterOperation> = {}
   const internalToUrlMap = {} as Record<FilterOperation, string>
 
   uniqueOperations.forEach(operation => {
@@ -222,9 +460,9 @@ function createOperationMaps() {
     internalToUrlMap[operation] = urlName
   })
 
-  // Generate AG Grid mappings
-  const agGridMap = {} as Record<FilterOperation, string>
-  const reverseAgGridMap = {} as Record<string, FilterOperation>
+  // Generate AG Grid mappings (bidirectional)
+  const agGridMap: Record<string, string> = {}
+  const reverseAgGridMap: Record<string, FilterOperation> = {}
 
   uniqueOperations.forEach(operation => {
     const agGridName =
@@ -239,15 +477,28 @@ function createOperationMaps() {
     internalToUrlMap,
     agGridMap,
     reverseAgGridMap
-  }
+  } as const
 }
 
 // Generate all mappings dynamically
-const { operationMap, internalToUrlMap, agGridMap, reverseAgGridMap } =
-  createOperationMaps()
+const mappings = createOperationMaps()
 
-// Export the dynamically generated maps
-export const OPERATION_MAP = operationMap
-export const INTERNAL_TO_URL_OPERATION_MAP = internalToUrlMap
-export const AG_GRID_OPERATION_NAMES = agGridMap
-export const REVERSE_AG_GRID_OPERATION_NAMES = reverseAgGridMap
+/**
+ * Maps URL operation names to internal operation types
+ */
+export const OPERATION_MAP = mappings.operationMap
+
+/**
+ * Maps internal operation types to URL operation names
+ */
+export const INTERNAL_TO_URL_OPERATION_MAP = mappings.internalToUrlMap
+
+/**
+ * Maps internal operation types to AG Grid operation names
+ */
+export const AG_GRID_OPERATION_NAMES = mappings.agGridMap
+
+/**
+ * Maps AG Grid operation names to internal operation types
+ */
+export const REVERSE_AG_GRID_OPERATION_NAMES = mappings.reverseAgGridMap

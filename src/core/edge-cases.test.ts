@@ -16,14 +16,6 @@ describe('Edge Cases', () => {
 
   describe('Character Encoding', () => {
     it('should handle Unicode characters and special characters', () => {
-      const filterState = {
-        name: {
-          filterType: 'text',
-          type: 'contains',
-          filter: 'café 🎉 中文测试'
-        }
-      }
-
       const url =
         'https://example.com?f_name_contains=caf%C3%A9%20%F0%9F%8E%89%20%E4%B8%AD%E6%96%87%E6%B5%8B%E8%AF%95'
       const result = parseUrlFilters(url, config)

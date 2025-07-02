@@ -130,18 +130,44 @@ export function getFilterModel(config: InternalConfig): FilterState {
       }
       // Handle number filters
       else if (filterType === 'number') {
-        // Map AG Grid number operations back to our internal operations
-        const internalOperation =
-          REVERSE_AG_GRID_OPERATION_NAMES[
-            type as keyof typeof REVERSE_AG_GRID_OPERATION_NAMES
-          ]
+        // For number filters, we need to handle the mapping carefully since
+        // AG Grid uses the same operation names for numbers and dates
+        let internalOperation = type as FilterOperation
+
+        // Map AG Grid number operations to our internal number operations
+        // Since AG Grid uses generic names, we need to be explicit about number operations
+        const AG_GRID_TO_NUMBER_OPERATION_MAP: Record<string, FilterOperation> =
+          {
+            lessThan: 'lessThan',
+            lessThanOrEqual: 'lessThanOrEqual',
+            greaterThan: 'greaterThan',
+            greaterThanOrEqual: 'greaterThanOrEqual',
+            inRange: 'inRange',
+            equals: 'eq',
+            notEqual: 'notEqual',
+            blank: 'blank',
+            notBlank: 'notBlank'
+          } as const
+
+        // Use the explicit number mapping instead of the reverse AG Grid mapping
+        internalOperation =
+          (type && AG_GRID_TO_NUMBER_OPERATION_MAP[type]) ||
+          (type as FilterOperation)
 
         // Use type predicate to validate and narrow the type
         if (internalOperation && isNumberFilterOperation(internalOperation)) {
+          // Validate that the filter value is actually a number
+          const numericValue = typeof value === 'number' ? value : Number(value)
+
+          // Skip invalid number filters
+          if (isNaN(numericValue)) {
+            continue
+          }
+
           const numberFilter: ColumnFilter = {
             filterType: 'number',
             type: internalOperation, // Now properly typed as NumberFilterOperation
-            filter: typeof value === 'number' ? value : 0
+            filter: numericValue
           }
 
           // Handle range operations

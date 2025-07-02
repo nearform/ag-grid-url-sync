@@ -222,7 +222,10 @@ export function useAGGridUrlSync(
           paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
           maxValueLength:
             coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-          onParseError: coreOptions.onParseError ?? (() => {})
+          onParseError: coreOptions.onParseError ?? (() => {}),
+          serialization: coreOptions.serialization ?? DEFAULT_CONFIG.serialization,
+          groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
+          format: coreOptions.format ?? DEFAULT_CONFIG.format
         }
         return parseFilters(url, config)
       } catch (error) {

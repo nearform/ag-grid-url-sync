@@ -235,6 +235,38 @@ describe('Number Filter Operations', () => {
       })
       expect(Object.keys(result)).toHaveLength(1)
     })
+
+    it('should call onParseError for unknown number filter operations', () => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        validAge: { filterType: 'number', type: 'greaterThan', filter: 25 },
+        invalidOperation: {
+          filterType: 'number',
+          type: 'unknownOperation',
+          filter: 50
+        }
+      })
+
+      const result = getFilterModel(mockConfig)
+
+      // Only the valid filter should remain
+      expect(result).toEqual({
+        validAge: {
+          filterType: 'number',
+          type: 'greaterThan',
+          filter: 25
+        }
+      })
+      expect(Object.keys(result)).toHaveLength(1)
+
+      // Should have called onParseError with appropriate error message
+      expect(mockConfig.onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining(
+            "Unknown number filter operation 'unknownOperation' for column 'invalidOperation'"
+          )
+        })
+      )
+    })
   })
 
   describe('Demonstrating the actual bug in issue #37', () => {

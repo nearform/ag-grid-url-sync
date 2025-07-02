@@ -146,12 +146,22 @@ export function getFilterModel(config: InternalConfig): FilterState {
       else if (filterType === 'number') {
         // For number filters, we need to handle the mapping carefully since
         // AG Grid uses the same operation names for numbers and dates
-        let internalOperation = type as FilterOperation
 
         // Use the explicit number mapping instead of the reverse AG Grid mapping
-        internalOperation =
-          (type && AG_GRID_TO_NUMBER_OPERATION_MAP[type]) ||
-          (type as FilterOperation)
+        const internalOperation = type && AG_GRID_TO_NUMBER_OPERATION_MAP[type]
+
+        // If the operation type is not recognized, report the error
+        if (!internalOperation) {
+          if (config.onParseError) {
+            config.onParseError(
+              new Error(
+                `Unknown number filter operation '${type}' for column '${column}'. ` +
+                  `Supported operations: ${Object.keys(AG_GRID_TO_NUMBER_OPERATION_MAP).join(', ')}`
+              )
+            )
+          }
+          continue
+        }
 
         // Use type predicate to validate and narrow the type
         if (internalOperation && isNumberFilterOperation(internalOperation)) {

@@ -34,6 +34,15 @@ const AG_GRID_TO_NUMBER_OPERATION_MAP = {
 } satisfies Record<string, FilterOperation>
 
 /**
+ * Type guard to check if a value is a valid number operation key
+ */
+function isValidNumberOperation(
+  operation: string | undefined
+): operation is keyof typeof AG_GRID_TO_NUMBER_OPERATION_MAP {
+  return Boolean(operation && operation in AG_GRID_TO_NUMBER_OPERATION_MAP)
+}
+
+/**
  * Converts a date string to ISO format (YYYY-MM-DD)
  * Handles both date strings and undefined values
  * Returns an empty string if the input is undefined or invalid
@@ -146,9 +155,10 @@ export function getFilterModel(config: InternalConfig): FilterState {
       else if (filterType === 'number') {
         // For number filters, we need to handle the mapping carefully since
         // AG Grid uses the same operation names for numbers and dates
-
         // Use the explicit number mapping instead of the reverse AG Grid mapping
-        const internalOperation = type && AG_GRID_TO_NUMBER_OPERATION_MAP[type]
+        const internalOperation = isValidNumberOperation(type)
+          ? AG_GRID_TO_NUMBER_OPERATION_MAP[type]
+          : null
 
         // If the operation type is not recognized, report the error
         if (!internalOperation) {

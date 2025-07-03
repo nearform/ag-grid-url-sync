@@ -319,9 +319,10 @@ export function parseUrlFilters(
     }
 
     // First, try to detect grouped serialization
+    const DEFAULT_GROUPED_PARAMS = ['grid_filters', 'filters'];
     const groupedDetection = detectGroupedSerialization(
       urlToProcess,
-      [config.groupedParam, 'grid_filters', 'filters'] // Common parameter names to check
+      [config.groupedParam, ...DEFAULT_GROUPED_PARAMS] // Common parameter names to check
     )
 
     if (

@@ -40,6 +40,16 @@
       "types": "./dist/core/types.d.ts",
       "import": "./dist/core/types.js",
       "require": "./dist/core/types.js"
+    },
+    "./serialization": {
+      "types": "./dist/core/serialization/index.d.ts",
+      "import": "./dist/core/serialization/index.js",
+      "require": "./dist/core/serialization/index.js"
+    },
+    "./serialization/formats": {
+      "types": "./dist/core/serialization/formats.d.ts",
+      "import": "./dist/core/serialization/formats.js",
+      "require": "./dist/core/serialization/formats.js"
     }
   },
   "typesVersions": {
@@ -64,6 +74,12 @@
       ],
       "types": [
         "dist/core/types.d.ts"
+      ],
+      "serialization": [
+        "dist/core/serialization/index.d.ts"
+      ],
+      "serialization/formats": [
+        "dist/core/serialization/formats.d.ts"
       ]
     }
   },

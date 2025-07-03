@@ -10,20 +10,38 @@ import type {
 // ============================================================================
 
 /**
+ * Serialization modes for URL parameters
+ */
+export type SerializationMode = 'individual' | 'grouped'
+
+/**
+ * Serialization formats for grouped mode
+ */
+export type SerializationFormat = 'querystring' | 'json' | 'base64'
+
+/**
  * Configuration options for AG Grid URL Sync
  *
  * @example
  * ```typescript
+ * // Individual mode (default - backward compatible)
  * const config: AGGridUrlSyncConfig = {
  *   paramPrefix: 'filter_',
  *   maxValueLength: 500,
  *   onParseError: (error) => console.warn('Filter parse error:', error)
  * }
+ *
+ * // Grouped mode with base64 format
+ * const groupedConfig: AGGridUrlSyncConfig = {
+ *   serialization: 'grouped',
+ *   format: 'base64',
+ *   groupedParam: 'filters'
+ * }
  * ```
  */
 export interface AGGridUrlSyncConfig {
   /**
-   * Prefix for URL parameters
+   * Prefix for URL parameters (only used in individual mode)
    * @default 'f_'
    * @example 'filter_' results in URLs like '?filter_name_contains=john'
    */
@@ -40,6 +58,24 @@ export interface AGGridUrlSyncConfig {
    * Allows graceful error handling without breaking the application.
    */
   onParseError?: (error: Error) => void
+
+  /**
+   * Serialization mode for URL parameters
+   * @default 'individual'
+   */
+  serialization?: SerializationMode
+
+  /**
+   * Parameter name for grouped serialization
+   * @default 'grid_filters'
+   */
+  groupedParam?: string
+
+  /**
+   * Serialization format for grouped mode
+   * @default 'querystring'
+   */
+  format?: SerializationFormat
 }
 
 /**
@@ -340,6 +376,17 @@ export class InvalidDateError extends InvalidFilterError {
   }
 }
 
+/**
+ * Error thrown when serialization/deserialization fails
+ */
+export class InvalidSerializationError extends Error {
+  constructor(format: string, cause: Error) {
+    super(`Invalid ${format} serialization: ${cause.message}`)
+    this.name = 'InvalidSerializationError'
+    this.cause = cause
+  }
+}
+
 // ============================================================================
 // UTILITY TYPES
 // ============================================================================
@@ -377,6 +424,42 @@ export interface RawAGGridFilter {
   filterTo?: string | number
   dateFrom?: string
   dateTo?: string
+}
+
+/**
+ * Grouped serialization result
+ */
+export interface GroupedSerializationResult {
+  /** The parameter name for the grouped filters */
+  paramName: string
+  /** The serialized filter value */
+  value: string
+}
+
+/**
+ * Format-specific serializer interface
+ */
+export interface FormatSerializer {
+  /** Serialize filter state to string */
+  serialize(filterState: FilterState): string
+  /** Deserialize string to filter state */
+  deserialize(value: string): FilterState
+  /** Format identifier */
+  format: SerializationFormat
+}
+
+/**
+ * Detection result for grouped parameters
+ */
+export interface GroupedDetectionResult {
+  /** Whether grouped serialization was detected */
+  isGrouped: boolean
+  /** The parameter name if grouped */
+  paramName?: string
+  /** The detected format if grouped */
+  format?: SerializationFormat
+  /** The raw value if grouped */
+  value?: string
 }
 
 // ============================================================================

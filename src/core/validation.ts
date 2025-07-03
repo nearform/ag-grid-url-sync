@@ -10,7 +10,10 @@ import { InvalidFilterError, InvalidDateError } from './types.js'
  */
 export const DEFAULT_CONFIG = {
   paramPrefix: 'f_',
-  maxValueLength: 200
+  maxValueLength: 200,
+  serialization: 'individual' as const,
+  groupedParam: 'grid_filters',
+  format: 'querystring' as const
 } as const
 
 /**

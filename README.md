@@ -9,7 +9,8 @@ A lightweight TypeScript library for synchronizing AG Grid text and number filte
 - 🔍 **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - 🔢 **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
 - 🔢 **Complete date filter support** - All 9 AG Grid date operations (equals, not equal, before, before or equal, after, after or equal, in range, blank, not blank) with strict ISO date validation (YYYY-MM-DD)
-- 🔗 Manual URL generation for sharing filter states
+- � **Grouped serialization** - Package all filters into a single URL parameter with querystring, JSON, or base64 encoding
+- �🔗 Manual URL generation for sharing filter states
 - ↔️ Bidirectional sync between grid and URL
 - 🛠️ Framework agnostic - works with any AG Grid setup
 - ⚛️ **React hook** - dedicated `useAGGridUrlSync` with state management
@@ -17,7 +18,7 @@ A lightweight TypeScript library for synchronizing AG Grid text and number filte
 - 🚦 Graceful error handling with configurable error callbacks
 - 🧹 Clean, human-readable URL format
 - ⚡ High performance - handles 100+ filters efficiently (<20ms)
-- 🔧 Configurable URL prefixes for multi-grid scenarios
+- 🔧 Configurable URL prefixes
 - 🛡️ Robust edge case handling (special characters, malformed URLs)
 - 📦 Lightweight bundle size (~3KB gzipped)
 
@@ -256,6 +257,203 @@ urlSync.applyFilters({
 urlSync.clearFilters()
 ```
 
+## Grouped Serialization
+
+Grouped serialization provides an alternative to individual URL parameters by packaging all filters into a single URL parameter. This is particularly useful for applications with many filters or when you need more compact URLs.
+
+### Why Use Grouped Serialization?
+
+**Individual serialization** (default):
+
+```
+https://app.com/data?f_name_contains=john&f_age_gt=25&f_salary_gte=80000&f_created_after=2024-01-01
+```
+
+**Grouped serialization**:
+
+```
+https://app.com/data?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25%26f_salary_gte%3D80000%26f_created_after%3D2024-01-01
+```
+
+Benefits of grouped serialization:
+
+- **Cleaner URLs** with a single parameter instead of many
+- **Better for sharing** - easier to copy/paste and less prone to URL manipulation
+
+- **Format flexibility** - choose between querystring, JSON, or base64 encoding
+- **Future-proof** - easier to extend with additional metadata
+
+### Configuration
+
+```typescript
+interface AGGridUrlSyncConfig {
+  // Serialization mode
+  serialization?: 'individual' | 'grouped' // default: 'individual'
+
+  // Format for grouped serialization
+  format?: 'querystring' | 'json' | 'base64' // default: 'querystring'
+
+  // Parameter name for grouped mode
+  groupedParam?: string // default: 'grid_filters'
+
+  // ... other existing options
+}
+```
+
+### Format Options
+
+#### QueryString Format (Default)
+
+Filters are URL-encoded as a query string within the parameter:
+
+```typescript
+const urlSync = createUrlSync(gridApi, {
+  serialization: 'grouped',
+  format: 'querystring' // default
+})
+
+// Result: ?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25
+// Decoded: f_name_contains=john&f_age_gt=25
+```
+
+#### JSON Format
+
+Filters are JSON-encoded, ideal for complex filter states:
+
+```typescript
+const urlSync = createUrlSync(gridApi, {
+  serialization: 'grouped',
+  format: 'json'
+})
+
+// Result: ?grid_filters=%7B%22name%22%3A%7B%22filterType%22%3A%22text%22...
+// Decoded: {"name":{"filterType":"text","type":"contains","filter":"john"}...}
+```
+
+#### Base64 Format
+
+Filters are JSON-encoded then base64-encoded for maximum compactness:
+
+```typescript
+const urlSync = createUrlSync(gridApi, {
+  serialization: 'grouped',
+  format: 'base64'
+})
+
+// Result: ?grid_filters=eyJuYW1lIjp7ImZpbHRlclR5cGUiOiJ0ZXh0Ii...
+// Most compact representation, ideal for sharing
+```
+
+### Basic Usage
+
+```typescript
+import { createUrlSync } from 'ag-grid-url-sync'
+
+// Basic grouped serialization
+const urlSync = createUrlSync(gridApi, {
+  serialization: 'grouped'
+})
+
+// Generate grouped URL
+const url = urlSync.generateUrl('https://app.com/data')
+// Result: https://app.com/data?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25
+
+// Apply filters from grouped URL
+urlSync.applyFromUrl(url)
+
+// Get current serialization mode and format
+console.log(urlSync.getSerializationMode()) // 'grouped'
+console.log(urlSync.getCurrentFormat()) // 'querystring'
+```
+
+### Advanced Examples
+
+#### Format Conversion Utility
+
+```typescript
+// Convert current filters to any format
+const jsonFormat = urlSync.getFiltersAsFormat('json')
+const base64Format = urlSync.getFiltersAsFormat('base64')
+const querystringFormat = urlSync.getFiltersAsFormat('querystring')
+
+console.log('JSON:', jsonFormat)
+console.log('Base64:', base64Format)
+console.log('QueryString:', querystringFormat)
+```
+
+#### Dynamic Format Switching
+
+```typescript
+// Start with individual mode
+const urlSync = createUrlSync(gridApi, {
+  serialization: 'individual'
+})
+
+// Switch to grouped mode when needed
+const groupedSync = createUrlSync(gridApi, {
+  serialization: 'grouped',
+  format: 'base64',
+  groupedParam: 'filters'
+})
+
+// Use utility to maintain filters across mode changes
+const currentFilters = urlSync.getFiltersAsFormat('json')
+```
+
+### Granular Import: Grouped Serialization
+
+You can import grouped serialization utilities and format serializers directly for advanced use cases or custom integrations:
+
+```typescript
+import {
+  serializeGrouped,
+  deserializeGrouped
+} from 'ag-grid-url-sync/serialization'
+import {
+  QueryStringSerializer,
+  JsonSerializer,
+  Base64Serializer
+} from 'ag-grid-url-sync/serialization/formats'
+```
+
+---
+
+### Error Handling for Grouped Serialization
+
+You can provide a custom error handler to gracefully handle malformed grouped parameters or serialization errors. The library will throw an `InvalidSerializationError` for invalid formats:
+
+```typescript
+import { InvalidSerializationError } from 'ag-grid-url-sync/types'
+
+const urlSync = createUrlSync(gridApi, {
+  serialization: 'grouped',
+  format: 'json',
+  onParseError: error => {
+    if (error instanceof InvalidSerializationError) {
+      // Handle grouped serialization error
+      alert('Invalid filter data in URL!')
+    } else {
+      // Handle other errors
+      console.error(error)
+    }
+  }
+})
+```
+
+### Exports
+
+The package supports granular subpath exports for advanced usage and optimal bundle size:
+
+- `ag-grid-url-sync/serialization` – grouped serialization utilities
+- `ag-grid-url-sync/serialization/formats` – format-specific serializers
+- `ag-grid-url-sync/validation` – validation helpers
+- `ag-grid-url-sync/url-parser` – URL parsing utilities
+- `ag-grid-url-sync/url-generator` – URL generation utilities
+- `ag-grid-url-sync/grid-integration` – AG Grid integration helpers
+- `ag-grid-url-sync/types` – TypeScript types
+
+Refer to the [package.json](./package.json) for the full export map.
+
 ## React Integration
 
 For React applications, use the dedicated `useAGGridUrlSync` hook that provides a complete solution with React-specific features and state management.
@@ -360,7 +558,9 @@ const {
   currentUrl,
   hasFilters,
   parseUrlFilters,
-  applyFilters
+  applyFilters,
+  getFiltersAsFormat,
+  getCurrentFormat
 } = useAGGridUrlSync(gridApi, options)
 ```
 
@@ -376,22 +576,27 @@ interface UseAGGridUrlSyncOptions {
   // React-specific options
   autoApplyOnMount?: boolean // Default: false
   enabledWhenReady?: boolean // Default: true
+  onError?: (error: Error, context: string) => void // Advanced error handling
 }
 ```
 
 #### Hook Return Values
 
-| Property          | Type                             | Description                                     |
-| ----------------- | -------------------------------- | ----------------------------------------------- |
-| `shareUrl`        | `(baseUrl?: string) => string`   | Generate shareable URL with current filters     |
-| `getQueryParams`  | `() => string`                   | Get filter state as query parameters            |
-| `applyUrlFilters` | `(url?: string) => void`         | Apply filters from URL to grid                  |
-| `clearFilters`    | `() => void`                     | Clear all text filters                          |
-| `isReady`         | `boolean`                        | Whether grid API is available and hook is ready |
-| `currentUrl`      | `string`                         | Current URL with filters applied                |
-| `hasFilters`      | `boolean`                        | Whether grid has any active text filters        |
-| `parseUrlFilters` | `(url: string) => FilterState`   | Parse filters from URL without applying         |
-| `applyFilters`    | `(filters: FilterState) => void` | Apply filter state object to grid               |
+| Property             | Type                             | Description                                     |
+| -------------------- | -------------------------------- | ----------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------- |
+| `shareUrl`           | `(baseUrl?: string) => string`   | Generate shareable URL with current filters     |
+| `getQueryParams`     | `() => string`                   | Get filter state as query parameters            |
+| `applyUrlFilters`    | `(url?: string) => void`         | Apply filters from URL to grid                  |
+| `clearFilters`       | `() => void`                     | Clear all text filters                          |
+| `isReady`            | `boolean`                        | Whether grid API is available and hook is ready |
+| `currentUrl`         | `string`                         | Current URL with filters applied                |
+| `hasFilters`         | `boolean`                        | Whether grid has any active text filters        |
+| `parseUrlFilters`    | `(url: string) => FilterState`   | Parse filters from URL without applying         |
+| `applyFilters`       | `(filters: FilterState) => void` | Apply filter state object to grid               |
+| `getFiltersAsFormat` | `(format: 'querystring'          | 'json'                                          | 'base64') => string`                                       | Serialize filters to any supported format (for sharing/export) |
+| `getCurrentFormat`   | `() => 'individual'              | 'grouped'`                                      | Get the current serialization mode (individual or grouped) |
+
+> **Note:** `getFiltersAsFormat` and `getCurrentFormat` are especially useful for grouped serialization, format conversion, and advanced sharing scenarios.
 
 ### React Features
 
@@ -401,6 +606,66 @@ interface UseAGGridUrlSyncOptions {
 - **🧹 Cleanup**: Automatically cleans up resources when component unmounts
 - **🛡️ Error Boundaries**: Graceful error handling with configurable callbacks
 - **📊 Filter Status**: `hasFilters` tracks whether any filters are active
+
+### React with Grouped Serialization
+
+The React hook fully supports grouped serialization with all format options:
+
+```tsx
+import React, { useState } from 'react'
+import { AgGridReact } from 'ag-grid-react'
+import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+
+function AdvancedGridComponent() {
+  const [gridApi, setGridApi] = useState(null)
+
+  // Grouped serialization with base64 format
+  const { shareUrl, applyUrlFilters, clearFilters, hasFilters, isReady } =
+    useAGGridUrlSync(gridApi, {
+      serialization: 'grouped',
+      format: 'base64',
+      groupedParam: 'grid_state',
+      autoApplyOnMount: true
+    })
+
+  const handleShareCompact = async () => {
+    // Base64 format creates very compact URLs
+    const url = shareUrl()
+    await navigator.clipboard.writeText(url)
+    alert('Compact filter URL copied!')
+  }
+
+  const handleShareJSON = async () => {
+    // Get filters in JSON format for debugging
+    const jsonFilters = urlSync?.getFiltersAsFormat?.('json')
+    console.log('Current filters as JSON:', jsonFilters)
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: '10px' }}>
+        <button onClick={handleShareCompact} disabled={!isReady}>
+          📋 Share Compact URL
+        </button>
+        <button onClick={handleShareJSON} disabled={!isReady}>
+          🔍 Debug Filters
+        </button>
+        <button onClick={clearFilters} disabled={!hasFilters}>
+          🗑️ Clear Filters
+        </button>
+      </div>
+
+      {/* Grid component */}
+      <div className="ag-theme-alpine" style={{ height: 400, width: '100%' }}>
+        <AgGridReact
+          onGridReady={params => setGridApi(params.api)}
+          // ... grid configuration
+        />
+      </div>
+    </div>
+  )
+}
+```
 
 ### Advanced React Example
 
@@ -488,7 +753,7 @@ Mixed filters: https://app.com/page?f_name_contains=john&f_salary_gte=75000&f_ag
 
 Parameter structure:
 
-- Prefix: `f_` (configurable - useful for multi-grid scenarios)
+- Prefix: `f_` (configurable)
 - Format: `f_{columnName}_{operation}={value}`
 - **Text Operations**: `contains`, `eq`, `neq`, `startsWith`, `endsWith`, `notContains`, `blank`, `notBlank`
 - **Number Operations**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `range`, `blank`, `notBlank`
@@ -583,8 +848,22 @@ urlSync.destroy()
 
 ```typescript
 interface AGGridUrlSyncConfig {
+  // Serialization mode (default: 'individual')
+  // 'individual': Each filter becomes a separate URL parameter
+  // 'grouped': All filters are packaged into a single URL parameter
+  serialization?: 'individual' | 'grouped'
+
+  // Format for grouped serialization (default: 'querystring')
+  // 'querystring': URL-encoded querystring format (most compatible)
+  // 'json': JSON-encoded format (good for complex filters)
+  // 'base64': Base64-encoded JSON (most compact)
+  format?: 'querystring' | 'json' | 'base64'
+
+  // Parameter name for grouped mode (default: 'grid_filters')
+  groupedParam?: string
+
   // Prefix for URL parameters (default: 'f_')
-  // Useful for multi-grid scenarios: 'emp_', 'proj_', etc.
+  // In grouped mode, this affects individual parameter names within the group
   paramPrefix?: string
 
   // Maximum length for filter values (default: 200)
@@ -607,12 +886,13 @@ Comprehensive demonstration showcasing all features:
 - **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
 - **Complete date filter support** - All 9 AG Grid date operations (equals, not equal, before, before or equal, after, after or equal, in range, blank, not blank)
-- **Mixed filter scenarios** - Text, number, and date filters working together (Sales team + salary filters, Engineering + experience, Executive view with high salaries)
-- **Number operation demos** - Dedicated buttons for salary ranges, age filtering, experience thresholds, and blank number fields
-- **URL sharing workflow** - Copy to clipboard, email, and Slack integration
-- **Performance monitoring** - Real-time benchmarks and stress testing with mixed filter types
-- **Error handling** - Malformed URL and invalid filter testing for both text, number, and date
-- **Complete API showcase** - Generate URLs, apply filters, clear filters with comprehensive examples
+- **Grouped serialization** - Package all filters into a single URL parameter with querystring, JSON, or base64 encoding
+- **Manual URL generation** - Generate shareable URLs with current filter states
+- **Bidirectional sync** - Automatic synchronization between AG Grid and URL
+- **Framework agnostic** - Works with any AG Grid setup, no dependencies
+- **High performance** - Efficiently handles 100+ filters with <20ms latency
+- **Robust error handling** - Graceful handling of malformed URLs and special characters
+- **Lightweight** - Minimal bundle size (~3KB gzipped), ideal for modern web applications
 
 ### ⚛️ [React Integration](./examples/react-basic/basic-grid.tsx)
 

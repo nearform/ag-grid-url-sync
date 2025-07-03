@@ -8,6 +8,7 @@ import { DEFAULT_CONFIG } from './validation.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { getFilterModel, applyFilterModel } from './grid-integration.js'
+import { serializeGrouped } from './serialization/grouped.js'
 
 /**
  * AGGridUrlSync class for synchronizing AG Grid text filters with URL parameters
@@ -25,7 +26,10 @@ export class AGGridUrlSync {
       gridApi,
       paramPrefix: config.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
       maxValueLength: config.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-      onParseError: config.onParseError ?? (() => {})
+      onParseError: config.onParseError ?? (() => {}),
+      serialization: config.serialization ?? DEFAULT_CONFIG.serialization,
+      groupedParam: config.groupedParam ?? DEFAULT_CONFIG.groupedParam,
+      format: config.format ?? DEFAULT_CONFIG.format
     }
   }
 
@@ -80,6 +84,41 @@ export class AGGridUrlSync {
    */
   destroy(): void {
     // Currently no cleanup needed, but included for future use
+  }
+
+  /**
+   * Gets the current serialization mode
+   * @returns The current serialization mode
+   */
+  getSerializationMode(): 'individual' | 'grouped' {
+    return this.config.serialization
+  }
+
+  /**
+   * Gets the current format (for grouped mode)
+   * @returns The current format
+   */
+  getCurrentFormat(): 'querystring' | 'json' | 'base64' {
+    return this.config.format
+  } /**
+   * Gets filters in a specific format (useful for sharing/export)
+   * @param format - The format to serialize to
+   * @returns Serialized filter string
+   */
+  getFiltersAsFormat(format: 'querystring' | 'json' | 'base64'): string {
+    const filterState = getFilterModel(this.config)
+
+    // Create temporary config for the requested format
+    const tempConfig = {
+      ...this.config,
+      format,
+      serialization: 'grouped' as const
+    }
+
+    // Use the serialization module
+    const result = serializeGrouped(filterState, tempConfig)
+
+    return result.value
   }
 }
 

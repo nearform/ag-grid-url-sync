@@ -222,7 +222,11 @@ export function useAGGridUrlSync(
           paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
           maxValueLength:
             coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-          onParseError: coreOptions.onParseError ?? (() => {})
+          onParseError: coreOptions.onParseError ?? (() => {}),
+          serialization:
+            coreOptions.serialization ?? DEFAULT_CONFIG.serialization,
+          groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
+          format: coreOptions.format ?? DEFAULT_CONFIG.format
         }
         return parseFilters(url, config)
       } catch (error) {
@@ -252,6 +256,33 @@ export function useAGGridUrlSync(
     [handleError, coreOptions]
   )
 
+  const getFiltersAsFormat = useCallback(
+    (format: 'querystring' | 'json' | 'base64'): string => {
+      if (!urlSyncRef.current) {
+        return ''
+      }
+      try {
+        return urlSyncRef.current.getFiltersAsFormat(format)
+      } catch (error) {
+        handleError(error, 'get-filters-as-format')
+        return ''
+      }
+    },
+    [handleError]
+  )
+
+  const getCurrentFormat = useCallback((): 'individual' | 'grouped' => {
+    if (!urlSyncRef.current) {
+      return 'individual' // Default fallback
+    }
+    try {
+      return urlSyncRef.current.getSerializationMode()
+    } catch (error) {
+      handleError(error, 'get-current-format')
+      return 'individual' // Default fallback
+    }
+  }, [handleError])
+
   // Return the hook API
   return useMemo(
     () => ({
@@ -263,7 +294,9 @@ export function useAGGridUrlSync(
       currentUrl,
       hasFilters,
       parseUrlFilters,
-      applyFilters
+      applyFilters,
+      getFiltersAsFormat,
+      getCurrentFormat
     }),
     [
       shareUrl,
@@ -274,7 +307,9 @@ export function useAGGridUrlSync(
       currentUrl,
       hasFilters,
       parseUrlFilters,
-      applyFilters
+      applyFilters,
+      getFiltersAsFormat,
+      getCurrentFormat
     ]
   )
 }

@@ -143,6 +143,27 @@ export function serializeFilters(
 }
 
 /**
+ * Helper to extract and preserve non-filter parameters from a URL
+ */
+function getPreservedParams(
+  url: URL,
+  config: InternalConfig,
+  excludeParam?: string
+): URLSearchParams {
+  const params = new URLSearchParams()
+  for (const [key, value] of url.searchParams.entries()) {
+    if (
+      (excludeParam && key === excludeParam) ||
+      (config.paramPrefix && key.startsWith(config.paramPrefix))
+    ) {
+      continue
+    }
+    params.set(key, value)
+  }
+  return params
+}
+
+/**
  * Generates a URL with the current filter state
  */
 export function generateUrl(
@@ -160,11 +181,10 @@ export function generateUrl(
   // Handle individual serialization (existing logic)
   const filterParams = serializeFilters(filterState, config)
 
-  // Preserve existing non-filter parameters
-  for (const [key, value] of url.searchParams.entries()) {
-    if (!key.startsWith(config.paramPrefix)) {
-      filterParams.append(key, value)
-    }
+  // Use shared helper to preserve non-filter parameters
+  const preservedParams = getPreservedParams(url, config)
+  for (const [key, value] of preservedParams.entries()) {
+    filterParams.append(key, value)
   }
 
   const queryString = filterParams.toString()
@@ -196,17 +216,10 @@ function generateGroupedUrl(
   // Serialize filters using grouped format
   const groupedResult = serializeGrouped(filterState, config)
 
-  // Preserve existing non-filter parameters (but remove the grouped param if it exists)
-  const paramsToKeep = new URLSearchParams()
-  for (const [key, value] of url.searchParams.entries()) {
-    if (key !== config.groupedParam) {
-      paramsToKeep.set(key, value)
-    }
-  }
-
-  // Clear and rebuild search params
+  // Use shared helper to preserve non-filter parameters (excluding grouped param)
+  const preservedParams = getPreservedParams(url, config, config.groupedParam)
   url.search = ''
-  for (const [key, value] of paramsToKeep.entries()) {
+  for (const [key, value] of preservedParams.entries()) {
     url.searchParams.set(key, value)
   }
 

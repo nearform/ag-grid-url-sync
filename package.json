@@ -1,6 +1,6 @@
 {
   "name": "ag-grid-url-sync",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "AG Grid URL Sync - Synchronize AG Grid text filters with URL parameters",
   "main": "dist/index.js",
   "type": "module",

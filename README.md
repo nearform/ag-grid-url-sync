@@ -18,7 +18,7 @@ A lightweight TypeScript library for synchronizing AG Grid text and number filte
 - 🚦 Graceful error handling with configurable error callbacks
 - 🧹 Clean, human-readable URL format
 - ⚡ High performance - handles 100+ filters efficiently (<20ms)
-- 🔧 Configurable URL prefixes for multi-grid scenarios
+- 🔧 Configurable URL prefixes
 - 🛡️ Robust edge case handling (special characters, malformed URLs)
 - 📦 Lightweight bundle size (~3KB gzipped)
 
@@ -279,7 +279,7 @@ Benefits of grouped serialization:
 
 - **Cleaner URLs** with a single parameter instead of many
 - **Better for sharing** - easier to copy/paste and less prone to URL manipulation
-- **Multi-grid support** - different grids can use different grouped parameters
+
 - **Format flexibility** - choose between querystring, JSON, or base64 encoding
 - **Future-proof** - easier to extend with additional metadata
 
@@ -367,27 +367,6 @@ console.log(urlSync.getCurrentFormat()) // 'querystring'
 ```
 
 ### Advanced Examples
-
-#### Multi-Grid Support
-
-```typescript
-// Team grid
-const teamSync = createUrlSync(teamGridApi, {
-  serialization: 'grouped',
-  groupedParam: 'team_filters',
-  format: 'base64'
-})
-
-// Project grid
-const projectSync = createUrlSync(projectGridApi, {
-  serialization: 'grouped',
-  groupedParam: 'project_filters',
-  format: 'json'
-})
-
-// URLs won't conflict:
-// ?team_filters=eyJuYW1lIjp7...&project_filters=%7B%22status%22%3A...
-```
 
 #### Format Conversion Utility
 
@@ -662,60 +641,6 @@ function AdvancedGridComponent() {
 }
 ```
 
-### React Multi-Grid Example
-
-```tsx
-function MultiGridDashboard() {
-  const [teamGridApi, setTeamGridApi] = useState(null)
-  const [projectGridApi, setProjectGridApi] = useState(null)
-
-  // Each grid uses different grouped parameter
-  const teamSync = useAGGridUrlSync(teamGridApi, {
-    serialization: 'grouped',
-    groupedParam: 'team_filters',
-    format: 'json'
-  })
-
-  const projectSync = useAGGridUrlSync(projectGridApi, {
-    serialization: 'grouped',
-    groupedParam: 'project_filters',
-    format: 'base64'
-  })
-
-  const handleShareBoth = async () => {
-    const teamUrl = teamSync.shareUrl()
-    const projectUrl = projectSync.shareUrl()
-
-    // Combine both filter states in one URL
-    const combinedUrl = new URL(teamUrl)
-    const projectParams = new URL(projectUrl).searchParams
-    projectParams.forEach((value, key) => {
-      combinedUrl.searchParams.set(key, value)
-    })
-
-    await navigator.clipboard.writeText(combinedUrl.toString())
-    alert('Combined dashboard state copied!')
-  }
-
-  return (
-    <div>
-      <button onClick={handleShareBoth}>📋 Share Full Dashboard State</button>
-
-      <div style={{ display: 'flex', gap: '20px' }}>
-        <div>
-          <h3>Team Grid</h3>
-          <AgGridReact onGridReady={params => setTeamGridApi(params.api)} />
-        </div>
-        <div>
-          <h3>Project Grid</h3>
-          <AgGridReact onGridReady={params => setProjectGridApi(params.api)} />
-        </div>
-      </div>
-    </div>
-  )
-}
-```
-
 ### Advanced React Example
 
 ```tsx
@@ -802,7 +727,7 @@ Mixed filters: https://app.com/page?f_name_contains=john&f_salary_gte=75000&f_ag
 
 Parameter structure:
 
-- Prefix: `f_` (configurable - useful for multi-grid scenarios)
+- Prefix: `f_` (configurable)
 - Format: `f_{columnName}_{operation}={value}`
 - **Text Operations**: `contains`, `eq`, `neq`, `startsWith`, `endsWith`, `notContains`, `blank`, `notBlank`
 - **Number Operations**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `range`, `blank`, `notBlank`
@@ -909,11 +834,9 @@ interface AGGridUrlSyncConfig {
   format?: 'querystring' | 'json' | 'base64'
 
   // Parameter name for grouped mode (default: 'grid_filters')
-  // Useful for multi-grid scenarios: 'team_filters', 'project_filters', etc.
   groupedParam?: string
 
   // Prefix for URL parameters (default: 'f_')
-  // Useful for multi-grid scenarios: 'emp_', 'proj_', etc.
   // In grouped mode, this affects individual parameter names within the group
   paramPrefix?: string
 

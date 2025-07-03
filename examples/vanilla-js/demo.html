@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AG Grid URL Sync - Advanced Demo</title>
+    <title>AG Grid URL Sync - Complete Demo</title>
     <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.3.2/dist/ag-grid-community.min.js"></script>
     <link
       href="https://cdn.jsdelivr.net/npm/ag-grid-community@33.3.2/styles/ag-grid.min.css"
@@ -216,15 +216,47 @@
         text-align: center;
         white-space: nowrap;
       }
+      .mode-selector,
+      .format-selector {
+        display: flex;
+        gap: 15px;
+        margin: 10px 0;
+        align-items: center;
+      }
+      .mode-selector label,
+      .format-selector label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .mode-selector input[type='radio'],
+      .format-selector input[type='radio'] {
+        margin: 0;
+      }
+      .serialization-info {
+        background: #e3f2fd;
+        border: 1px solid #2196f3;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 10px 0;
+        font-size: 12px;
+        color: #1976d2;
+      }
+      .format-disabled {
+        opacity: 0.5;
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="header">
-        <h1>🔗 AG Grid URL Sync - Advanced Demo</h1>
+        <h1>🔗 AG Grid URL Sync - Complete Demo</h1>
         <div class="subtitle">
-          Comprehensive demonstration of text & number filter URL
-          synchronization
+          Comprehensive demonstration including individual & grouped
+          serialization with multiple formats
         </div>
       </div>
 
@@ -251,6 +283,42 @@
               <div id="errorCount" class="stat-value">0</div>
               <div class="stat-label">Errors</div>
             </div>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>⚙️ Serialization Configuration</h3>
+          <div class="mode-selector">
+            <label><strong>Serialization Mode:</strong></label>
+            <label>
+              <input type="radio" name="mode" value="individual" checked />
+              Individual (separate parameters)
+            </label>
+            <label>
+              <input type="radio" name="mode" value="grouped" />
+              Grouped (single parameter)
+            </label>
+          </div>
+
+          <div class="format-selector format-disabled" id="formatSelector">
+            <label><strong>Grouped Format:</strong></label>
+            <label>
+              <input type="radio" name="format" value="querystring" checked />
+              QueryString
+            </label>
+            <label>
+              <input type="radio" name="format" value="json" />
+              JSON
+            </label>
+            <label>
+              <input type="radio" name="format" value="base64" />
+              Base64
+            </label>
+          </div>
+
+          <div id="serializationInfo" class="serialization-info">
+            <strong>Individual Mode:</strong> Each filter creates a separate URL
+            parameter (e.g., ?f_name_contains=john&f_age_gt=25)
           </div>
         </div>
 
@@ -509,6 +577,34 @@
             </button>
             <button class="btn btn-secondary" onclick="clearAllFilters()">
               🧹 Clear All
+            </button>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>🔄 Grouped Serialization Testing</h3>
+          <p style="margin: 0 0 15px; color: #666; font-size: 14px">
+            Test format conversion and grouped URL functionality
+          </p>
+          <div class="control-group">
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="testFormatConversion()"
+            >
+              🔄 Test Format Conversion
+            </button>
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="compareFormats()"
+            >
+              📊 Compare All Formats
+            </button>
+
+            <button
+              class="btn btn-info scenario-btn"
+              onclick="testUrlDetection()"
+            >
+              🔍 Test URL Detection
             </button>
           </div>
         </div>
@@ -815,6 +911,9 @@
             } catch (error) {
               console.warn('Failed to apply filters from URL:', error)
             }
+
+            // Set up event listeners for mode/format changes
+            setupSerializationControls()
 
             updatePerformanceMonitor()
           }
@@ -1414,6 +1513,241 @@
       function showInfo(message) {
         const performanceMonitor = document.getElementById('performanceMonitor')
         performanceMonitor.textContent = message
+      }
+
+      // Grouped Serialization Functions
+      function setupSerializationControls() {
+        const modeRadios = document.querySelectorAll('input[name="mode"]')
+        const formatRadios = document.querySelectorAll('input[name="format"]')
+        const formatSelector = document.getElementById('formatSelector')
+        const serializationInfo = document.getElementById('serializationInfo')
+
+        // Handle mode changes
+        modeRadios.forEach(radio => {
+          radio.addEventListener('change', () => {
+            if (radio.value === 'grouped') {
+              formatSelector.classList.remove('format-disabled')
+              updateSerializationInfo()
+            } else {
+              formatSelector.classList.add('format-disabled')
+              updateSerializationInfo()
+            }
+            reinitializeUrlSync()
+          })
+        })
+
+        // Handle format changes
+        formatRadios.forEach(radio => {
+          radio.addEventListener('change', () => {
+            updateSerializationInfo()
+            reinitializeUrlSync()
+          })
+        })
+
+        function updateSerializationInfo() {
+          const mode = document.querySelector(
+            'input[name="mode"]:checked'
+          ).value
+          const format = document.querySelector(
+            'input[name="format"]:checked'
+          ).value
+
+          if (mode === 'individual') {
+            serializationInfo.innerHTML =
+              '<strong>Individual Mode:</strong> Each filter creates a separate URL parameter (e.g., ?f_name_contains=john&f_age_gt=25)'
+          } else {
+            let description =
+              '<strong>Grouped Mode:</strong> All filters packaged into a single parameter. '
+            switch (format) {
+              case 'querystring':
+                description +=
+                  '<strong>QueryString format:</strong> URL-encoded within parameter (most compatible)'
+                break
+              case 'json':
+                description +=
+                  '<strong>JSON format:</strong> Structured JSON data (good for debugging)'
+                break
+              case 'base64':
+                description +=
+                  '<strong>Base64 format:</strong> Compact encoded format (ideal for sharing)'
+                break
+            }
+            serializationInfo.innerHTML = description
+          }
+        }
+      }
+
+      function reinitializeUrlSync() {
+        if (!gridApi || !window.createUrlSync) return
+
+        const mode = document.querySelector('input[name="mode"]:checked').value
+        const format = document.querySelector(
+          'input[name="format"]:checked'
+        ).value
+
+        const config = {
+          onParseError: error => {
+            showError(`URL Parse Error: ${error.message}`)
+            performanceStats.errorCount++
+            updatePerformanceStats()
+          }
+        }
+
+        if (mode === 'grouped') {
+          config.serialization = 'grouped'
+          config.format = format
+          config.groupedParam = 'grid_filters'
+        }
+
+        // Preserve current filters
+        const currentFilters = gridApi.getFilterModel()
+
+        // Create new URL sync instance
+        urlSync = window.createUrlSync(gridApi, config)
+
+        // Reapply filters
+        if (Object.keys(currentFilters).length > 0) {
+          gridApi.setFilterModel(currentFilters)
+        }
+
+        showSuccess(
+          `Switched to ${mode} mode${mode === 'grouped' ? ` with ${format} format` : ''}`
+        )
+      }
+
+      function testFormatConversion() {
+        if (!urlSync) return
+
+        try {
+          const mode = document.querySelector(
+            'input[name="mode"]:checked'
+          ).value
+
+          if (mode === 'individual') {
+            showError(
+              'Format conversion requires grouped mode. Please switch to grouped mode first.'
+            )
+            return
+          }
+
+          // Apply a sample filter set
+          const sampleFilters = {
+            department: {
+              filterType: 'text',
+              type: 'equals',
+              filter: 'Engineering'
+            },
+            salary: { filterType: 'number', type: 'greaterThan', filter: 75000 }
+          }
+
+          gridApi.setFilterModel(sampleFilters)
+
+          // Test all formats
+          const results = []
+
+          if (urlSync.getFiltersAsFormat) {
+            const queryString = urlSync.getFiltersAsFormat('querystring')
+            const json = urlSync.getFiltersAsFormat('json')
+            const base64 = urlSync.getFiltersAsFormat('base64')
+
+            results.push(
+              `QueryString: ${queryString.substring(0, 100)}${queryString.length > 100 ? '...' : ''}`
+            )
+            results.push(
+              `JSON: ${json.substring(0, 100)}${json.length > 100 ? '...' : ''}`
+            )
+            results.push(
+              `Base64: ${base64.substring(0, 100)}${base64.length > 100 ? '...' : ''}`
+            )
+          }
+
+          showSuccess(
+            `Format conversion test completed!\n${results.join('\n')}`
+          )
+        } catch (error) {
+          showError(`Format conversion failed: ${error.message}`)
+        }
+      }
+
+      function compareFormats() {
+        if (!urlSync) return
+
+        try {
+          // Apply a complex filter set
+          const complexFilters = {
+            name: { filterType: 'text', type: 'contains', filter: 'John' },
+            department: {
+              filterType: 'text',
+              type: 'equals',
+              filter: 'Engineering'
+            },
+            salary: {
+              filterType: 'number',
+              type: 'inRange',
+              filter: 80000,
+              filterTo: 120000
+            },
+            performance: {
+              filterType: 'text',
+              type: 'equals',
+              filter: 'Excellent'
+            }
+          }
+
+          gridApi.setFilterModel(complexFilters)
+
+          // Generate URLs in different modes/formats
+          const comparisons = []
+
+          // Individual mode
+          const individualSync = window.createUrlSync(gridApi, {})
+          const individualUrl = individualSync.generateUrl(
+            'https://example.com'
+          )
+          comparisons.push(`Individual: ${individualUrl.length} chars`)
+
+          // Grouped formats
+          const formats = ['querystring', 'json', 'base64']
+          formats.forEach(format => {
+            const groupedSync = window.createUrlSync(gridApi, {
+              serialization: 'grouped',
+              format: format
+            })
+            const groupedUrl = groupedSync.generateUrl('https://example.com')
+            comparisons.push(`Grouped ${format}: ${groupedUrl.length} chars`)
+          })
+
+          const result = `URL Length Comparison:\n${comparisons.join('\n')}\n\nBase64 is typically the most compact for complex filter sets.`
+          showSuccess(result)
+        } catch (error) {
+          showError(`Format comparison failed: ${error.message}`)
+        }
+      }
+
+      function testUrlDetection() {
+        try {
+          const testUrls = [
+            'https://example.com?f_name_contains=john&f_age_gt=25',
+            'https://example.com?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25',
+            'https://example.com?grid_filters=%7B%22name%22%3A%7B%22filterType%22%3A%22text%22%7D%7D',
+            'https://example.com?grid_filters=eyJuYW1lIjp7ImZpbHRlclR5cGUiOiJ0ZXh0In19'
+          ]
+
+          const results = testUrls.map((url, index) => {
+            const type = [
+              'Individual',
+              'Grouped QueryString',
+              'Grouped JSON',
+              'Grouped Base64'
+            ][index]
+            return `${type}: ${url.length} chars`
+          })
+
+          const info = `URL Detection Test:\n${results.join('\n')}\n\nThe library automatically detects the format and applies filters accordingly.`
+          showSuccess(info)
+        } catch (error) {
+          showError(`URL detection test failed: ${error.message}`)
+        }
       }
     </script>
   </body>

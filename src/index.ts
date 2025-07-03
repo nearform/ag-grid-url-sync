@@ -15,7 +15,7 @@ export { serializeFilters, generateUrl } from './core/url-generator.js'
 // AG Grid integration utilities
 export { getFilterModel, applyFilterModel } from './core/grid-integration.js'
 
-// Grouped serialization utilities (Phase 1)
+// Grouped serialization utilities
 export {
   serializeGrouped,
   deserializeGrouped,

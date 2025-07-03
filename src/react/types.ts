@@ -78,4 +78,17 @@ export interface UseAGGridUrlSyncReturn {
    * @param filters - Filter state to apply
    */
   applyFilters: (filters: FilterState) => void
+
+  /**
+   * Get filters in a specific format (useful for sharing/export)
+   * @param format - The format to serialize to
+   * @returns Serialized filter string
+   */
+  getFiltersAsFormat: (format: 'querystring' | 'json' | 'base64') => string
+
+  /**
+   * Get the current serialization format
+   * @returns The current format
+   */
+  getCurrentFormat: () => 'individual' | 'grouped'
 }

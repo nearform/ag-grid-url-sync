@@ -7,7 +7,10 @@ describe('URL Generator', () => {
     gridApi: {} as any,
     paramPrefix: 'f_',
     maxValueLength: 200,
-    onParseError: vi.fn()
+    onParseError: vi.fn(),
+    serialization: 'individual',
+    format: 'querystring',
+    groupedParam: 'grid_filters'
   }
 
   beforeEach(() => {

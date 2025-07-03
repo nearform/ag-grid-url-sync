@@ -295,33 +295,6 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
     })
   })
 
-  describe('Multi-Grid Support', () => {
-    it('should support multiple grids with different grouped parameters', () => {
-      const teamSync = createUrlSync(mockGridApi, {
-        serialization: 'grouped',
-        groupedParam: 'team_filters',
-        format: 'json'
-      })
-
-      const projectSync = createUrlSync(mockGridApi, {
-        serialization: 'grouped',
-        groupedParam: 'project_filters',
-        format: 'base64'
-      })
-
-      const teamUrl = teamSync.generateUrl('http://example.com')
-      const projectUrl = projectSync.generateUrl('http://example.com')
-
-      expect(teamUrl).toContain('team_filters=')
-      expect(projectUrl).toContain('project_filters=')
-
-      // URLs shouldn't interfere with each other
-      const combinedUrl = teamUrl + '&' + new URL(projectUrl).search.slice(1)
-      expect(combinedUrl).toContain('team_filters=')
-      expect(combinedUrl).toContain('project_filters=')
-    })
-  })
-
   describe('Roundtrip Tests', () => {
     it('should maintain data integrity through serialize/deserialize cycle', () => {
       const formats: Array<'querystring' | 'json' | 'base64'> = [

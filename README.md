@@ -259,7 +259,7 @@ urlSync.clearFilters()
 
 ## Grouped Serialization
 
-**New in v0.3.0**: Grouped serialization provides an alternative to individual URL parameters by packaging all filters into a single URL parameter. This is particularly useful for applications with many filters or when you need more compact URLs.
+Grouped serialization provides an alternative to individual URL parameters by packaging all filters into a single URL parameter. This is particularly useful for applications with many filters or when you need more compact URLs.
 
 ### Why Use Grouped Serialization?
 
@@ -400,40 +400,59 @@ const groupedSync = createUrlSync(gridApi, {
 const currentFilters = urlSync.getFiltersAsFormat('json')
 ```
 
-### Backward Compatibility
+### Granular Import: Grouped Serialization
 
-Grouped serialization is **fully backward compatible**:
-
-- Default mode remains `individual`
-- Existing URLs continue to work unchanged
-- No breaking changes to existing APIs
-- All existing configuration options are preserved
-- You can gradually migrate from individual to grouped mode
-
-### Migration Guide
-
-To migrate from individual to grouped serialization:
-
-1. **Test with your data**: Start with `format: 'querystring'` as it's most similar to individual mode
-2. **Update configuration**: Add `serialization: 'grouped'` to your config
-3. **Choose format**: Select `'querystring'`, `'json'`, or `'base64'` based on your needs
-4. **Update parameter name**: Optionally customize `groupedParam` for your application
-5. **Update sharing logic**: URLs will have different structure but same functionality
+You can import grouped serialization utilities and format serializers directly for advanced use cases or custom integrations:
 
 ```typescript
-// Before (individual)
-const urlSync = createUrlSync(gridApi, {
-  paramPrefix: 'f_'
-})
+import {
+  serializeGrouped,
+  deserializeGrouped
+} from 'ag-grid-url-sync/serialization'
+import {
+  QueryStringSerializer,
+  JsonSerializer,
+  Base64Serializer
+} from 'ag-grid-url-sync/serialization/formats'
+```
 
-// After (grouped)
+---
+
+### Error Handling for Grouped Serialization
+
+You can provide a custom error handler to gracefully handle malformed grouped parameters or serialization errors. The library will throw an `InvalidSerializationError` for invalid formats:
+
+```typescript
+import { InvalidSerializationError } from 'ag-grid-url-sync/types'
+
 const urlSync = createUrlSync(gridApi, {
   serialization: 'grouped',
-  format: 'querystring', // Most similar to individual mode
-  groupedParam: 'filters',
-  paramPrefix: 'f_' // Still used for individual parameter names within the group
+  format: 'json',
+  onParseError: error => {
+    if (error instanceof InvalidSerializationError) {
+      // Handle grouped serialization error
+      alert('Invalid filter data in URL!')
+    } else {
+      // Handle other errors
+      console.error(error)
+    }
+  }
 })
 ```
+
+### Exports
+
+The package supports granular subpath exports for advanced usage and optimal bundle size:
+
+- `ag-grid-url-sync/serialization` – grouped serialization utilities
+- `ag-grid-url-sync/serialization/formats` – format-specific serializers
+- `ag-grid-url-sync/validation` – validation helpers
+- `ag-grid-url-sync/url-parser` – URL parsing utilities
+- `ag-grid-url-sync/url-generator` – URL generation utilities
+- `ag-grid-url-sync/grid-integration` – AG Grid integration helpers
+- `ag-grid-url-sync/types` – TypeScript types
+
+Refer to the [package.json](./package.json) for the full export map.
 
 ## React Integration
 
@@ -539,7 +558,9 @@ const {
   currentUrl,
   hasFilters,
   parseUrlFilters,
-  applyFilters
+  applyFilters,
+  getFiltersAsFormat,
+  getCurrentFormat
 } = useAGGridUrlSync(gridApi, options)
 ```
 
@@ -555,22 +576,27 @@ interface UseAGGridUrlSyncOptions {
   // React-specific options
   autoApplyOnMount?: boolean // Default: false
   enabledWhenReady?: boolean // Default: true
+  onError?: (error: Error, context: string) => void // Advanced error handling
 }
 ```
 
 #### Hook Return Values
 
-| Property          | Type                             | Description                                     |
-| ----------------- | -------------------------------- | ----------------------------------------------- |
-| `shareUrl`        | `(baseUrl?: string) => string`   | Generate shareable URL with current filters     |
-| `getQueryParams`  | `() => string`                   | Get filter state as query parameters            |
-| `applyUrlFilters` | `(url?: string) => void`         | Apply filters from URL to grid                  |
-| `clearFilters`    | `() => void`                     | Clear all text filters                          |
-| `isReady`         | `boolean`                        | Whether grid API is available and hook is ready |
-| `currentUrl`      | `string`                         | Current URL with filters applied                |
-| `hasFilters`      | `boolean`                        | Whether grid has any active text filters        |
-| `parseUrlFilters` | `(url: string) => FilterState`   | Parse filters from URL without applying         |
-| `applyFilters`    | `(filters: FilterState) => void` | Apply filter state object to grid               |
+| Property             | Type                             | Description                                     |
+| -------------------- | -------------------------------- | ----------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------- |
+| `shareUrl`           | `(baseUrl?: string) => string`   | Generate shareable URL with current filters     |
+| `getQueryParams`     | `() => string`                   | Get filter state as query parameters            |
+| `applyUrlFilters`    | `(url?: string) => void`         | Apply filters from URL to grid                  |
+| `clearFilters`       | `() => void`                     | Clear all text filters                          |
+| `isReady`            | `boolean`                        | Whether grid API is available and hook is ready |
+| `currentUrl`         | `string`                         | Current URL with filters applied                |
+| `hasFilters`         | `boolean`                        | Whether grid has any active text filters        |
+| `parseUrlFilters`    | `(url: string) => FilterState`   | Parse filters from URL without applying         |
+| `applyFilters`       | `(filters: FilterState) => void` | Apply filter state object to grid               |
+| `getFiltersAsFormat` | `(format: 'querystring'          | 'json'                                          | 'base64') => string`                                       | Serialize filters to any supported format (for sharing/export) |
+| `getCurrentFormat`   | `() => 'individual'              | 'grouped'`                                      | Get the current serialization mode (individual or grouped) |
+
+> **Note:** `getFiltersAsFormat` and `getCurrentFormat` are especially useful for grouped serialization, format conversion, and advanced sharing scenarios.
 
 ### React Features
 
@@ -860,12 +886,13 @@ Comprehensive demonstration showcasing all features:
 - **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
 - **Complete date filter support** - All 9 AG Grid date operations (equals, not equal, before, before or equal, after, after or equal, in range, blank, not blank)
-- **Mixed filter scenarios** - Text, number, and date filters working together (Sales team + salary filters, Engineering + experience, Executive view with high salaries)
-- **Number operation demos** - Dedicated buttons for salary ranges, age filtering, experience thresholds, and blank number fields
-- **URL sharing workflow** - Copy to clipboard, email, and Slack integration
-- **Performance monitoring** - Real-time benchmarks and stress testing with mixed filter types
-- **Error handling** - Malformed URL and invalid filter testing for both text, number, and date
-- **Complete API showcase** - Generate URLs, apply filters, clear filters with comprehensive examples
+- **Grouped serialization** - Package all filters into a single URL parameter with querystring, JSON, or base64 encoding
+- **Manual URL generation** - Generate shareable URLs with current filter states
+- **Bidirectional sync** - Automatic synchronization between AG Grid and URL
+- **Framework agnostic** - Works with any AG Grid setup, no dependencies
+- **High performance** - Efficiently handles 100+ filters with <20ms latency
+- **Robust error handling** - Graceful handling of malformed URLs and special characters
+- **Lightweight** - Minimal bundle size (~3KB gzipped), ideal for modern web applications
 
 ### ⚛️ [React Integration](./examples/react-basic/basic-grid.tsx)
 

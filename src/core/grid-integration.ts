@@ -19,6 +19,29 @@ import {
 } from './types.js'
 import type { GridApi } from 'ag-grid-community'
 
+// Map AG Grid number operations to our internal number operations
+// Since AG Grid uses generic names, we need to be explicit about number operations
+const AG_GRID_TO_NUMBER_OPERATION_MAP = {
+  lessThan: 'lessThan',
+  lessThanOrEqual: 'lessThanOrEqual',
+  greaterThan: 'greaterThan',
+  greaterThanOrEqual: 'greaterThanOrEqual',
+  inRange: 'inRange',
+  equals: 'eq',
+  notEqual: 'notEqual',
+  blank: 'blank',
+  notBlank: 'notBlank'
+} as const satisfies Record<string, FilterOperation>
+
+/**
+ * Type guard to check if a value is a valid number operation key
+ */
+function isValidNumberOperation(
+  operation: string | undefined
+): operation is keyof typeof AG_GRID_TO_NUMBER_OPERATION_MAP {
+  return Boolean(operation && operation in AG_GRID_TO_NUMBER_OPERATION_MAP)
+}
+
 /**
  * Converts a date string to ISO format (YYYY-MM-DD)
  * Handles both date strings and undefined values
@@ -130,18 +153,40 @@ export function getFilterModel(config: InternalConfig): FilterState {
       }
       // Handle number filters
       else if (filterType === 'number') {
-        // Map AG Grid number operations back to our internal operations
-        const internalOperation =
-          REVERSE_AG_GRID_OPERATION_NAMES[
-            type as keyof typeof REVERSE_AG_GRID_OPERATION_NAMES
-          ]
+        // For number filters, we need to handle the mapping carefully since
+        // AG Grid uses the same operation names for numbers and dates
+        // Use the explicit number mapping instead of the reverse AG Grid mapping
+        const internalOperation = isValidNumberOperation(type)
+          ? AG_GRID_TO_NUMBER_OPERATION_MAP[type]
+          : null
+
+        // If the operation type is not recognized, report the error
+        if (!internalOperation) {
+          if (config.onParseError) {
+            config.onParseError(
+              new Error(
+                `Unknown number filter operation '${type}' for column '${column}'. ` +
+                  `Supported operations: ${Object.keys(AG_GRID_TO_NUMBER_OPERATION_MAP).join(', ')}`
+              )
+            )
+          }
+          continue
+        }
 
         // Use type predicate to validate and narrow the type
         if (internalOperation && isNumberFilterOperation(internalOperation)) {
+          // Validate that the filter value is actually a number
+          const numericValue = typeof value === 'number' ? value : Number(value)
+
+          // Skip invalid number filters
+          if (isNaN(numericValue)) {
+            continue
+          }
+
           const numberFilter: ColumnFilter = {
             filterType: 'number',
             type: internalOperation, // Now properly typed as NumberFilterOperation
-            filter: typeof value === 'number' ? value : 0
+            filter: numericValue
           }
 
           // Handle range operations

@@ -3,7 +3,11 @@ import type { GridApi } from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { DEFAULT_CONFIG } from '../core/validation.js'
-import type { FilterState } from '../core/types.js'
+import type {
+  FilterState,
+  SerializationFormat,
+  SerializationMode
+} from '../core/types.js'
 import type {
   UseAGGridUrlSyncOptions,
   UseAGGridUrlSyncReturn
@@ -257,7 +261,7 @@ export function useAGGridUrlSync(
   )
 
   const getFiltersAsFormat = useCallback(
-    (format: 'querystring' | 'json' | 'base64'): string => {
+    (format: SerializationFormat): string => {
       if (!urlSyncRef.current) {
         return ''
       }
@@ -271,15 +275,15 @@ export function useAGGridUrlSync(
     [handleError]
   )
 
-  const getCurrentFormat = useCallback((): 'individual' | 'grouped' => {
+  const getCurrentFormat = useCallback((): SerializationMode => {
     if (!urlSyncRef.current) {
-      return 'individual' // Default fallback
+      return DEFAULT_CONFIG.serialization
     }
     try {
       return urlSyncRef.current.getSerializationMode()
     } catch (error) {
       handleError(error, 'get-current-format')
-      return 'individual' // Default fallback
+      return DEFAULT_CONFIG.serialization
     }
   }, [handleError])
 

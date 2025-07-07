@@ -7,6 +7,7 @@ import type {
 } from '../types.js'
 import { generateUrl } from '../url-generator.js'
 import { parseUrlFilters } from '../url-parser.js'
+import { isValidColumnFilter } from '../validation.js'
 
 /**
  * QueryString format serializer
@@ -70,17 +71,9 @@ export class JsonSerializer implements FormatSerializer {
           throw new Error('Invalid JSON: column IDs must be strings')
         }
 
-        if (!filter || typeof filter !== 'object') {
+        if (!isValidColumnFilter(filter)) {
           throw new Error(
-            `Invalid JSON: filter for column ${columnId} must be an object`
-          )
-        }
-
-        // Validate required filter properties
-        const filterObj = filter as any
-        if (!filterObj.filterType || !filterObj.type) {
-          throw new Error(
-            `Invalid JSON: filter for column ${columnId} missing required properties`
+            `Invalid JSON: filter for column ${columnId} is not a valid filter object`
           )
         }
       }

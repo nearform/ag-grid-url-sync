@@ -26,12 +26,8 @@ export class AGGridUrlSync {
   constructor(gridApi: GridApi, config: AGGridUrlSyncConfig = {}) {
     this.config = {
       gridApi,
-      paramPrefix: config.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
-      maxValueLength: config.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-      onParseError: config.onParseError ?? (() => {}),
-      serialization: config.serialization ?? DEFAULT_CONFIG.serialization,
-      groupedParam: config.groupedParam ?? DEFAULT_CONFIG.groupedParam,
-      format: config.format ?? DEFAULT_CONFIG.format
+      ...DEFAULT_CONFIG,
+      ...config
     }
   }
 

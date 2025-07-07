@@ -13,7 +13,8 @@ export const DEFAULT_CONFIG = {
   maxValueLength: 200,
   serialization: 'individual' as const,
   groupedParam: 'grid_filters',
-  format: 'querystring' as const
+  format: 'querystring' as const,
+  onParseError: () => {}
 } as const
 
 /**

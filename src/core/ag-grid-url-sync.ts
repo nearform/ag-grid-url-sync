@@ -2,7 +2,9 @@ import type { GridApi } from 'ag-grid-community'
 import type {
   AGGridUrlSyncConfig,
   FilterState,
-  InternalConfig
+  InternalConfig,
+  SerializationFormat,
+  SerializationMode
 } from './types.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import { parseUrlFilters } from './url-parser.js'
@@ -90,7 +92,7 @@ export class AGGridUrlSync {
    * Gets the current serialization mode
    * @returns The current serialization mode
    */
-  getSerializationMode(): 'individual' | 'grouped' {
+  getSerializationMode(): SerializationMode {
     return this.config.serialization
   }
 
@@ -98,14 +100,14 @@ export class AGGridUrlSync {
    * Gets the current format (for grouped mode)
    * @returns The current format
    */
-  getCurrentFormat(): 'querystring' | 'json' | 'base64' {
+  getCurrentFormat(): SerializationFormat {
     return this.config.format
   } /**
    * Gets filters in a specific format (useful for sharing/export)
    * @param format - The format to serialize to
    * @returns Serialized filter string
    */
-  getFiltersAsFormat(format: 'querystring' | 'json' | 'base64'): string {
+  getFiltersAsFormat(format: SerializationFormat): string {
     const filterState = getFilterModel(this.config)
 
     // Create temporary config for the requested format

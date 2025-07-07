@@ -133,9 +133,9 @@ export function detectGroupedSerialization(
 /**
  * Detect the serialization format of a value
  * @param value - The serialized value
- * @returns The detected format or null if none detected
+ * @returns The detected format
  */
-function detectFormat(value: string): SerializationFormat | null {
+function detectFormat(value: string): SerializationFormat {
   // Try base64 first (most specific)
   if (isBase64Format(value)) {
     return 'base64'
@@ -146,12 +146,7 @@ function detectFormat(value: string): SerializationFormat | null {
     return 'json'
   }
 
-  // Default to querystring format
-  if (isQueryStringFormat(value)) {
-    return 'querystring'
-  }
-
-  return null
+  return 'querystring'
 }
 
 /**
@@ -184,14 +179,6 @@ function isJsonFormat(value: string): boolean {
   } catch {
     return false
   }
-}
-
-/**
- * Check if value appears to be query string format
- */
-function isQueryStringFormat(value: string): boolean {
-  // Basic check for key=value patterns
-  return value.includes('=') && (value.includes('&') || !value.includes('{'))
 }
 
 /**

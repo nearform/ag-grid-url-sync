@@ -1,4 +1,9 @@
-import type { AGGridUrlSyncConfig, FilterState } from '../core/types.js'
+import type {
+  AGGridUrlSyncConfig,
+  FilterState,
+  SerializationFormat,
+  SerializationMode
+} from '../core/types.js'
 
 /**
  * Configuration options for the React hook
@@ -84,11 +89,11 @@ export interface UseAGGridUrlSyncReturn {
    * @param format - The format to serialize to
    * @returns Serialized filter string
    */
-  getFiltersAsFormat: (format: 'querystring' | 'json' | 'base64') => string
+  getFiltersAsFormat: (format: SerializationFormat) => string
 
   /**
    * Get the current serialization format
    * @returns The current format
    */
-  getCurrentFormat: () => 'individual' | 'grouped'
+  getCurrentFormat: () => SerializationMode
 }

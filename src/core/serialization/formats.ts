@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG } from '../index.js'
 import type {
   FilterState,
   SerializationFormat,
@@ -17,13 +18,8 @@ export class QueryStringSerializer implements FormatSerializer {
   serialize(filterState: FilterState): string {
     // Create a temporary config for individual parameter generation
     const tempConfig: InternalConfig = {
-      paramPrefix: 'f_',
-      maxValueLength: 200,
-      onParseError: () => {},
-      serialization: 'individual', // Use individual for internal generation
-      groupedParam: 'grid_filters',
-      format: 'querystring',
-      gridApi: null as any // Not used in URL generation
+      gridApi: null as any, // Not used in URL generation
+      ...DEFAULT_CONFIG
     }
 
     // Generate URL with individual parameters
@@ -40,13 +36,8 @@ export class QueryStringSerializer implements FormatSerializer {
 
     // Create a temporary config for parsing
     const tempConfig: InternalConfig = {
-      paramPrefix: 'f_',
-      maxValueLength: 200,
-      onParseError: () => {},
-      serialization: 'individual', // Use individual for internal parsing
-      groupedParam: 'grid_filters',
-      format: 'querystring',
-      gridApi: null as any // Not used in URL parsing
+      gridApi: null as any, // Not used in URL generation
+      ...DEFAULT_CONFIG
     }
 
     return parseUrlFilters(tempUrl, tempConfig)

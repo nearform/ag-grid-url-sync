@@ -125,7 +125,8 @@ export function detectGroupedSerialization(
     }
 
     return { isGrouped: false }
-  } catch {
+  } catch (error) {
+    console.error(`Error detecting grouped serialization: ${error}`)
     return { isGrouped: false }
   }
 }

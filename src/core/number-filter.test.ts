@@ -18,7 +18,10 @@ describe('Number Filter Operations', () => {
       gridApi: mockGridApi,
       paramPrefix: 'f_',
       maxValueLength: 200,
-      onParseError: vi.fn()
+      onParseError: vi.fn(),
+      serialization: 'individual',
+      format: 'querystring',
+      groupedParam: 'grid_filters'
     }
     vi.clearAllMocks()
   })

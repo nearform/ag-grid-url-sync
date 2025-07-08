@@ -2,12 +2,15 @@ import type { GridApi } from 'ag-grid-community'
 import type {
   AGGridUrlSyncConfig,
   FilterState,
-  InternalConfig
+  InternalConfig,
+  SerializationFormat,
+  SerializationMode
 } from './types.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { getFilterModel, applyFilterModel } from './grid-integration.js'
+import { serializeGrouped } from './serialization/grouped.js'
 
 /**
  * AGGridUrlSync class for synchronizing AG Grid text filters with URL parameters
@@ -23,9 +26,8 @@ export class AGGridUrlSync {
   constructor(gridApi: GridApi, config: AGGridUrlSyncConfig = {}) {
     this.config = {
       gridApi,
-      paramPrefix: config.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
-      maxValueLength: config.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-      onParseError: config.onParseError ?? (() => {})
+      ...DEFAULT_CONFIG,
+      ...config
     }
   }
 
@@ -80,6 +82,41 @@ export class AGGridUrlSync {
    */
   destroy(): void {
     // Currently no cleanup needed, but included for future use
+  }
+
+  /**
+   * Gets the current serialization mode
+   * @returns The current serialization mode
+   */
+  getSerializationMode(): SerializationMode {
+    return this.config.serialization
+  }
+
+  /**
+   * Gets the current format (for grouped mode)
+   * @returns The current format
+   */
+  getCurrentFormat(): SerializationFormat {
+    return this.config.format
+  } /**
+   * Gets filters in a specific format (useful for sharing/export)
+   * @param format - The format to serialize to
+   * @returns Serialized filter string
+   */
+  getFiltersAsFormat(format: SerializationFormat): string {
+    const filterState = getFilterModel(this.config)
+
+    // Create temporary config for the requested format
+    const tempConfig = {
+      ...this.config,
+      format,
+      serialization: 'grouped' as const
+    }
+
+    // Use the serialization module
+    const result = serializeGrouped(filterState, tempConfig)
+
+    return result.value
   }
 }
 

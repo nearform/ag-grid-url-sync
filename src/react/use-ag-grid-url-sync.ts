@@ -3,7 +3,11 @@ import type { GridApi } from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { DEFAULT_CONFIG } from '../core/validation.js'
-import type { FilterState } from '../core/types.js'
+import type {
+  FilterState,
+  SerializationFormat,
+  SerializationMode
+} from '../core/types.js'
 import type {
   UseAGGridUrlSyncOptions,
   UseAGGridUrlSyncReturn
@@ -222,7 +226,11 @@ export function useAGGridUrlSync(
           paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
           maxValueLength:
             coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-          onParseError: coreOptions.onParseError ?? (() => {})
+          onParseError: coreOptions.onParseError ?? (() => {}),
+          serialization:
+            coreOptions.serialization ?? DEFAULT_CONFIG.serialization,
+          groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
+          format: coreOptions.format ?? DEFAULT_CONFIG.format
         }
         return parseFilters(url, config)
       } catch (error) {
@@ -252,6 +260,33 @@ export function useAGGridUrlSync(
     [handleError, coreOptions]
   )
 
+  const getFiltersAsFormat = useCallback(
+    (format: SerializationFormat): string => {
+      if (!urlSyncRef.current) {
+        return ''
+      }
+      try {
+        return urlSyncRef.current.getFiltersAsFormat(format)
+      } catch (error) {
+        handleError(error, 'get-filters-as-format')
+        return ''
+      }
+    },
+    [handleError]
+  )
+
+  const getCurrentFormat = useCallback((): SerializationMode => {
+    if (!urlSyncRef.current) {
+      return DEFAULT_CONFIG.serialization
+    }
+    try {
+      return urlSyncRef.current.getSerializationMode()
+    } catch (error) {
+      handleError(error, 'get-current-format')
+      return DEFAULT_CONFIG.serialization
+    }
+  }, [handleError])
+
   // Return the hook API
   return useMemo(
     () => ({
@@ -263,7 +298,9 @@ export function useAGGridUrlSync(
       currentUrl,
       hasFilters,
       parseUrlFilters,
-      applyFilters
+      applyFilters,
+      getFiltersAsFormat,
+      getCurrentFormat
     }),
     [
       shareUrl,
@@ -274,7 +311,9 @@ export function useAGGridUrlSync(
       currentUrl,
       hasFilters,
       parseUrlFilters,
-      applyFilters
+      applyFilters,
+      getFiltersAsFormat,
+      getCurrentFormat
     ]
   )
 }

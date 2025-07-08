@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AG Grid URL Sync - Advanced Demo</title>
+    <title>AG Grid URL Sync - Complete Demo</title>
     <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.3.2/dist/ag-grid-community.min.js"></script>
     <link
       href="https://cdn.jsdelivr.net/npm/ag-grid-community@33.3.2/styles/ag-grid.min.css"
@@ -216,15 +216,47 @@
         text-align: center;
         white-space: nowrap;
       }
+      .mode-selector,
+      .format-selector {
+        display: flex;
+        gap: 15px;
+        margin: 10px 0;
+        align-items: center;
+      }
+      .mode-selector label,
+      .format-selector label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .mode-selector input[type='radio'],
+      .format-selector input[type='radio'] {
+        margin: 0;
+      }
+      .serialization-info {
+        background: #e3f2fd;
+        border: 1px solid #2196f3;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 10px 0;
+        font-size: 12px;
+        color: #1976d2;
+      }
+      .format-disabled {
+        opacity: 0.5;
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="header">
-        <h1>🔗 AG Grid URL Sync - Advanced Demo</h1>
+        <h1>🔗 AG Grid URL Sync - Complete Demo</h1>
         <div class="subtitle">
-          Comprehensive demonstration of text & number filter URL
-          synchronization
+          Comprehensive demonstration including individual & grouped
+          serialization with multiple formats
         </div>
       </div>
 
@@ -251,6 +283,42 @@
               <div id="errorCount" class="stat-value">0</div>
               <div class="stat-label">Errors</div>
             </div>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>⚙️ Serialization Configuration</h3>
+          <div class="mode-selector">
+            <label><strong>Serialization Mode:</strong></label>
+            <label>
+              <input type="radio" name="mode" value="individual" checked />
+              Individual (separate parameters)
+            </label>
+            <label>
+              <input type="radio" name="mode" value="grouped" />
+              Grouped (single parameter)
+            </label>
+          </div>
+
+          <div class="format-selector format-disabled" id="formatSelector">
+            <label><strong>Grouped Format:</strong></label>
+            <label>
+              <input type="radio" name="format" value="querystring" checked />
+              QueryString
+            </label>
+            <label>
+              <input type="radio" name="format" value="json" />
+              JSON
+            </label>
+            <label>
+              <input type="radio" name="format" value="base64" />
+              Base64
+            </label>
+          </div>
+
+          <div id="serializationInfo" class="serialization-info">
+            <strong>Individual Mode:</strong> Each filter creates a separate URL
+            parameter (e.g., ?f_name_contains=john&f_age_gt=25)
           </div>
         </div>
 
@@ -815,6 +883,9 @@
             } catch (error) {
               console.warn('Failed to apply filters from URL:', error)
             }
+
+            // Set up event listeners for mode/format changes
+            setupSerializationControls()
 
             updatePerformanceMonitor()
           }
@@ -1414,6 +1485,106 @@
       function showInfo(message) {
         const performanceMonitor = document.getElementById('performanceMonitor')
         performanceMonitor.textContent = message
+      }
+
+      // Grouped Serialization Functions
+      function setupSerializationControls() {
+        const modeRadios = document.querySelectorAll('input[name="mode"]')
+        const formatRadios = document.querySelectorAll('input[name="format"]')
+        const formatSelector = document.getElementById('formatSelector')
+        const serializationInfo = document.getElementById('serializationInfo')
+
+        // Handle mode changes
+        modeRadios.forEach(radio => {
+          radio.addEventListener('change', () => {
+            if (radio.value === 'grouped') {
+              formatSelector.classList.remove('format-disabled')
+              updateSerializationInfo()
+            } else {
+              formatSelector.classList.add('format-disabled')
+              updateSerializationInfo()
+            }
+            reinitializeUrlSync()
+          })
+        })
+
+        // Handle format changes
+        formatRadios.forEach(radio => {
+          radio.addEventListener('change', () => {
+            updateSerializationInfo()
+            reinitializeUrlSync()
+          })
+        })
+
+        function updateSerializationInfo() {
+          const mode = document.querySelector(
+            'input[name="mode"]:checked'
+          ).value
+          const format = document.querySelector(
+            'input[name="format"]:checked'
+          ).value
+
+          if (mode === 'individual') {
+            serializationInfo.innerHTML =
+              '<strong>Individual Mode:</strong> Each filter creates a separate URL parameter (e.g., ?f_name_contains=john&f_age_gt=25)'
+          } else {
+            let description =
+              '<strong>Grouped Mode:</strong> All filters packaged into a single parameter. '
+            switch (format) {
+              case 'querystring':
+                description +=
+                  '<strong>QueryString format:</strong> URL-encoded within parameter (most compatible)'
+                break
+              case 'json':
+                description +=
+                  '<strong>JSON format:</strong> Structured JSON data (good for debugging)'
+                break
+              case 'base64':
+                description +=
+                  '<strong>Base64 format:</strong> Compact encoded format (ideal for sharing)'
+                break
+            }
+            serializationInfo.innerHTML = description
+          }
+        }
+      }
+
+      function reinitializeUrlSync() {
+        if (!gridApi || !window.createUrlSync) return
+
+        const mode = document.querySelector('input[name="mode"]:checked').value
+        const format = document.querySelector(
+          'input[name="format"]:checked'
+        ).value
+
+        const config = {
+          onParseError: error => {
+            showError(`URL Parse Error: ${error.message}`)
+            performanceStats.errorCount++
+            updatePerformanceStats()
+          }
+        }
+
+        if (mode === 'grouped') {
+          config.serialization = 'grouped'
+          config.format = format
+          config.groupedParam = 'grid_filters'
+        }
+
+        // Preserve current filters
+        const currentFilters = gridApi.getFilterModel()
+
+        // Create new URL sync instance
+        urlSync = window.createUrlSync(gridApi, config)
+
+        // Reapply filters
+        if (Object.keys(currentFilters).length > 0) {
+          gridApi.setFilterModel(currentFilters)
+        }
+
+        showSuccess(
+          `Switched to ${mode} mode${mode === 'grouped' ? ` with ${format} format` : ''}`
+        )
       }
     </script>
   </body>

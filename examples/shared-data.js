@@ -210,7 +210,7 @@ export const employeeColumnDefs = [
   }
 ]
 
-// Additional sample data for multi-grid demos
+// Additional sample data for demos
 export const projectData = [
   {
     id: 'P001',

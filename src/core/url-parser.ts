@@ -10,6 +10,10 @@ import {
   validateDateFilter,
   DEFAULT_CONFIG
 } from './validation.js'
+import {
+  detectGroupedSerialization,
+  deserializeGrouped
+} from './serialization/grouped.js'
 
 /**
  * Detects if an operation is number-specific
@@ -314,6 +318,27 @@ export function parseUrlFilters(
       urlToProcess = url
     }
 
+    // First, try to detect grouped serialization
+    const DEFAULT_GROUPED_PARAMS = ['grid_filters', 'filters'];
+    const groupedDetection = detectGroupedSerialization(
+      urlToProcess,
+      [config.groupedParam, ...DEFAULT_GROUPED_PARAMS] // Common parameter names to check
+    )
+
+    if (
+      groupedDetection.isGrouped &&
+      groupedDetection.value &&
+      groupedDetection.format
+    ) {
+      // Handle grouped serialization
+      return deserializeGrouped(
+        groupedDetection.value,
+        groupedDetection.format,
+        config
+      )
+    }
+
+    // Handle individual serialization (existing logic)
     const urlObj = new URL(urlToProcess)
     const filterState: FilterState = {}
 

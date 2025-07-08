@@ -1,4 +1,9 @@
-import type { AGGridUrlSyncConfig, FilterState } from '../core/types.js'
+import type {
+  AGGridUrlSyncConfig,
+  FilterState,
+  SerializationFormat,
+  SerializationMode
+} from '../core/types.js'
 
 /**
  * Configuration options for the React hook
@@ -78,4 +83,17 @@ export interface UseAGGridUrlSyncReturn {
    * @param filters - Filter state to apply
    */
   applyFilters: (filters: FilterState) => void
+
+  /**
+   * Get filters in a specific format (useful for sharing/export)
+   * @param format - The format to serialize to
+   * @returns Serialized filter string
+   */
+  getFiltersAsFormat: (format: SerializationFormat) => string
+
+  /**
+   * Get the current serialization format
+   * @returns The current format
+   */
+  getCurrentFormat: () => SerializationMode
 }

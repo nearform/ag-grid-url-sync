@@ -124,7 +124,7 @@
   "homepage": "https://github.com/nearform/ag-grid-url-state-sync#readme",
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
-    "@commitlint/cli": "^19.8.1",
+    "@commitlint/cli": "^20.0.0",
     "@commitlint/config-conventional": "^19.8.1",
     "@eslint/js": "^9.29.0",
     "@testing-library/react": "^16.3.0",

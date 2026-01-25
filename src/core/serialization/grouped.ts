@@ -3,7 +3,7 @@ import type {
   SerializationFormat,
   FormatSerializer,
   GroupedSerializationResult,
-  InternalConfig
+  ParseConfig
 } from '../types.js'
 import { InvalidSerializationError } from '../types.js'
 import {
@@ -29,7 +29,7 @@ const FORMAT_SERIALIZERS: Record<SerializationFormat, FormatSerializer> = {
  */
 export function serializeGrouped(
   filterState: FilterState,
-  config: InternalConfig
+  config: ParseConfig
 ): GroupedSerializationResult {
   try {
     const serializer = FORMAT_SERIALIZERS[config.format]
@@ -68,7 +68,7 @@ export function serializeGrouped(
 export function deserializeGrouped(
   value: string,
   format: SerializationFormat,
-  config: InternalConfig
+  config: ParseConfig
 ): FilterState {
   try {
     const serializer = FORMAT_SERIALIZERS[format]

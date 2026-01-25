@@ -1,4 +1,4 @@
-import type { FilterState, ColumnFilter, InternalConfig } from './types.js'
+import type { FilterState, ColumnFilter, ParseConfig } from './types.js'
 import { InvalidFilterError, InvalidURLError, OPERATION_MAP } from './types.js'
 import {
   validateFilterValue,
@@ -283,11 +283,13 @@ export function parseFilterParam(
 }
 
 /**
- * Converts URL search params into a filter state object
+ * Converts URL search params into a filter state object.
+ * This function does not require a GridApi instance - you can pass `gridApi: null`
+ * when you only need to parse filters without applying them to a grid.
  */
 export function parseUrlFilters(
   url: string,
-  config: InternalConfig
+  config: ParseConfig
 ): FilterState {
   try {
     // Handle empty or whitespace-only URLs gracefully

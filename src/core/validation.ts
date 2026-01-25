@@ -1,5 +1,5 @@
 import type {
-  InternalConfig,
+  ParseConfig,
   FilterOperation,
   DateFilterOperation,
   ColumnFilter,
@@ -47,7 +47,7 @@ export type ValidationResult =
  */
 export function validateFilterValue(
   value: string,
-  config: InternalConfig,
+  config: ParseConfig,
   operation?: FilterOperation
 ): string {
   // Blank operations don't require value validation

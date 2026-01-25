@@ -86,6 +86,31 @@ export interface InternalConfig extends Required<AGGridUrlSyncConfig> {
   gridApi: AGGridApi
 }
 
+/**
+ * Configuration for URL parsing and serialization operations that don't require GridApi.
+ * Use this type when you only need to parse filters from URLs or serialize filters to URLs
+ * without actually applying them to a grid.
+ *
+ * @example
+ * ```typescript
+ * // Parse filters without a grid instance
+ * const config: ParseConfig = {
+ *   gridApi: null,
+ *   paramPrefix: 'f_',
+ *   maxValueLength: 200,
+ *   onParseError: (error) => console.error(error),
+ *   serialization: 'individual',
+ *   groupedParam: 'grid_filters',
+ *   format: 'querystring'
+ * }
+ * const filters = parseUrlFilters(url, config)
+ * ```
+ */
+export interface ParseConfig extends Required<AGGridUrlSyncConfig> {
+  /** AG Grid API instance - can be null for parsing/serialization operations */
+  gridApi: AGGridApi | null
+}
+
 // ============================================================================
 // FILTER OPERATION DEFINITIONS
 // ============================================================================

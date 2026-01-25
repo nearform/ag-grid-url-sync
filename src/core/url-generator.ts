@@ -1,4 +1,4 @@
-import type { FilterState, InternalConfig, ColumnFilter } from './types.js'
+import type { FilterState, ParseConfig, ColumnFilter } from './types.js'
 import { validateFilterValue } from './validation.js'
 import { INTERNAL_TO_URL_OPERATION_MAP } from './types.js'
 import { serializeGrouped } from './serialization/grouped.js'
@@ -90,11 +90,13 @@ function appendSerializedParam(
 }
 
 /**
- * Converts a filter state object into URL search parameters
+ * Converts a filter state object into URL search parameters.
+ * This function does not require a GridApi instance - you can pass `gridApi: null`
+ * when you only need to serialize filters without a grid.
  */
 export function serializeFilters(
   filterState: FilterState,
-  config: InternalConfig
+  config: ParseConfig
 ): URLSearchParams {
   const params = new URLSearchParams()
 
@@ -147,7 +149,7 @@ export function serializeFilters(
  */
 function getPreservedParams(
   url: URL,
-  config: InternalConfig,
+  config: ParseConfig,
   excludeParam?: string
 ): URLSearchParams {
   const params = new URLSearchParams()
@@ -164,12 +166,14 @@ function getPreservedParams(
 }
 
 /**
- * Generates a URL with the current filter state
+ * Generates a URL with the current filter state.
+ * This function does not require a GridApi instance - you can pass `gridApi: null`
+ * when you only need to generate URLs without a grid.
  */
 export function generateUrl(
   baseUrl: string,
   filterState: FilterState,
-  config: InternalConfig
+  config: ParseConfig
 ): string {
   const url = new URL(baseUrl)
 
@@ -209,7 +213,7 @@ export function generateUrl(
 function generateGroupedUrl(
   baseUrl: string,
   filterState: FilterState,
-  config: InternalConfig
+  config: ParseConfig
 ): string {
   const url = new URL(baseUrl)
 

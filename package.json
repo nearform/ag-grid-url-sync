@@ -93,7 +93,7 @@
     "compile": "tsc",
     "build": "npm run clean && npm run compile && npm run validate",
     "validate": "npm run size-check && npm run type-check",
-    "size-check": "bundlesize",
+    "size-check": "size-limit",
     "type-check": "tsc --noEmit --strict",
     "ci": "npm run build && npm run check-exports && npm run lint && npm run test",
     "check-exports": "attw --pack . --ignore-rules=cjs-resolves-to-esm",
@@ -132,7 +132,8 @@
     "@types/react": "^18.0.0",
     "@vitest/coverage-v8": "^3.2.4",
     "ag-grid-community": "^34.0.0",
-    "bundlesize": "^0.18.2",
+    "@size-limit/file": "^11.2.0",
+    "size-limit": "^11.2.0",
     "eslint": "^9.29.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.0",
@@ -158,34 +159,34 @@
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": "eslint --cache --fix"
   },
-  "bundlesize": [
+  "size-limit": [
     {
       "path": "./dist/index.js",
-      "maxSize": "5KB"
+      "limit": "5KB"
     },
     {
       "path": "./dist/core/ag-grid-url-sync.js",
-      "maxSize": "4KB"
+      "limit": "4KB"
     },
     {
       "path": "./dist/core/validation.js",
-      "maxSize": "2.5KB"
+      "limit": "2.5KB"
     },
     {
       "path": "./dist/core/url-parser.js",
-      "maxSize": "3KB"
+      "limit": "3KB"
     },
     {
       "path": "./dist/core/url-generator.js",
-      "maxSize": "2KB"
+      "limit": "2KB"
     },
     {
       "path": "./dist/core/grid-integration.js",
-      "maxSize": "3KB"
+      "limit": "3KB"
     },
     {
       "path": "./dist/react/index.js",
-      "maxSize": "7KB"
+      "limit": "7KB"
     }
   ]
 }

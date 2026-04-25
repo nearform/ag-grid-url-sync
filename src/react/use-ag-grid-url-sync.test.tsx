@@ -14,7 +14,11 @@ const mockInstance = {
   applyFromUrl: vi.fn(),
   clearFilters: vi.fn(),
   applyFilters: vi.fn(),
-  destroy: vi.fn()
+  destroy: vi.fn(),
+  getSortState: vi.fn(() => []),
+  applySortFromUrl: vi.fn(),
+  applySortState: vi.fn(),
+  clearSortState: vi.fn()
 }
 
 // Mock the core AG Grid URL sync module
@@ -553,6 +557,103 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockGridApi.removeEventListener).toHaveBeenCalledWith(
         'filterChanged',
+        expect.any(Function)
+      )
+    })
+  })
+
+  describe('Sort State', () => {
+    test('returns getSortState function', async () => {
+      mockInstance.getSortState = vi.fn(() => [{ colId: 'name', sort: 'asc' }])
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      expect(result.current.getSortState).toBeDefined()
+      expect(typeof result.current.getSortState).toBe('function')
+    })
+
+    test('returns hasSort as boolean', async () => {
+      mockInstance.getSortState = vi.fn(() => [{ colId: 'name', sort: 'asc' }])
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      expect(result.current.hasSort).toBeDefined()
+      expect(typeof result.current.hasSort).toBe('boolean')
+    })
+
+    test('hasSort is false when no sort state', async () => {
+      mockInstance.getSortState = vi.fn(() => [])
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      expect(result.current.hasSort).toBe(false)
+    })
+
+    test('hasSort is true when sort state exists', async () => {
+      mockInstance.getSortState = vi.fn(() => [{ colId: 'name', sort: 'asc' }])
+      mockInstance.generateUrl = vi.fn(() => 'http://example.com?s_name=asc')
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      expect(result.current.hasSort).toBe(true)
+    })
+
+    test('returns applySortState function', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      expect(result.current.applySortState).toBeDefined()
+      expect(typeof result.current.applySortState).toBe('function')
+    })
+
+    test('returns clearSortState function', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      expect(result.current.clearSortState).toBeDefined()
+      expect(typeof result.current.clearSortState).toBe('function')
+    })
+
+    test('returns applySortFromUrl function', async () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      await waitForEffects()
+
+      expect(result.current.applySortFromUrl).toBeDefined()
+      expect(typeof result.current.applySortFromUrl).toBe('function')
+    })
+
+    test('sets up sortChanged listener', async () => {
+      renderHook(() => useAGGridUrlSync(mockGridApi as GridApi))
+
+      await waitForEffects()
+
+      expect(mockGridApi.addEventListener).toHaveBeenCalledWith(
+        'sortChanged',
         expect.any(Function)
       )
     })

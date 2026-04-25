@@ -7,7 +7,9 @@ import type {
   DateFilterOperation,
   FilterOperation,
   AGGridFilter,
-  RawAGGridFilter
+  RawAGGridFilter,
+  SortState,
+  ColumnSortState
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
 import {
@@ -375,6 +377,64 @@ export function applyFilterModel(
 
     // Apply the filter model to AG Grid
     config.gridApi.setFilterModel(model)
+  } catch (error) {
+    if (config.onParseError) {
+      config.onParseError(error as Error)
+    }
+  }
+}
+
+export function getSortState(config: InternalConfig): SortState {
+  try {
+    const sortModel = config.gridApi.getColumnState()
+
+    if (!sortModel || !Array.isArray(sortModel)) {
+      return []
+    }
+
+    const sortState: SortState = []
+
+    for (const colState of sortModel) {
+      if (colState.sort) {
+        sortState.push({
+          colId: colState.colId,
+          sort: colState.sort as 'asc' | 'desc',
+          index: sortState.length
+        })
+      }
+    }
+
+    return sortState
+  } catch (error) {
+    if (config.onParseError) {
+      config.onParseError(error as Error)
+    }
+    return []
+  }
+}
+
+export function applySortState(
+  sortState: SortState,
+  config: InternalConfig
+): void {
+  try {
+    if (!sortState || sortState.length === 0) {
+      config.gridApi.applyColumnState({
+        state: [],
+        defaultState: { sort: null }
+      })
+      return
+    }
+
+    const columnState = sortState.map((colSort: ColumnSortState) => ({
+      colId: colSort.colId,
+      sort: colSort.sort
+    }))
+
+    config.gridApi.applyColumnState({
+      state: columnState,
+      defaultState: { sort: null }
+    })
   } catch (error) {
     if (config.onParseError) {
       config.onParseError(error as Error)

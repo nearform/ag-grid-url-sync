@@ -4,12 +4,18 @@ import type {
   FilterState,
   InternalConfig,
   SerializationFormat,
-  SerializationMode
+  SerializationMode,
+  SortState
 } from './types.js'
 import { DEFAULT_CONFIG } from './validation.js'
-import { parseUrlFilters } from './url-parser.js'
+import { parseUrlFilters, parseSortState } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
-import { getFilterModel, applyFilterModel } from './grid-integration.js'
+import {
+  getFilterModel,
+  applyFilterModel,
+  getSortState,
+  applySortState
+} from './grid-integration.js'
 import { serializeGrouped } from './serialization/grouped.js'
 
 /**
@@ -39,7 +45,8 @@ export class AGGridUrlSync {
   generateUrl(baseUrl?: string): string {
     const filterState = getFilterModel(this.config)
     const url = baseUrl ?? window.location.href
-    return generateUrl(url, filterState, this.config)
+    const sortState = getSortState(this.config)
+    return generateUrl(url, filterState, this.config, sortState)
   }
 
   /**
@@ -60,6 +67,9 @@ export class AGGridUrlSync {
     const urlToParse = url ?? window.location.href
     const filterState = parseUrlFilters(urlToParse, this.config)
     this.applyFilters(filterState)
+
+    const sortState = parseSortState(urlToParse, this.config)
+    applySortState(sortState, this.config)
   }
 
   /**
@@ -75,6 +85,24 @@ export class AGGridUrlSync {
    */
   clearFilters(): void {
     this.applyFilters({})
+  }
+
+  getSortState(): SortState {
+    return getSortState(this.config)
+  }
+
+  applySortFromUrl(url?: string): void {
+    const urlToParse = url ?? window.location.href
+    const sortState = parseSortState(urlToParse, this.config)
+    applySortState(sortState, this.config)
+  }
+
+  applySortState(sortState: SortState): void {
+    applySortState(sortState, this.config)
+  }
+
+  clearSortState(): void {
+    applySortState([], this.config)
   }
 
   /**

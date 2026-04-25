@@ -1,4 +1,9 @@
-import type { FilterState, InternalConfig, ColumnFilter } from './types.js'
+import type {
+  FilterState,
+  InternalConfig,
+  ColumnFilter,
+  SortState
+} from './types.js'
 import { validateFilterValue } from './validation.js'
 import { INTERNAL_TO_URL_OPERATION_MAP } from './types.js'
 import { serializeGrouped } from './serialization/grouped.js'
@@ -142,6 +147,36 @@ export function serializeFilters(
   return params
 }
 
+export function serializeSortState(
+  sortState: SortState,
+  config: InternalConfig
+): URLSearchParams {
+  const params = new URLSearchParams()
+
+  if (!sortState || sortState.length === 0) {
+    return params
+  }
+
+  const prefix = config.sortPrefix || 's_'
+
+  if (sortState.length === 1) {
+    const sort = sortState[0]
+    if (sort) {
+      params.set(`${prefix}${sort.colId}`, sort.sort)
+    }
+  } else {
+    for (let i = 0; i < sortState.length; i++) {
+      const sort = sortState[i]
+      if (sort) {
+        const index = i + 1
+        params.set(`${prefix}${sort.colId}_${index}`, sort.sort)
+      }
+    }
+  }
+
+  return params
+}
+
 /**
  * Helper to extract and preserve non-filter parameters from a URL
  */
@@ -169,17 +204,25 @@ function getPreservedParams(
 export function generateUrl(
   baseUrl: string,
   filterState: FilterState,
-  config: InternalConfig
+  config: InternalConfig,
+  sortState?: SortState
 ): string {
   const url = new URL(baseUrl)
 
   // Handle grouped serialization
   if (config.serialization === 'grouped') {
-    return generateGroupedUrl(baseUrl, filterState, config)
+    return generateGroupedUrl(baseUrl, filterState, config, sortState)
   }
 
   // Handle individual serialization (existing logic)
   const filterParams = serializeFilters(filterState, config)
+
+  if (sortState && sortState.length > 0) {
+    const sortParams = serializeSortState(sortState, config)
+    for (const [key, value] of sortParams.entries()) {
+      filterParams.append(key, value)
+    }
+  }
 
   // Use shared helper to preserve non-filter parameters
   const preservedParams = getPreservedParams(url, config)
@@ -209,7 +252,8 @@ export function generateUrl(
 function generateGroupedUrl(
   baseUrl: string,
   filterState: FilterState,
-  config: InternalConfig
+  config: InternalConfig,
+  sortState?: SortState
 ): string {
   const url = new URL(baseUrl)
 
@@ -226,6 +270,13 @@ function generateGroupedUrl(
   // Add the grouped parameter if there are filters
   if (groupedResult.value) {
     url.searchParams.set(groupedResult.paramName, groupedResult.value)
+  }
+
+  if (sortState && sortState.length > 0) {
+    const sortParams = serializeSortState(sortState, config)
+    for (const [key, value] of sortParams.entries()) {
+      url.searchParams.set(key, value)
+    }
   }
 
   // If no filters, ensure the grouped param is removed

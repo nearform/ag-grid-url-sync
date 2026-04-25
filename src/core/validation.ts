@@ -23,6 +23,7 @@ export const DEFAULT_CONFIG = {
   serialization: 'individual' as const,
   groupedParam: 'grid_filters',
   format: 'querystring' as const,
+  sortPrefix: 's_',
   onParseError: () => {}
 } as const
 

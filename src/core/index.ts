@@ -6,13 +6,26 @@ export * from './types.js'
 export { validateFilterValue, DEFAULT_CONFIG } from './validation.js'
 
 // URL parsing utilities
-export { parseUrlFilters, parseFilterParam } from './url-parser.js'
+export {
+  parseUrlFilters,
+  parseFilterParam,
+  parseSortState
+} from './url-parser.js'
 
 // URL generation utilities
-export { serializeFilters, generateUrl } from './url-generator.js'
+export {
+  serializeFilters,
+  serializeSortState,
+  generateUrl
+} from './url-generator.js'
 
 // AG Grid integration utilities
-export { getFilterModel, applyFilterModel } from './grid-integration.js'
+export {
+  getFilterModel,
+  applyFilterModel,
+  getSortState,
+  applySortState
+} from './grid-integration.js'
 
 // Grouped serialization utilities
 export * from './serialization/index.js'

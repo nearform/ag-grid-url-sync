@@ -6,7 +6,8 @@ import { DEFAULT_CONFIG } from '../core/validation.js'
 import type {
   FilterState,
   SerializationFormat,
-  SerializationMode
+  SerializationMode,
+  SortState
 } from '../core/types.js'
 import type {
   UseAGGridUrlSyncOptions,
@@ -35,6 +36,7 @@ export function useAGGridUrlSync(
   const [isReady, setIsReady] = useState(false)
   const [currentUrl, setCurrentUrl] = useState('')
   const [hasFilters, setHasFilters] = useState(false)
+  const [hasSort, setHasSort] = useState(false)
 
   // Refs to track state and prevent memory leaks
   const urlSyncRef = useRef<AGGridUrlSync | null>(null)
@@ -110,6 +112,7 @@ export function useAGGridUrlSync(
     if (!isReady || !urlSyncRef.current || !gridApi) {
       setCurrentUrl('')
       setHasFilters(false)
+      setHasSort(false)
       return
     }
 
@@ -122,6 +125,9 @@ export function useAGGridUrlSync(
         const queryParams = urlSyncRef.current!.getQueryParams()
         const searchParams = new URLSearchParams(queryParams)
         setHasFilters([...searchParams.entries()].length > 0)
+
+        const sortState = urlSyncRef.current!.getSortState()
+        setHasSort(sortState.length > 0)
       } catch (error) {
         handleError(error, 'update-state')
       }
@@ -131,12 +137,16 @@ export function useAGGridUrlSync(
     const onFilterChanged = () => updateState()
     gridApi.addEventListener('filterChanged', onFilterChanged)
 
+    const onSortChanged = () => updateState()
+    gridApi.addEventListener('sortChanged', onSortChanged)
+
     // Initial state update
     updateState()
 
     // Cleanup event listener on unmount or gridApi change
     return () => {
       gridApi.removeEventListener('filterChanged', onFilterChanged)
+      gridApi.removeEventListener('sortChanged', onSortChanged)
     }
   }, [isReady, gridApi, handleError])
 
@@ -230,7 +240,8 @@ export function useAGGridUrlSync(
           serialization:
             coreOptions.serialization ?? DEFAULT_CONFIG.serialization,
           groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
-          format: coreOptions.format ?? DEFAULT_CONFIG.format
+          format: coreOptions.format ?? DEFAULT_CONFIG.format,
+          sortPrefix: coreOptions.sortPrefix ?? DEFAULT_CONFIG.sortPrefix
         }
         return parseFilters(url, config)
       } catch (error) {
@@ -287,6 +298,67 @@ export function useAGGridUrlSync(
     }
   }, [handleError])
 
+  const getSortState = useCallback((): SortState => {
+    if (!urlSyncRef.current) {
+      return []
+    }
+    try {
+      return urlSyncRef.current.getSortState()
+    } catch (error) {
+      handleError(error, 'get-sort-state')
+      return []
+    }
+  }, [handleError])
+
+  const applySortFromUrl = useCallback(
+    (url?: string): void => {
+      if (!urlSyncRef.current) {
+        const warningMessage =
+          'applySortFromUrl called while the hook is not ready.'
+        coreOptions.onParseError?.(new Error(warningMessage))
+        return
+      }
+      try {
+        urlSyncRef.current.applySortFromUrl(url)
+      } catch (error) {
+        handleError(error, 'apply-sort-from-url')
+        coreOptions.onParseError?.(error as Error)
+      }
+    },
+    [coreOptions, handleError]
+  )
+
+  const applySortState = useCallback(
+    (sortState: SortState): void => {
+      if (!urlSyncRef.current) {
+        const warningMessage =
+          'applySortState called while the hook is not ready.'
+        coreOptions.onParseError?.(new Error(warningMessage))
+        return
+      }
+      try {
+        urlSyncRef.current.applySortState(sortState)
+      } catch (error) {
+        handleError(error, 'apply-sort-state')
+      }
+    },
+    [handleError, coreOptions]
+  )
+
+  const clearSortState = useCallback((): void => {
+    if (!urlSyncRef.current) {
+      const warningMessage =
+        'clearSortState called while the hook is not ready.'
+      coreOptions.onParseError?.(new Error(warningMessage))
+      return
+    }
+    try {
+      urlSyncRef.current.clearSortState()
+    } catch (error) {
+      handleError(error, 'clear-sort-state')
+    }
+  }, [handleError, coreOptions])
+
   // Return the hook API
   return useMemo(
     () => ({
@@ -300,7 +372,12 @@ export function useAGGridUrlSync(
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
-      getCurrentFormat
+      getCurrentFormat,
+      getSortState,
+      applySortFromUrl,
+      applySortState,
+      clearSortState,
+      hasSort
     }),
     [
       shareUrl,
@@ -313,7 +390,12 @@ export function useAGGridUrlSync(
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
-      getCurrentFormat
+      getCurrentFormat,
+      getSortState,
+      applySortFromUrl,
+      applySortState,
+      clearSortState,
+      hasSort
     ]
   )
 }

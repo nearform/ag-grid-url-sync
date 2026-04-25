@@ -76,6 +76,8 @@ export interface AGGridUrlSyncConfig {
    * @default 'querystring'
    */
   format?: SerializationFormat
+
+  sortPrefix?: string
 }
 
 /**
@@ -85,6 +87,16 @@ export interface InternalConfig extends Required<AGGridUrlSyncConfig> {
   /** AG Grid API instance for filter operations */
   gridApi: AGGridApi
 }
+
+export type SortDirection = 'asc' | 'desc' | null
+
+export interface ColumnSortState {
+  colId: string
+  sort: 'asc' | 'desc'
+  index?: number
+}
+
+export type SortState = ColumnSortState[]
 
 // ============================================================================
 // FILTER OPERATION DEFINITIONS

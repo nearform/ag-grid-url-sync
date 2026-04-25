@@ -1,4 +1,9 @@
-import type { FilterState, ColumnFilter, InternalConfig } from './types.js'
+import type {
+  FilterState,
+  ColumnFilter,
+  InternalConfig,
+  SortState
+} from './types.js'
 import { InvalidFilterError, InvalidURLError, OPERATION_MAP } from './types.js'
 import {
   validateFilterValue,
@@ -319,7 +324,7 @@ export function parseUrlFilters(
     }
 
     // First, try to detect grouped serialization
-    const DEFAULT_GROUPED_PARAMS = ['grid_filters', 'filters'];
+    const DEFAULT_GROUPED_PARAMS = ['grid_filters', 'filters']
     const groupedDetection = detectGroupedSerialization(
       urlToProcess,
       [config.groupedParam, ...DEFAULT_GROUPED_PARAMS] // Common parameter names to check
@@ -386,5 +391,67 @@ export function parseUrlFilters(
     throw new InvalidURLError(
       `Failed to parse URL: ${error instanceof Error ? error.message : 'Unknown error'}`
     )
+  }
+}
+
+export function parseSortState(url: string, config: InternalConfig): SortState {
+  try {
+    let urlToProcess = url
+    if (url.startsWith('?')) {
+      urlToProcess = `http://example.com${url}`
+    } else if (!url.includes('://') && !url.startsWith('/')) {
+      urlToProcess = `http://example.com?${url}`
+    }
+
+    const urlObj = new URL(urlToProcess)
+    const sortState: SortState = []
+    const prefix = config.sortPrefix || 's_'
+
+    const sortParams: Array<{
+      colId: string
+      sort: 'asc' | 'desc'
+      index: number
+    }> = []
+
+    for (const [param, value] of urlObj.searchParams.entries()) {
+      if (!param.startsWith(prefix)) continue
+
+      if (value !== 'asc' && value !== 'desc') continue
+
+      const paramWithoutPrefix = param.substring(prefix.length)
+
+      if (paramWithoutPrefix.includes('_')) {
+        const parts = paramWithoutPrefix.split('_')
+        const lastPart = parts[parts.length - 1]
+        if (!lastPart) continue
+        const colId = parts.slice(0, -1).join('_')
+        const index = parseInt(lastPart, 10)
+        if (!isNaN(index)) {
+          sortParams.push({ colId, sort: value, index })
+        }
+      } else {
+        sortParams.push({
+          colId: paramWithoutPrefix,
+          sort: value,
+          index: sortParams.length
+        })
+      }
+    }
+
+    sortParams.sort((a, b) => a.index - b.index)
+
+    for (const param of sortParams) {
+      sortState.push({
+        colId: param.colId,
+        sort: param.sort
+      })
+    }
+
+    return sortState
+  } catch (error) {
+    if (config.onParseError) {
+      config.onParseError(error as Error)
+    }
+    return []
   }
 }

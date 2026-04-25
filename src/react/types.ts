@@ -2,7 +2,8 @@ import type {
   AGGridUrlSyncConfig,
   FilterState,
   SerializationFormat,
-  SerializationMode
+  SerializationMode,
+  SortState
 } from '../core/types.js'
 
 /**
@@ -96,4 +97,14 @@ export interface UseAGGridUrlSyncReturn {
    * @returns The current format
    */
   getCurrentFormat: () => SerializationMode
+
+  getSortState: () => SortState
+
+  applySortFromUrl: (url?: string) => void
+
+  applySortState: (sortState: SortState) => void
+
+  clearSortState: () => void
+
+  hasSort: boolean
 }

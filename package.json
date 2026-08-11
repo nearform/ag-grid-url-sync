@@ -93,7 +93,7 @@
     "compile": "tsc",
     "build": "npm run clean && npm run compile && npm run validate",
     "validate": "npm run size-check && npm run type-check",
-    "size-check": "bundlesize",
+    "size-check": "size-limit",
     "type-check": "tsc --noEmit --strict",
     "ci": "npm run build && npm run check-exports && npm run lint && npm run test",
     "check-exports": "attw --pack . --ignore-rules=cjs-resolves-to-esm",
@@ -127,12 +127,12 @@
     "@commitlint/cli": "^20.0.0",
     "@commitlint/config-conventional": "^20.0.0",
     "@eslint/js": "^9.29.0",
+    "@size-limit/file": "^12.1.0",
     "@testing-library/react": "^16.3.0",
     "@types/jsdom": "^27.0.0",
     "@types/react": "^19.2.1",
     "@vitest/coverage-v8": "^4.0.6",
     "ag-grid-community": "^34.0.0",
-    "bundlesize": "^0.18.2",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.0",
@@ -144,6 +144,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "rimraf": "^6.0.1",
+    "size-limit": "^12.1.0",
     "typescript": "^5.8.3",
     "vitest": "^4.0.6"
   },
@@ -159,34 +160,34 @@
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": "eslint --cache --fix"
   },
-  "bundlesize": [
+  "size-limit": [
     {
       "path": "./dist/index.js",
-      "maxSize": "5KB"
+      "limit": "5 KB"
     },
     {
       "path": "./dist/core/ag-grid-url-sync.js",
-      "maxSize": "4KB"
+      "limit": "4 KB"
     },
     {
       "path": "./dist/core/validation.js",
-      "maxSize": "2.5KB"
+      "limit": "2.5 KB"
     },
     {
       "path": "./dist/core/url-parser.js",
-      "maxSize": "3KB"
+      "limit": "3 KB"
     },
     {
       "path": "./dist/core/url-generator.js",
-      "maxSize": "2KB"
+      "limit": "2 KB"
     },
     {
       "path": "./dist/core/grid-integration.js",
-      "maxSize": "3KB"
+      "limit": "3 KB"
     },
     {
       "path": "./dist/react/index.js",
-      "maxSize": "7KB"
+      "limit": "7 KB"
     }
   ]
 }

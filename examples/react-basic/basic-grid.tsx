@@ -23,18 +23,33 @@ export default function BasicGrid() {
   })
   const [message, setMessage] = useState<string>('')
 
+  const [viewName, setViewName] = useState<string>('')
+
+  const showMessage = useCallback(
+    (msg: string, type: 'success' | 'info' | 'error' = 'info') => {
+      setMessage(msg)
+      setTimeout(() => setMessage(''), 3000)
+    },
+    []
+  )
+
   // Create hook options based on current config
   const hookOptions = useMemo(
     () => ({
       autoApplyOnMount: true,
+      // Presence of the key enables saved views and namespaces the storage.
+      storageKey: 'employee-grid',
       paramPrefix: 'filter_',
+      // Surface the hook's own errors to the user. Without this they only reach
+      // the dev console, so a full-storage save would fail with no explanation.
+      onError: (error: Error) => showMessage(error.message, 'error'),
       ...(config.mode === 'grouped' && {
         serialization: 'grouped' as const,
         format: config.format,
         groupedParam: 'grid_filters'
       })
     }),
-    [config]
+    [config, showMessage]
   )
 
   const {
@@ -46,17 +61,54 @@ export default function BasicGrid() {
     currentUrl,
     getFiltersAsFormat,
     getCurrentFormat,
-    applyFilters
+    applyFilters,
+    views,
+    activeViewId,
+    saveView,
+    loadView,
+    deleteView
   } = useAGGridUrlSync(gridApi, hookOptions)
 
   const memoizedDefaultColDef = useMemo(() => defaultColDef, [])
 
-  const showMessage = useCallback(
-    (msg: string, type: 'success' | 'info' | 'error' = 'info') => {
-      setMessage(msg)
-      setTimeout(() => setMessage(''), 3000)
+  const handleSaveView = useCallback(() => {
+    const name = viewName.trim()
+    if (!name) {
+      showMessage('Name the view before saving', 'error')
+      return
+    }
+
+    // Check readiness here so that a null return below can only mean the hook
+    // reported a reason through onError — no generic message overwriting it.
+    if (!isReady) {
+      showMessage('The grid is still initialising — try again in a moment.', 'error')
+      return
+    }
+
+    if (!saveView(name)) return
+
+    setViewName('')
+    showMessage(`Saved view "${name}"`, 'success')
+  }, [viewName, isReady, saveView, showMessage])
+
+  const handleLoadView = useCallback(
+    (id: string | null) => {
+      loadView(id)
+      const name = views.find(view => view.id === id)?.name
+      showMessage(
+        name ? `Loaded view "${name}"` : 'Reset to unfiltered grid',
+        'success'
+      )
     },
-    []
+    [loadView, views, showMessage]
+  )
+
+  const handleDeleteView = useCallback(
+    (id: string) => {
+      deleteView(id)
+      showMessage('View deleted', 'info')
+    },
+    [deleteView, showMessage]
   )
 
   const handleShare = async () => {
@@ -457,6 +509,140 @@ export default function BasicGrid() {
             ? 'Each filter creates a separate URL parameter'
             : `All filters packaged into a single parameter using ${config.format} encoding`}
         </div>
+      </div>
+
+      {/* Saved Views */}
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #dee2e6',
+          borderRadius: '8px',
+          padding: '20px',
+          marginBottom: '20px'
+        }}
+      >
+        <h3 style={{ margin: '0 0 5px 0', color: '#495057' }}>
+          💾 Saved Views
+        </h3>
+        <p style={{ color: '#6c757d', fontSize: '14px', margin: '0 0 15px 0' }}>
+          Filter the grid, name it, and save. Managed by the hook via its{' '}
+          <code>storageKey</code> option — stored in this browser only.
+        </p>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            flexWrap: 'wrap',
+            marginBottom: '15px'
+          }}
+        >
+          <input
+            type="text"
+            value={viewName}
+            onChange={event => setViewName(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') handleSaveView()
+            }}
+            placeholder="View name, e.g. 'Engineering, high salary'"
+            style={{
+              flex: '1 1 260px',
+              padding: '8px 10px',
+              border: '1px solid #ced4da',
+              borderRadius: '4px',
+              fontSize: '14px'
+            }}
+          />
+          <button
+            onClick={handleSaveView}
+            disabled={!isReady}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: isReady ? '#198754' : '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isReady ? 'pointer' : 'not-allowed',
+              fontWeight: 'bold'
+            }}
+          >
+            💾 Save Current View
+          </button>
+        </div>
+
+        {views.length === 0 ? (
+          <div style={{ color: '#6c757d', fontSize: '14px' }}>
+            No saved views yet.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => handleLoadView(null)}
+              style={{
+                ...buttonStyle,
+                backgroundColor:
+                  activeViewId === null ? '#0d6efd' : '#e9ecef',
+                color: activeViewId === null ? 'white' : '#212529',
+                border:
+                  activeViewId === null
+                    ? '2px solid #0a58ca'
+                    : '2px solid transparent'
+              }}
+            >
+              ○ Unfiltered
+            </button>
+
+            {views.map(view => {
+              const isActive = view.id === activeViewId
+              return (
+                <span
+                  key={view.id}
+                  style={{ display: 'inline-flex', marginBottom: 4 }}
+                >
+                  <button
+                    onClick={() => handleLoadView(view.id)}
+                    title={`${
+                      Object.keys(view.filterModel).length
+                    } filter(s) · saved ${new Date(
+                      view.updatedAt
+                    ).toLocaleString()}`}
+                    style={{
+                      ...buttonStyle,
+                      marginBottom: 0,
+                      borderRadius: '4px 0 0 4px',
+                      backgroundColor: isActive ? '#0d6efd' : '#e9ecef',
+                      color: isActive ? 'white' : '#212529',
+                      border: isActive
+                        ? '2px solid #0a58ca'
+                        : '2px solid transparent'
+                    }}
+                  >
+                    {isActive ? '● ' : '○ '}
+                    {view.name}{' '}
+                    <span style={{ opacity: 0.7 }}>
+                      ({Object.keys(view.filterModel).length})
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteView(view.id)}
+                    title={`Delete "${view.name}"`}
+                    aria-label={`Delete ${view.name}`}
+                    style={{
+                      ...buttonStyle,
+                      marginBottom: 0,
+                      borderRadius: '0 4px 4px 0',
+                      backgroundColor: '#dc3545',
+                      color: 'white',
+                      padding: '8px 10px'
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Control Panel */}

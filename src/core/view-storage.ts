@@ -1,0 +1,172 @@
+import type { FilterModel } from 'ag-grid-community'
+
+/**
+ * localStorage-backed store for named grid views.
+ *
+ * AG Grid's native filter model is stored verbatim rather than the library's
+ * FilterState, so nothing is lost in translation: set filters, multi filters and
+ * combined conditions all survive a round trip.
+ *
+ * Row selection, expanded groups and cell ranges are deliberately never stored.
+ * They scale with row count rather than column count and are the only parts of
+ * grid state large enough to threaten the ~5MB origin quota.
+ */
+
+/** Bump when the stored shape changes, so old blobs are discarded not misread. */
+const SCHEMA_VERSION = 'v1'
+
+const keyFor = (storageKey: string): string =>
+  `ag-grid-url-sync:views:${SCHEMA_VERSION}:${storageKey}`
+
+/**
+ * A saved snapshot of a grid's filters.
+ */
+export interface GridView {
+  /** Stable generated id */
+  id: string
+  /** User-supplied display name */
+  name: string
+  /** Epoch millis of the last write */
+  updatedAt: number
+  /** AG Grid's native filter model, stored as-is */
+  filterModel: FilterModel
+}
+
+interface StoredShape {
+  views: GridView[]
+  activeId: string | null
+}
+
+/**
+ * Read/write access to one grid's saved views.
+ */
+export interface ViewStore {
+  /** All saved views, in save order */
+  listViews(): GridView[]
+  /** Id of the active view, or null */
+  getActiveViewId(): string | null
+  /** Records which view is active */
+  setActiveViewId(id: string | null): void
+  /** Saves a filter model as a new named view and makes it active */
+  saveView(name: string, filterModel: FilterModel): GridView
+  /** Deletes a view, clearing the active id if it pointed at that view */
+  deleteView(id: string): void
+}
+
+const EMPTY: StoredShape = { views: [], activeId: null }
+
+function isGridView(value: unknown): value is GridView {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Partial<GridView>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    typeof candidate.updatedAt === 'number' &&
+    typeof candidate.filterModel === 'object' &&
+    candidate.filterModel !== null
+  )
+}
+
+function createId(): string {
+  // randomUUID needs a secure context; fall back so non-https hosts still work.
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `view-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+}
+
+/**
+ * Creates a store bound to one storage key.
+ *
+ * All reads degrade to an empty store rather than throwing: storage may be
+ * absent (SSR), blocked by policy, or hold a corrupt or foreign blob. Writes do
+ * throw, so callers can tell the user a view wasn't saved.
+ */
+export function createViewStore(storageKey: string): ViewStore {
+  const key = keyFor(storageKey)
+
+  const read = (): StoredShape => {
+    if (typeof window === 'undefined') return EMPTY
+
+    let raw: string | null = null
+    try {
+      raw = window.localStorage.getItem(key)
+    } catch {
+      // Access itself throws when storage is disabled by policy.
+      return EMPTY
+    }
+
+    if (!raw) return EMPTY
+
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (typeof parsed !== 'object' || parsed === null) return EMPTY
+
+      const { views, activeId } = parsed as Partial<StoredShape>
+      const validViews = Array.isArray(views) ? views.filter(isGridView) : []
+
+      return {
+        views: validViews,
+        activeId:
+          typeof activeId === 'string' &&
+          validViews.some(view => view.id === activeId)
+            ? activeId
+            : null
+      }
+    } catch {
+      return EMPTY
+    }
+  }
+
+  const write = (next: StoredShape): void => {
+    if (typeof window === 'undefined') return
+
+    try {
+      window.localStorage.setItem(key, JSON.stringify(next))
+    } catch (error) {
+      const isQuota =
+        typeof DOMException !== 'undefined' &&
+        error instanceof DOMException &&
+        (error.name === 'QuotaExceededError' ||
+          error.name === 'NS_ERROR_DOM_QUOTA_REACHED')
+
+      throw new Error(
+        isQuota
+          ? 'Browser storage is full — delete a saved view and try again.'
+          : 'Could not write saved views to browser storage.'
+      )
+    }
+  }
+
+  return {
+    listViews: () => read().views,
+
+    getActiveViewId: () => read().activeId,
+
+    setActiveViewId: (id: string | null) => {
+      write({ ...read(), activeId: id })
+    },
+
+    saveView: (name: string, filterModel: FilterModel): GridView => {
+      const current = read()
+      const view: GridView = {
+        id: createId(),
+        name,
+        updatedAt: Date.now(),
+        // Snapshot by value: the grid mutates its own model objects in place.
+        filterModel: structuredClone(filterModel)
+      }
+
+      write({ views: [...current.views, view], activeId: view.id })
+      return view
+    },
+
+    deleteView: (id: string) => {
+      const current = read()
+      write({
+        views: current.views.filter(view => view.id !== id),
+        activeId: current.activeId === id ? null : current.activeId
+      })
+    }
+  }
+}

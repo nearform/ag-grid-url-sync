@@ -4,13 +4,30 @@ import type {
   SerializationFormat,
   SerializationMode
 } from '../core/types.js'
+import type { GridView } from '../core/view-storage.js'
 
 /**
  * Configuration options for the React hook
  */
 export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
   /**
+   * Enables saved views, persisted to localStorage under this key.
+   *
+   * The key both switches the feature on and namespaces the storage, so two
+   * grids on the same origin must use different keys. Omit it and the view
+   * members of the hook's return value are inert.
+   *
+   * @example 'employee-grid'
+   */
+  storageKey?: string
+
+  /**
    * Automatically apply URL filters when the component mounts and grid API becomes ready
+   *
+   * Also restores the active saved view when `storageKey` is set. URL filters
+   * take precedence: a shared link should show the sender's filters rather than
+   * the recipient's stored view.
+   *
    * Default: false
    */
   autoApplyOnMount?: boolean
@@ -96,4 +113,37 @@ export interface UseAGGridUrlSyncReturn {
    * @returns The current format
    */
   getCurrentFormat: () => SerializationMode
+
+  /**
+   * Saved views for this grid, in save order.
+   * Always an empty array when `storageKey` is not set.
+   */
+  views: GridView[]
+
+  /**
+   * Id of the currently loaded view, or null when none is loaded.
+   */
+  activeViewId: string | null
+
+  /**
+   * Saves the grid's current filters as a new named view and makes it active.
+   *
+   * @param name - Display name for the view
+   * @returns The saved view, or null if views are disabled or the write failed
+   */
+  saveView: (name: string) => GridView | null
+
+  /**
+   * Applies a saved view's filters to the grid, or clears filters when passed null.
+   *
+   * @param id - Id of the view to load, or null to reset to unfiltered
+   */
+  loadView: (id: string | null) => void
+
+  /**
+   * Deletes a saved view. Clears the grid's filters if it was the active view.
+   *
+   * @param id - Id of the view to delete
+   */
+  deleteView: (id: string) => void
 }

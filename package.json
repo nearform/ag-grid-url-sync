@@ -93,7 +93,7 @@
     "compile": "tsc",
     "build": "npm run clean && npm run compile && npm run validate",
     "validate": "npm run size-check && npm run type-check",
-    "size-check": "size-limit",
+    "size-check": "size-limit && node scripts/check-file-sizes.mjs",
     "type-check": "tsc --noEmit --strict",
     "ci": "npm run build && npm run check-exports && npm run lint && npm run test",
     "check-exports": "attw --pack . --ignore-rules=cjs-resolves-to-esm",
@@ -129,6 +129,7 @@
     "@eslint/js": "^10.0.1",
     "@size-limit/esbuild": "^14.0.0",
     "@size-limit/file": "^14.0.0",
+    "@size-limit/preset-small-lib": "^13.0.3",
     "@testing-library/react": "^16.3.0",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.4.0",
@@ -183,19 +184,19 @@
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "./dist/core/validation.js",
+      "path": "dist/core/validation.js",
       "limit": "2.5 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "./dist/core/url-parser.js",
+      "path": "dist/core/url-parser.js",
       "limit": "3 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "./dist/core/url-generator.js",
+      "path": "dist/core/url-generator.js",
       "limit": "2 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
@@ -203,6 +204,12 @@
     {
       "path": "./dist/core/grid-integration.js",
       "limit": "3 KiB",
+      "gzip": true,
+      "disablePlugins": ["@size-limit/esbuild"]
+    },
+    {
+      "path": "dist/react/use-ag-grid-url-sync.js",
+      "maxSize": "3.5 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     }

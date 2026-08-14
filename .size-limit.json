@@ -1,0 +1,14 @@
+[
+  {
+    "name": "core — import { AGGridUrlSync } from 'ag-grid-url-sync'",
+    "path": "dist/index.js",
+    "ignore": ["ag-grid-community"],
+    "limit": "5 kB"
+  },
+  {
+    "name": "react — import { useAGGridUrlSync } from 'ag-grid-url-sync/react'",
+    "path": "dist/react/index.js",
+    "ignore": ["react", "ag-grid-community"],
+    "limit": "7 kB"
+  }
+]

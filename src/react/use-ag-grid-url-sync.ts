@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GridApi } from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
+import { createViewStore, type GridView } from '../core/view-storage.js'
 import { DEFAULT_CONFIG } from '../core/validation.js'
 import type {
   FilterState,
@@ -28,6 +29,7 @@ export function useAGGridUrlSync(
     autoApplyOnMount = false,
     enabledWhenReady = true,
     onError,
+    storageKey,
     ...coreOptions
   } = options
 
@@ -35,6 +37,19 @@ export function useAGGridUrlSync(
   const [isReady, setIsReady] = useState(false)
   const [currentUrl, setCurrentUrl] = useState('')
   const [hasFilters, setHasFilters] = useState(false)
+
+  // Saved views. The presence of storageKey is what enables the feature, so
+  // there is no separate flag to keep in sync.
+  const viewStore = useMemo(
+    () => (storageKey ? createViewStore(storageKey) : null),
+    [storageKey]
+  )
+  const [views, setViews] = useState<GridView[]>(() =>
+    viewStore ? viewStore.listViews() : []
+  )
+  const [activeViewId, setActiveViewId] = useState<string | null>(() =>
+    viewStore ? viewStore.getActiveViewId() : null
+  )
 
   // Refs to track state and prevent memory leaks
   const urlSyncRef = useRef<AGGridUrlSync | null>(null)
@@ -87,7 +102,32 @@ export function useAGGridUrlSync(
     }
   }, [gridApi, enabledWhenReady, coreOptions, handleError])
 
-  // Auto-apply URL filters on mount if enabled
+  /**
+   * Whether the current URL carries any filter parameters.
+   *
+   * Deliberately a cheap key scan rather than a full parse: this only needs to
+   * know whether the URL is making a claim about filters, and it must not depend
+   * on a grid API being available.
+   */
+  const urlHasFilterParams = useCallback((): boolean => {
+    if (typeof window === 'undefined') return false
+
+    const prefix = coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix
+    const groupedParams = new Set([
+      coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
+      'grid_filters',
+      'filters'
+    ])
+
+    const params = new URLSearchParams(window.location.search)
+    for (const key of params.keys()) {
+      if (key.startsWith(prefix) || groupedParams.has(key)) return true
+    }
+    return false
+  }, [coreOptions])
+
+  // Auto-apply on mount. URL filters win over a stored view: a shared link
+  // should show the sender's filters, not the recipient's saved default.
   useEffect(() => {
     if (
       isReady &&
@@ -96,14 +136,43 @@ export function useAGGridUrlSync(
       urlSyncRef.current
     ) {
       try {
-        urlSyncRef.current.applyFromUrl()
+        // Without saved views the URL is the only source, so apply it
+        // unconditionally — an empty URL clearing filters is the long-standing
+        // behaviour and stays that way.
+        if (!viewStore || !gridApi || urlHasFilterParams()) {
+          urlSyncRef.current.applyFromUrl()
+          autoAppliedRef.current = true
+          return
+        }
+
+        // Views are enabled and the URL makes no claim, so restore the stored
+        // active view instead of clearing.
+        const storedId = viewStore.getActiveViewId()
+        const stored = storedId
+          ? viewStore.listViews().find(view => view.id === storedId)
+          : undefined
+
+        if (stored) {
+          gridApi.setFilterModel(stored.filterModel)
+          setActiveViewId(stored.id)
+        } else {
+          urlSyncRef.current.applyFromUrl()
+        }
         autoAppliedRef.current = true
       } catch (error) {
         handleError(error, 'auto-apply-filters')
         coreOptions.onParseError?.(error as Error)
       }
     }
-  }, [isReady, autoApplyOnMount, coreOptions, handleError])
+  }, [
+    isReady,
+    autoApplyOnMount,
+    coreOptions,
+    handleError,
+    urlHasFilterParams,
+    viewStore,
+    gridApi
+  ])
 
   // Update current URL and filter state on filter changes
   useEffect(() => {
@@ -287,6 +356,83 @@ export function useAGGridUrlSync(
     }
   }, [handleError])
 
+  // Saved view operations. All no-op when storageKey is unset.
+  const saveView = useCallback(
+    (name: string): GridView | null => {
+      if (!viewStore || !gridApi) {
+        return null
+      }
+
+      try {
+        const view = viewStore.saveView(name, gridApi.getFilterModel())
+        setViews(viewStore.listViews())
+        setActiveViewId(view.id)
+        return view
+      } catch (error) {
+        handleError(error, 'save-view')
+        return null
+      }
+    },
+    [viewStore, gridApi, handleError]
+  )
+
+  const loadView = useCallback(
+    (id: string | null): void => {
+      if (!gridApi) {
+        return
+      }
+
+      try {
+        // Applying the model fires filterChanged, which refreshes currentUrl and
+        // hasFilters through the existing listener.
+        if (id === null) {
+          gridApi.setFilterModel({})
+          setActiveViewId(null)
+          viewStore?.setActiveViewId(null)
+          return
+        }
+
+        const view = viewStore
+          ?.listViews()
+          .find(candidate => candidate.id === id)
+
+        if (!view) {
+          handleError(new Error(`No saved view with id "${id}"`), 'load-view')
+          return
+        }
+
+        gridApi.setFilterModel(view.filterModel)
+        setActiveViewId(view.id)
+        viewStore?.setActiveViewId(view.id)
+      } catch (error) {
+        handleError(error, 'load-view')
+      }
+    },
+    [gridApi, viewStore, handleError]
+  )
+
+  const deleteView = useCallback(
+    (id: string): void => {
+      if (!viewStore) {
+        return
+      }
+
+      try {
+        const wasActive = viewStore.getActiveViewId() === id
+        viewStore.deleteView(id)
+        setViews(viewStore.listViews())
+
+        if (wasActive) {
+          setActiveViewId(null)
+          gridApi?.setFilterModel({})
+        }
+      } catch (error) {
+        handleError(error, 'delete-view')
+      }
+    },
+    [viewStore, gridApi, handleError]
+  )
+
   // Return the hook API
   return useMemo(
     () => ({
@@ -300,7 +446,12 @@ export function useAGGridUrlSync(
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
-      getCurrentFormat
+      getCurrentFormat,
+      views,
+      activeViewId,
+      saveView,
+      loadView,
+      deleteView
     }),
     [
       shareUrl,
@@ -313,7 +464,12 @@ export function useAGGridUrlSync(
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
-      getCurrentFormat
+      getCurrentFormat,
+      views,
+      activeViewId,
+      saveView,
+      loadView,
+      deleteView
     ]
   )
 }

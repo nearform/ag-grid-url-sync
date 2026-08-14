@@ -15,6 +15,10 @@ export { serializeFilters, generateUrl } from './core/url-generator.js'
 // AG Grid integration utilities
 export { getFilterModel, applyFilterModel } from './core/grid-integration.js'
 
+// Saved view storage (used by the React hook's storageKey option)
+export { createViewStore } from './core/view-storage.js'
+export type { GridView, ViewStore } from './core/view-storage.js'
+
 // Grouped serialization utilities
 export {
   serializeGrouped,

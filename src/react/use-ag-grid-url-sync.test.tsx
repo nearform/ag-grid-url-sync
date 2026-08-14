@@ -557,4 +557,229 @@ describe('useAGGridUrlSync', () => {
       )
     })
   })
+
+  describe('Saved Views', () => {
+    const STORAGE_KEY = 'view-test-grid'
+    const savedModel = {
+      department: { filterType: 'text', type: 'equals', filter: 'Engineering' }
+    }
+
+    beforeEach(() => {
+      window.localStorage.clear()
+    })
+
+    const setSearch = (search: string): void => {
+      Object.defineProperty(window.location, 'search', {
+        value: search,
+        configurable: true
+      })
+    }
+
+    test('view members are inert without a storageKey', () => {
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi)
+      )
+
+      expect(result.current.views).toEqual([])
+      expect(result.current.activeViewId).toBeNull()
+      expect(result.current.saveView('Nope')).toBeNull()
+
+      act(() => result.current.deleteView('anything'))
+      expect(result.current.views).toEqual([])
+    })
+
+    test('saveView captures the current filter model', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      let saved: { id: string } | null = null
+      act(() => {
+        saved = result.current.saveView('Engineering')
+      })
+
+      expect(saved).not.toBeNull()
+      expect(result.current.views).toHaveLength(1)
+      expect(result.current.views[0]?.name).toBe('Engineering')
+      expect(result.current.views[0]?.filterModel).toEqual(savedModel)
+      expect(result.current.activeViewId).toBe(saved!.id)
+    })
+
+    test('loadView applies the saved filter model to the grid', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      act(() => result.current.loadView(id))
+
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBe(id)
+    })
+
+    test('loadView(null) clears filters and the active view', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      act(() => {
+        result.current.saveView('Engineering')
+      })
+      act(() => result.current.loadView(null))
+
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
+      expect(result.current.activeViewId).toBeNull()
+    })
+
+    test('deleteView removes the view and clears filters when it was active', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      act(() => result.current.deleteView(id))
+
+      expect(result.current.views).toEqual([])
+      expect(result.current.activeViewId).toBeNull()
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
+    })
+
+    test('restores the stored active view on mount when the URL has no filters', async () => {
+      setSearch('')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // Seed a saved, active view from a previous session.
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      act(() => {
+        seed.result.current.saveView('Engineering')
+      })
+      seed.unmount()
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+    })
+
+    test('prefers URL filters over the stored view on mount', async () => {
+      setSearch('?f_name_contains=fromurl')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      act(() => {
+        seed.result.current.saveView('Engineering')
+      })
+      seed.unmount()
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(savedModel)
+    })
+
+    test('reports an actionable reason through onError when storage is full', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      // jsdom's Storage is proxy-backed, so an instance spy on setItem does not
+      // shadow the real method. Replace the whole object.
+      const original = window.localStorage
+      Object.defineProperty(window, 'localStorage', {
+        value: {
+          getItem: () => null,
+          setItem: () => {
+            throw new DOMException('quota', 'QuotaExceededError')
+          },
+          removeItem: () => {},
+          clear: () => {}
+        },
+        configurable: true
+      })
+
+      try {
+        const { result } = renderHook(() =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: STORAGE_KEY,
+            onError
+          })
+        )
+
+        let saved: unknown = 'unset'
+        act(() => {
+          saved = result.current.saveView('Too big')
+        })
+
+        expect(saved).toBeNull()
+        expect(onError).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: expect.stringContaining('Browser storage is full')
+          }),
+          'save-view'
+        )
+      } finally {
+        Object.defineProperty(window, 'localStorage', {
+          value: original,
+          configurable: true
+        })
+      }
+    })
+
+    test('views are namespaced by storageKey', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const gridA = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'grid-a' })
+      )
+      act(() => {
+        gridA.result.current.saveView('Only in A')
+      })
+
+      const gridB = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'grid-b' })
+      )
+
+      expect(gridA.result.current.views).toHaveLength(1)
+      expect(gridB.result.current.views).toEqual([])
+    })
+  })
 })

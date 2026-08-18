@@ -797,6 +797,45 @@ describe('useAGGridUrlSync', () => {
       }
     })
 
+    test('resyncs views and activeViewId when storageKey changes', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // Seed a view under key-b only.
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'key-b' })
+      )
+      let seededId = ''
+      act(() => {
+        seededId = seed.result.current.saveView('Belongs to B')!.id
+      })
+      seed.unmount()
+
+      // Mount against key-a, which has nothing stored.
+      const { result, rerender } = renderHook(
+        (props: { storageKey: string }) =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: props.storageKey
+          }),
+        { initialProps: { storageKey: 'key-a' } }
+      )
+
+      expect(result.current.views).toEqual([])
+      expect(result.current.activeViewId).toBeNull()
+
+      // Switching namespace must bring key-b's view into view.
+      rerender({ storageKey: 'key-b' })
+
+      expect(result.current.views).toHaveLength(1)
+      expect(result.current.views[0]?.name).toBe('Belongs to B')
+      expect(result.current.activeViewId).toBe(seededId)
+
+      // And switching back must clear it again.
+      rerender({ storageKey: 'key-a' })
+
+      expect(result.current.views).toEqual([])
+      expect(result.current.activeViewId).toBeNull()
+    })
+
     test('views are namespaced by storageKey', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

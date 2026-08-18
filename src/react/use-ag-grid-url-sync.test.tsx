@@ -586,6 +586,13 @@ describe('useAGGridUrlSync', () => {
 
       act(() => result.current.deleteView('anything'))
       expect(result.current.views).toEqual([])
+
+      // loadView must not touch the grid either — clearFilters is the API for
+      // resetting filters, and it works independently of saved views.
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      act(() => result.current.loadView(null))
+      act(() => result.current.loadView('some-id'))
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
     })
 
     test('saveView captures the current filter model', () => {
@@ -640,6 +647,33 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
       expect(result.current.activeViewId).toBeNull()
+    })
+
+    test('loadView treats a missing argument like null', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+
+      act(() => {
+        result.current.saveView('Engineering')
+      })
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      // A JavaScript caller can omit the argument even though the type requires
+      // it; that must reset rather than look up a view with an undefined id.
+      act(() => (result.current.loadView as () => void)())
+
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
+      expect(result.current.activeViewId).toBeNull()
+      // Scoped to this path: other contexts can fire from mock implementations
+      // that earlier tests leave installed.
+      expect(onError).not.toHaveBeenCalledWith(expect.anything(), 'load-view')
     })
 
     test('deleteView removes the view and clears filters when it was active', () => {

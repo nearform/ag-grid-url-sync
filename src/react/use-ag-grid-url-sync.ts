@@ -435,22 +435,28 @@ export function useAGGridUrlSync(
 
   const loadView = useCallback(
     (id: string | null): void => {
-      if (!gridApi) {
+      // Guard on the store as well as the grid, matching saveView and
+      // deleteView. Without this, loadView(null) resets the grid even with views
+      // disabled, which contradicts the documented contract — and clearFilters
+      // is already the API for that, independently of saved views.
+      if (!viewStore || !gridApi) {
         return
       }
 
       try {
         // Applying the model fires filterChanged, which refreshes currentUrl and
         // hasFilters through the existing listener.
-        if (id === null) {
+        // Loose comparison so a JavaScript caller passing nothing gets the reset
+        // they intended, rather than a lookup for a view whose id is undefined.
+        if (id == null) {
           gridApi.setFilterModel({})
-          viewStore?.persistActiveViewId(null)
+          viewStore.persistActiveViewId(null)
           syncFromStore()
           return
         }
 
         const view = viewStore
-          ?.listViews()
+          .listViews()
           .find(candidate => candidate.id === id)
 
         if (!view) {
@@ -459,7 +465,7 @@ export function useAGGridUrlSync(
         }
 
         gridApi.setFilterModel(view.filterModel)
-        viewStore?.persistActiveViewId(view.id)
+        viewStore.persistActiveViewId(view.id)
         syncFromStore()
       } catch (error) {
         handleError(error, 'load-view')

@@ -15,6 +15,22 @@ import type {
 } from './types.js'
 
 /**
+ * Whether two view lists are equivalent for rendering purposes.
+ *
+ * `updatedAt` is compared as well as `id` so that a future update-in-place
+ * operation is not mistaken for no change.
+ */
+function sameViews(a: GridView[], b: GridView[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (view, index) =>
+        view.id === b[index]?.id && view.updatedAt === b[index]?.updatedAt
+    )
+  )
+}
+
+/**
  * React hook for AG Grid URL synchronization
  *
  * @param gridApi - AG Grid API instance (can be null during initialization)
@@ -47,15 +63,17 @@ export function useAGGridUrlSync(
   // These two mirror the store; they are never written independently of it. The
   // store is the single source of truth, and syncFromStore below is the only
   // thing that updates them.
-  const [views, setViews] = useState<GridView[]>(() =>
-    viewStore ? viewStore.listViews() : []
-  )
-  const [activeViewId, setActiveViewId] = useState<string | null>(() =>
-    viewStore ? viewStore.getActiveViewId() : null
-  )
+  //
+  // Deliberately not seeded from storage in a useState initialiser: that reads
+  // localStorage during the first render, which makes a server render produce []
+  // and the first client render produce the stored views — a hydration mismatch.
+  // The effect below does the initial read instead.
+  const [views, setViews] = useState<GridView[]>([])
+  const [activeViewId, setActiveViewId] = useState<string | null>(null)
 
   /**
-   * Refreshes the mirrored view state from the store.
+   * Refreshes the mirrored view state from the store, or empties it when views
+   * are disabled.
    *
    * localStorage has no same-tab change event to subscribe to, so this stands in
    * for the invalidation that `filterChanged` provides on the filter side: call
@@ -63,10 +81,23 @@ export function useAGGridUrlSync(
    * two disagree.
    */
   const syncFromStore = useCallback((): void => {
-    if (!viewStore) return
-    setViews(viewStore.listViews())
-    setActiveViewId(viewStore.getActiveViewId())
+    const nextViews = viewStore ? viewStore.listViews() : []
+    const nextActiveViewId = viewStore ? viewStore.getActiveViewId() : null
+
+    // listViews() returns a fresh array every call, so setting it
+    // unconditionally would re-render on every sync. Compare contents and hand
+    // back the previous array to let React bail out. activeViewId needs no such
+    // guard — it is a primitive, so React already bails on an equal value.
+    setViews(prev => (sameViews(prev, nextViews) ? prev : nextViews))
+    setActiveViewId(nextActiveViewId)
   }, [viewStore])
+
+  // Mirror the store on mount and whenever storageKey swaps it for a different
+  // namespace. Without this, switching key leaves the previous namespace's views
+  // on screen until the next mutation happens to resync them.
+  useEffect(() => {
+    syncFromStore()
+  }, [syncFromStore])
 
   // Refs to track state and prevent memory leaks
   const urlSyncRef = useRef<AGGridUrlSync | null>(null)

@@ -36,6 +36,11 @@
       "import": "./dist/core/grid-integration.js",
       "require": "./dist/core/grid-integration.js"
     },
+    "./view-storage": {
+      "types": "./dist/core/view-storage.d.ts",
+      "import": "./dist/core/view-storage.js",
+      "require": "./dist/core/view-storage.js"
+    },
     "./types": {
       "types": "./dist/core/types.d.ts",
       "import": "./dist/core/types.js",
@@ -71,6 +76,9 @@
       ],
       "grid-integration": [
         "dist/core/grid-integration.d.ts"
+      ],
+      "view-storage": [
+        "dist/core/view-storage.d.ts"
       ],
       "types": [
         "dist/core/types.d.ts"

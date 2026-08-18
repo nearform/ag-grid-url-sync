@@ -10,5 +10,11 @@
     "path": "dist/react/index.js",
     "ignore": ["react", "ag-grid-community"],
     "limit": "7 kB"
+  },
+  {
+    "name": "view-storage — import { createViewStore } from 'ag-grid-url-sync/view-storage'",
+    "path": "dist/core/view-storage.js",
+    "ignore": ["ag-grid-community"],
+    "limit": "1 kB"
   }
 ]

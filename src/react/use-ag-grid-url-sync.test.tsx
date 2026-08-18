@@ -750,6 +750,53 @@ describe('useAGGridUrlSync', () => {
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
     })
 
+    test('deleting a view keeps hand-edited filters the view no longer owns', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+
+      // The user then hand-adjusts a column filter, so the grid no longer shows
+      // what the view holds.
+      mockGridApi.getFilterModel = vi.fn(() => ({
+        ...savedModel,
+        salary: { filterType: 'number', type: 'greaterThan', filter: 120000 }
+      }))
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      act(() => result.current.deleteView(id))
+
+      // The view is gone, but the user's own filtering must survive.
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
+      expect(result.current.views).toEqual([])
+    })
+
+    test('deleting a view clears filters when the grid still shows exactly that view', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      act(() => result.current.deleteView(id))
+
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
+    })
+
     test('restores the stored active view on mount when the URL has no filters', async () => {
       setSearch('')
       mockGridApi.getFilterModel = vi.fn(() => savedModel)

@@ -705,7 +705,7 @@ describe('useAGGridUrlSync', () => {
       vi.mocked(mockGridApi.setFilterModel).mockClear()
       mockInstance.applyFromUrl.mockClear()
 
-      renderHook(() =>
+      const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
           storageKey: STORAGE_KEY,
           autoApplyOnMount: true
@@ -715,6 +715,39 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockInstance.applyFromUrl).toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(savedModel)
+      // The URL won, so nothing is active — otherwise the UI mislabels a saved
+      // view as loaded while showing the URL's filters.
+      expect(result.current.activeViewId).toBeNull()
+    })
+
+    test('deleting a view does not wipe URL filters when the URL took precedence', async () => {
+      setSearch('?f_name_contains=fromurl')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      act(() => result.current.deleteView(id))
+
+      // The grid is showing the URL's filters, not this view, so deleting it must
+      // not clear the filter model.
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
+      expect(result.current.views).toEqual([])
     })
 
     test('reports an actionable reason through onError when storage is full', () => {

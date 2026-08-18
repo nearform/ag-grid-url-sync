@@ -26,6 +26,24 @@ function sameViews(a: GridView[], b: GridView[]): boolean {
 }
 
 /**
+ * Whether the grid's filter model still matches a saved view's.
+ *
+ * Compared per column so key order does not matter — the grid rebuilds its model
+ * as filters are edited. Any doubt resolves to "different", which errs towards
+ * leaving the user's filters alone.
+ */
+function sameFilterModel(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>
+): boolean {
+  const keys = Object.keys(a)
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every(key => JSON.stringify(a[key]) === JSON.stringify(b[key]))
+  )
+}
+
+/**
  * React hook for AG Grid URL synchronization
  *
  * @param gridApi - AG Grid API instance (can be null during initialization)
@@ -479,13 +497,21 @@ export function useAGGridUrlSync(
         // Read before mutating: deleteView clears the pointer in the store when
         // it matches, so afterwards there is no way to tell it apart.
         const wasActive = viewStore.getActiveViewId() === id
+        const view = viewStore.listViews().find(entry => entry.id === id)
+
+        // Clear the grid only while it still shows exactly this view. Once the
+        // user hand-edits the filters the model is theirs, not the view's, and
+        // deleting the view must not discard it.
+        const showingThisView =
+          wasActive &&
+          view !== undefined &&
+          gridApi !== null &&
+          sameFilterModel(gridApi.getFilterModel(), view.filterModel)
+
         viewStore.deleteView(id)
         syncFromStore()
 
-        // Only wipe filters if the grid was actually showing this view. When the
-        // URL took precedence on mount the pointer is null, so the filters the
-        // user is looking at are left alone.
-        if (wasActive) {
+        if (showingThisView) {
           gridApi?.setFilterModel({})
         }
       } catch (error) {

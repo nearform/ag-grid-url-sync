@@ -126,7 +126,7 @@
     "@arethetypeswrong/cli": "^0.18.2",
     "@commitlint/cli": "^20.0.0",
     "@commitlint/config-conventional": "^20.0.0",
-    "@eslint/js": "^9.29.0",
+    "@eslint/js": "^10.0.1",
     "@size-limit/esbuild": "^12.1.0",
     "@size-limit/file": "^12.1.0",
     "@testing-library/react": "^16.3.0",

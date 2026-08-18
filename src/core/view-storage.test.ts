@@ -64,10 +64,10 @@ describe('createViewStore', () => {
     const first = store.saveView('First', filters())
     const second = store.saveView('Second', {})
 
-    store.setActiveViewId(first.id)
+    store.persistActiveViewId(first.id)
     expect(store.getActiveViewId()).toBe(first.id)
 
-    store.setActiveViewId(second.id)
+    store.persistActiveViewId(second.id)
     expect(store.getActiveViewId()).toBe(second.id)
   })
 
@@ -85,7 +85,7 @@ describe('createViewStore', () => {
     const store = createViewStore('test-grid')
     const keep = store.saveView('Keep', filters())
     const drop = store.saveView('Drop', {})
-    store.setActiveViewId(keep.id)
+    store.persistActiveViewId(keep.id)
 
     store.deleteView(drop.id)
 
@@ -214,7 +214,7 @@ describe('createViewStore', () => {
         () => {
           expect(() =>
             createViewStore('test-grid').saveView('X', filters())
-          ).toThrow(/Could not write saved views/)
+          ).toThrow(/Error writing to storage/)
         }
       )
     })

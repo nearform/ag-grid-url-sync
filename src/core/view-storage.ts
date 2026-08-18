@@ -45,8 +45,13 @@ export interface ViewStore {
   listViews(): GridView[]
   /** Id of the active view, or null */
   getActiveViewId(): string | null
-  /** Records which view is active */
-  setActiveViewId(id: string | null): void
+  /**
+   * Records which view is active.
+   *
+   * Named `persist…` rather than `set…` so it cannot be mistaken for a React
+   * state setter: this writes storage and triggers no re-render.
+   */
+  persistActiveViewId(id: string | null): void
   /** Saves a filter model as a new named view and makes it active */
   saveView(name: string, filterModel: FilterModel): GridView
   /** Deletes a view, clearing the active id if it pointed at that view */
@@ -144,7 +149,7 @@ export function createViewStore(storageKey: string): ViewStore {
 
     getActiveViewId: () => read().activeId,
 
-    setActiveViewId: (id: string | null) => {
+    persistActiveViewId: (id: string | null) => {
       write({ ...read(), activeId: id })
     },
 

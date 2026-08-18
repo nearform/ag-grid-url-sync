@@ -7,19 +7,27 @@ import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters } from '../core/url-parser.js'
 import { waitForEffects } from '../test-helpers.js'
 
-// Create a shared mock instance that will be used across all tests
-const mockInstance = {
+// Create a shared mock instance that will be used across all tests.
+// vi.hoisted is required: vi.mock factories are hoisted above this file's
+// module scope, so from Vitest 4 on, a plain const is still undefined when the
+// factory below runs.
+const mockInstance = vi.hoisted(() => ({
   generateUrl: vi.fn(() => 'http://example.com?f_name_contains=test'),
   getQueryParams: vi.fn(() => '?f_name_contains=test'),
   applyFromUrl: vi.fn(),
   clearFilters: vi.fn(),
   applyFilters: vi.fn(),
   destroy: vi.fn()
-}
+}))
 
 // Mock the core AG Grid URL sync module
 vi.mock('../core/ag-grid-url-sync.js', () => ({
-  AGGridUrlSync: vi.fn(() => mockInstance),
+  // The hook calls `new AGGridUrlSync(...)`, and from Vitest 4 on a vi.fn()
+  // backed by an arrow function is not constructible - it has to be a real
+  // function expression.
+  AGGridUrlSync: vi.fn(function () {
+    return mockInstance
+  }),
   createUrlSync: vi.fn(() => mockInstance)
 }))
 

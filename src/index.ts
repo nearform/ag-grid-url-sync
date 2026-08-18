@@ -15,8 +15,10 @@ export { serializeFilters, generateUrl } from './core/url-generator.js'
 // AG Grid integration utilities
 export { getFilterModel, applyFilterModel } from './core/grid-integration.js'
 
-// Saved view storage (used by the React hook's storageKey option)
-export { createViewStore } from './core/view-storage.js'
+// Saved view types. Types only, since they are erased at build time: a value
+// re-export of createViewStore would put a browser-storage helper into the
+// bundle of every non-React consumer. Import it from 'ag-grid-url-sync/view-storage'
+// instead, matching how the other core modules are exposed.
 export type { GridView, ViewStore } from './core/view-storage.js'
 
 // Grouped serialization utilities

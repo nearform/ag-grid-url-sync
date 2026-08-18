@@ -46,6 +46,75 @@ describe('createViewStore', () => {
     expect(store.getActiveViewId()).toBe(view.id)
   })
 
+  describe('names', () => {
+    it('trims the name', () => {
+      const store = createViewStore('test-grid')
+      const view = store.saveView('   Engineering   ', filters())
+
+      expect(view.name).toBe('Engineering')
+      expect(store.listViews()[0]?.name).toBe('Engineering')
+    })
+
+    it('rejects an empty or whitespace-only name', () => {
+      const store = createViewStore('test-grid')
+
+      expect(() => store.saveView('', filters())).toThrow(
+        /view name is required/
+      )
+      expect(() => store.saveView('   ', filters())).toThrow(
+        /view name is required/
+      )
+      expect(store.listViews()).toEqual([])
+    })
+
+    it('overwrites in place when the name already exists', () => {
+      const store = createViewStore('test-grid')
+      const first = store.saveView('Same', filters())
+      const second = store.saveView('Same', {
+        age: { filterType: 'number', type: 'equals', filter: 30 }
+      })
+
+      // One entry, same id, new filter model.
+      expect(store.listViews()).toHaveLength(1)
+      expect(second.id).toBe(first.id)
+      expect(store.listViews()[0]?.filterModel).toEqual({
+        age: { filterType: 'number', type: 'equals', filter: 30 }
+      })
+    })
+
+    it('keeps list position when overwriting', () => {
+      const store = createViewStore('test-grid')
+      store.saveView('First', filters())
+      store.saveView('Second', {})
+      store.saveView('Third', {})
+
+      store.saveView('First', {})
+
+      expect(store.listViews().map(view => view.name)).toEqual([
+        'First',
+        'Second',
+        'Third'
+      ])
+    })
+
+    it('matches names after trimming, so padded input overwrites', () => {
+      const store = createViewStore('test-grid')
+      const first = store.saveView('Padded', filters())
+      const second = store.saveView('  Padded  ', {})
+
+      expect(store.listViews()).toHaveLength(1)
+      expect(second.id).toBe(first.id)
+    })
+
+    it('treats different casing as different views', () => {
+      const store = createViewStore('test-grid')
+      store.saveView('Engineering', filters())
+      store.saveView('engineering', {})
+
+      expect(store.listViews()).toHaveLength(2)
+    })
+  })
+
   it('snapshots by value so later mutation cannot corrupt a saved view', () => {
     const store = createViewStore('test-grid')
     const model = filters()

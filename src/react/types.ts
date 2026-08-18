@@ -126,10 +126,16 @@ export interface UseAGGridUrlSyncReturn {
   activeViewId: string | null
 
   /**
-   * Saves the grid's current filters as a new named view and makes it active.
+   * Saves the grid's current filters under a name and makes it active.
+   *
+   * The name is trimmed, and must not be empty. Names are unique: saving over an
+   * existing name updates that view in place, keeping its id and list position,
+   * so "load a view, adjust the filters, save under the same name" is how you
+   * update one.
    *
    * @param name - Display name for the view
-   * @returns The saved view, or null if views are disabled or the write failed
+   * @returns The saved view, or null if views are disabled, the name was empty,
+   *   or the write failed. Failures are reported through `onError`.
    */
   saveView: (name: string) => GridView | null
 

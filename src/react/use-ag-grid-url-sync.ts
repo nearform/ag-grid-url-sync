@@ -15,19 +15,14 @@ import type {
 } from './types.js'
 
 /**
- * Whether two view lists are equivalent for rendering purposes.
+ * Content equality for view lists, used to skip no-op re-renders.
  *
- * `updatedAt` is compared as well as `id` so that a future update-in-place
- * operation is not mistaken for no change.
+ * Must compare contents, not id/updatedAt: an in-place overwrite reuses the id,
+ * and Date.now() collides within a millisecond. Key order is stable since both
+ * sides come from parsing the same stored document.
  */
 function sameViews(a: GridView[], b: GridView[]): boolean {
-  return (
-    a.length === b.length &&
-    a.every(
-      (view, index) =>
-        view.id === b[index]?.id && view.updatedAt === b[index]?.updatedAt
-    )
-  )
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b)
 }
 
 /**

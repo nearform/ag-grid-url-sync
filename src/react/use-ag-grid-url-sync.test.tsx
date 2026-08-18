@@ -614,6 +614,60 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.activeViewId).toBe(saved!.id)
     })
 
+    test('saving under an existing name updates that view in place', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      let firstId = ''
+      act(() => {
+        firstId = result.current.saveView('Same')!.id
+      })
+
+      const updatedModel = {
+        age: { filterType: 'number', type: 'equals', filter: 30 }
+      }
+      mockGridApi.getFilterModel = vi.fn(() => updatedModel)
+
+      let secondId = ''
+      act(() => {
+        secondId = result.current.saveView('Same')!.id
+      })
+
+      expect(result.current.views).toHaveLength(1)
+      expect(secondId).toBe(firstId)
+      expect(result.current.views[0]?.filterModel).toEqual(updatedModel)
+      expect(result.current.activeViewId).toBe(firstId)
+    })
+
+    test('rejects an empty name and reports it through onError', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+
+      let saved: unknown = 'unset'
+      act(() => {
+        saved = result.current.saveView('   ')
+      })
+
+      expect(saved).toBeNull()
+      expect(result.current.views).toEqual([])
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('view name is required')
+        }),
+        'save-view'
+      )
+    })
+
     test('loadView applies the saved filter model to the grid', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

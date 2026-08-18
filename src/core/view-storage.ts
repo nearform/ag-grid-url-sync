@@ -52,7 +52,16 @@ export interface ViewStore {
    * state setter: this writes storage and triggers no re-render.
    */
   persistActiveViewId(id: string | null): void
-  /** Saves a filter model as a new named view and makes it active */
+  /**
+   * Saves a filter model under a name and makes it active.
+   *
+   * Names are unique and matched exactly after trimming, so saving over an
+   * existing name updates that view in place — keeping its id and its position
+   * in the list — rather than adding a duplicate label. That is what gives
+   * "load, adjust, re-save" its update semantics without a separate method.
+   *
+   * @throws when the name is empty or only whitespace
+   */
   saveView(name: string, filterModel: FilterModel): GridView
   /** Deletes a view, clearing the active id if it pointed at that view */
   deleteView(id: string): void
@@ -154,16 +163,33 @@ export function createViewStore(storageKey: string): ViewStore {
     },
 
     saveView: (name: string, filterModel: FilterModel): GridView => {
+      const trimmedName = name.trim()
+      if (!trimmedName) {
+        throw new Error('A view name is required.')
+      }
+
       const current = read()
+      const existing = current.views.find(view => view.name === trimmedName)
+
       const view: GridView = {
-        id: createId(),
-        name,
+        // Overwriting keeps the original id so anything holding a reference to
+        // this view — an active pointer, a consumer's selection — stays valid.
+        id: existing?.id ?? createId(),
+        name: trimmedName,
         updatedAt: Date.now(),
         // Snapshot by value: the grid mutates its own model objects in place.
         filterModel: structuredClone(filterModel)
       }
 
-      write({ views: [...current.views, view], activeId: view.id })
+      write({
+        // Replace in place so the view keeps its position in the list.
+        views: existing
+          ? current.views.map(candidate =>
+              candidate.id === existing.id ? view : candidate
+            )
+          : [...current.views, view],
+        activeId: view.id
+      })
       return view
     },
 

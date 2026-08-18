@@ -186,7 +186,7 @@
     },
     {
       "path": "dist/react/use-ag-grid-url-sync.js",
-      "maxSize": "4.5KB"
+      "maxSize": "5KB"
     }
   ]
 }

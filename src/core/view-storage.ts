@@ -132,8 +132,9 @@ export function createViewStore(storageKey: string): ViewStore {
 
       throw new Error(
         isQuota
-          ? 'Browser storage is full — delete a saved view and try again.'
-          : 'Could not write saved views to browser storage.'
+          ? 'Browser storage is full. Delete a saved view and try again.'
+          : 'Error writing to storage.',
+        { cause: error }
       )
     }
   }

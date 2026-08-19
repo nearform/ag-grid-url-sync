@@ -145,14 +145,18 @@ export interface UseAGGridUrlSyncReturn {
   saveView: (name: string) => GridView | null
 
   /**
-   * Applies a saved view's filters to the grid, or clears filters when passed null.
+   * Applies a saved view's filters to the grid, or clears filters when passed
+   * null. No-ops when `storageKey` is not set; use `clearFilters` to reset
+   * filters independently of saved views.
    *
    * @param id - Id of the view to load, or null to reset to unfiltered
    */
   loadView: (id: string | null) => void
 
   /**
-   * Deletes a saved view. Clears the grid's filters if it was the active view.
+   * Deletes a saved view. Clears the grid's filters only if the grid still shows
+   * exactly that view's filters, so hand-edited filters survive. No-ops when
+   * `storageKey` is not set.
    *
    * @param id - Id of the view to delete
    */

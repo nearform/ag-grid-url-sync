@@ -210,14 +210,14 @@
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "./dist/core/grid-integration.js",
+      "path": "dist/core/grid-integration.js",
       "limit": "3 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
       "path": "dist/react/use-ag-grid-url-sync.js",
-      "maxSize": "5 KiB",
+      "limit": "6 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     }

@@ -93,6 +93,16 @@ describe('useAGGridUrlSync', () => {
     mockGridApi = createMockGridApi()
     consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.clearAllMocks()
+
+    // mockInstance is module-level, and clearAllMocks resets call history but not
+    // implementations. Re-seed it so a test that installs a throwing
+    // implementation cannot leak it into everything that runs afterwards.
+    mockInstance.generateUrl.mockImplementation(
+      () => 'http://example.com?f_name_contains=test'
+    )
+    mockInstance.getQueryParams.mockImplementation(
+      () => '?f_name_contains=test'
+    )
   })
 
   afterEach(() => {
@@ -572,16 +582,20 @@ describe('useAGGridUrlSync', () => {
       department: { filterType: 'text', type: 'equals', filter: 'Engineering' }
     }
 
-    beforeEach(() => {
-      window.localStorage.clear()
-    })
-
     const setSearch = (search: string): void => {
       Object.defineProperty(window.location, 'search', {
         value: search,
         configurable: true
       })
     }
+
+    beforeEach(() => {
+      window.localStorage.clear()
+      // test-setup.ts replaces window.location wholesale each test, which already
+      // resets this. Doing it locally too keeps the block hermetic on its own
+      // terms rather than depending on how that setup happens to work.
+      setSearch('')
+    })
 
     test('view members are inert without a storageKey', () => {
       const { result } = renderHook(() =>
@@ -733,9 +747,7 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
       expect(result.current.activeViewId).toBeNull()
-      // Scoped to this path: other contexts can fire from mock implementations
-      // that earlier tests leave installed.
-      expect(onError).not.toHaveBeenCalledWith(expect.anything(), 'load-view')
+      expect(onError).not.toHaveBeenCalled()
     })
 
     test('deleteView removes the view and clears filters when it was active', () => {
@@ -1126,3 +1138,4 @@ describe('useAGGridUrlSync', () => {
     })
   })
 })
+

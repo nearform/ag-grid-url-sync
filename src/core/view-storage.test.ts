@@ -163,6 +163,37 @@ describe('createViewStore', () => {
   })
 
   describe('resilience', () => {
+    it('gives each degraded read its own array', () => {
+      // Corrupt blobs under two different keys, so both reads degrade.
+      window.localStorage.setItem(
+        'ag-grid-url-sync:views:v1:pa',
+        '{ not json'
+      )
+      window.localStorage.setItem(
+        'ag-grid-url-sync:views:v1:pb',
+        '{ not json'
+      )
+
+      const a = createViewStore('pa')
+      const b = createViewStore('pb')
+
+      expect(a.listViews()).not.toBe(b.listViews())
+
+      // A consumer mutating its own result must not affect any other store —
+      // listViews is public API through the ./view-storage subpath.
+      const mine = a.listViews()
+      mine.push({
+        id: 'x',
+        name: 'injected',
+        updatedAt: 1,
+        filterModel: {}
+      })
+
+      expect(a.listViews()).toEqual([])
+      expect(b.listViews()).toEqual([])
+      expect(createViewStore('pc').listViews()).toEqual([])
+    })
+
     it('degrades to empty on corrupt JSON', () => {
       window.localStorage.setItem(STORAGE_KEY, '{ not json at all')
 

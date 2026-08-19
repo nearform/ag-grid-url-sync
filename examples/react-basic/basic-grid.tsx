@@ -76,7 +76,10 @@ export default function BasicGrid() {
     // reported a reason through onError — no generic message overwriting it.
     // Name trimming and empty rejection are the library's job, not ours.
     if (!isReady) {
-      showMessage('The grid is still initialising — try again in a moment.', 'error')
+      showMessage(
+        'The grid is still initialising. Try again in a moment.',
+        'error'
+      )
       return
     }
 
@@ -576,8 +579,7 @@ export default function BasicGrid() {
               onClick={() => handleLoadView(null)}
               style={{
                 ...buttonStyle,
-                backgroundColor:
-                  activeViewId === null ? '#0d6efd' : '#e9ecef',
+                backgroundColor: activeViewId === null ? '#0d6efd' : '#e9ecef',
                 color: activeViewId === null ? 'white' : '#212529',
                 border:
                   activeViewId === null

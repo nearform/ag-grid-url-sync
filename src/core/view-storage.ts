@@ -67,7 +67,14 @@ export interface ViewStore {
   deleteView(id: string): void
 }
 
-const EMPTY: StoredShape = { views: [], activeId: null }
+/**
+ * A fresh empty result for every degraded read.
+ *
+ * Deliberately a factory rather than a shared constant: listViews() hands its
+ * array straight to callers, and a module-level sentinel would be one mutable
+ * array shared by every store and every consumer of the ./view-storage subpath.
+ */
+const empty = (): StoredShape => ({ views: [], activeId: null })
 
 function isGridView(value: unknown): value is GridView {
   if (typeof value !== 'object' || value === null) return false
@@ -100,21 +107,21 @@ export function createViewStore(storageKey: string): ViewStore {
   const key = keyFor(storageKey)
 
   const read = (): StoredShape => {
-    if (typeof window === 'undefined') return EMPTY
+    if (typeof window === 'undefined') return empty()
 
     let raw: string | null = null
     try {
       raw = window.localStorage.getItem(key)
     } catch {
       // Access itself throws when storage is disabled by policy.
-      return EMPTY
+      return empty()
     }
 
-    if (!raw) return EMPTY
+    if (!raw) return empty()
 
     try {
       const parsed: unknown = JSON.parse(raw)
-      if (typeof parsed !== 'object' || parsed === null) return EMPTY
+      if (typeof parsed !== 'object' || parsed === null) return empty()
 
       const { views, activeId } = parsed as Partial<StoredShape>
       const validViews = Array.isArray(views) ? views.filter(isGridView) : []
@@ -128,7 +135,7 @@ export function createViewStore(storageKey: string): ViewStore {
             : null
       }
     } catch {
-      return EMPTY
+      return empty()
     }
   }
 

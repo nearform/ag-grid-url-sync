@@ -216,6 +216,12 @@
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
+      "path": "./dist/core/view-storage.js",
+      "limit": "2.5 KiB",
+      "gzip": true,
+      "disablePlugins": ["@size-limit/esbuild"]
+    },
+    {
       "path": "dist/react/use-ag-grid-url-sync.js",
       "limit": "6 KiB",
       "gzip": true,

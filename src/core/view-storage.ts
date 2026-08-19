@@ -60,7 +60,8 @@ export interface ViewStore {
    * in the list — rather than adding a duplicate label. That is what gives
    * "load, adjust, re-save" its update semantics without a separate method.
    *
-   * @throws when the name is empty or only whitespace
+   * @throws when the name is empty, or when the write fails — storage full,
+   *   blocked by policy, or no DOM present
    */
   saveView(name: string, filterModel: FilterModel): GridView
   /** Deletes a view, clearing the active id if it pointed at that view */
@@ -140,7 +141,12 @@ export function createViewStore(storageKey: string): ViewStore {
   }
 
   const write = (next: StoredShape): void => {
-    if (typeof window === 'undefined') return
+    // Reads degrade quietly so a server render can proceed, but a write cannot
+    // succeed here and must not pretend to: returning normally would tell the
+    // caller a view was saved when nothing was persisted.
+    if (typeof window === 'undefined') {
+      throw new Error('Browser storage is unavailable.')
+    }
 
     try {
       window.localStorage.setItem(key, JSON.stringify(next))

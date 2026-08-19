@@ -163,6 +163,25 @@ describe('createViewStore', () => {
   })
 
   describe('resilience', () => {
+    it('reads degrade without a DOM, but writes report failure', () => {
+      const store = createViewStore('test-grid')
+
+      vi.stubGlobal('window', undefined)
+      try {
+        // Reading during a server render must not throw — that is deliberate.
+        expect(store.listViews()).toEqual([])
+        expect(store.getActiveViewId()).toBeNull()
+
+        // Writing cannot succeed, so it must not claim to. Returning a populated
+        // GridView here would tell the caller a save happened that did not.
+        expect(() => store.saveView('X', filters())).toThrow(/storage/i)
+        expect(() => store.persistActiveViewId('x')).toThrow(/storage/i)
+        expect(() => store.deleteView('x')).toThrow(/storage/i)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
     it('gives each degraded read its own array', () => {
       // Corrupt blobs under two different keys, so both reads degrade.
       window.localStorage.setItem(

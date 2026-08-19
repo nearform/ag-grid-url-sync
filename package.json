@@ -215,7 +215,7 @@
     },
     {
       "path": "./dist/core/view-storage.js",
-      "limit": "2 KiB",
+      "limit": "2.5 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     },

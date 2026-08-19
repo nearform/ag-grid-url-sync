@@ -196,6 +196,13 @@ export function useAGGridUrlSync(
       !autoAppliedRef.current &&
       urlSyncRef.current
     ) {
+      // Armed before any work, not after it. This effect's dependencies are
+      // fresh objects on every render, so it re-runs constantly; if a throw in
+      // the body could leave the guard unset, the whole path would re-run and
+      // re-report forever — and a consumer whose onError sets state would make
+      // that self-sustaining. The guard means "auto-apply was attempted".
+      autoAppliedRef.current = true
+
       try {
         // Without saved views the URL is the only source, so apply it
         // unconditionally — an empty URL clearing filters is the long-standing
@@ -208,8 +215,6 @@ export function useAGGridUrlSync(
           // a stale pointer there makes it wipe the URL filters on delete.
           viewStore?.persistActiveViewId(null)
           syncFromStore()
-
-          autoAppliedRef.current = true
           return
         }
 
@@ -227,7 +232,6 @@ export function useAGGridUrlSync(
         } else {
           urlSyncRef.current.applyFromUrl()
         }
-        autoAppliedRef.current = true
       } catch (error) {
         handleError(error, 'auto-apply-filters')
         coreOptions.onParseError?.(error as Error)

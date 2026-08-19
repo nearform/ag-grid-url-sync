@@ -940,6 +940,53 @@ describe('useAGGridUrlSync', () => {
       }
     })
 
+    test('auto-applies once when the pointer write throws', async () => {
+      setSearch('?f_name_contains=fromurl')
+      const onError = vi.fn()
+
+      // Storage that reads fine but cannot be written, as when localStorage is
+      // blocked by policy or the quota is exhausted.
+      const original = window.localStorage
+      Object.defineProperty(window, 'localStorage', {
+        value: {
+          getItem: () => null,
+          setItem: () => {
+            throw new DOMException('quota', 'QuotaExceededError')
+          },
+          removeItem: () => {},
+          clear: () => {}
+        },
+        configurable: true
+      })
+
+      try {
+        mockInstance.applyFromUrl.mockClear()
+
+        const { rerender } = renderHook(() =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: STORAGE_KEY,
+            autoApplyOnMount: true,
+            onError
+          })
+        )
+        await waitForEffects()
+
+        // Each render re-creates the effect's dependencies, so a guard that is
+        // only armed on success would re-run the whole auto-apply path forever.
+        rerender()
+        rerender()
+        rerender()
+        await waitForEffects()
+
+        expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+      } finally {
+        Object.defineProperty(window, 'localStorage', {
+          value: original,
+          configurable: true
+        })
+      }
+    })
+
     test('resyncs views and activeViewId when storageKey changes', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

@@ -940,6 +940,34 @@ describe('useAGGridUrlSync', () => {
       }
     })
 
+    test('does not report a view as active when nothing was applied', async () => {
+      setSearch('')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // A previous session saved a view, so the store's pointer is set.
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      act(() => {
+        seed.result.current.saveView('Engineering')
+      })
+      seed.unmount()
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+
+      // Mount with autoApplyOnMount left at its default of false: the stored
+      // view is never applied, so nothing is loaded.
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      await waitForEffects()
+
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
+      expect(result.current.activeViewId).toBeNull()
+      // The list itself is still mirrored — only the active marker is withheld.
+      expect(result.current.views).toHaveLength(1)
+    })
+
     test('auto-applies once when the pointer write throws', async () => {
       setSearch('?f_name_contains=fromurl')
       const onError = vi.fn()
@@ -1012,14 +1040,17 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.views).toEqual([])
       expect(result.current.activeViewId).toBeNull()
 
-      // Switching namespace must bring key-b's view into view.
+      // Switching namespace must bring key-b's list into view.
       rerender({ storageKey: 'key-b' })
 
       expect(result.current.views).toHaveLength(1)
       expect(result.current.views[0]?.name).toBe('Belongs to B')
-      expect(result.current.activeViewId).toBe(seededId)
+      // The list resyncs, but nothing has been applied to the grid, so no view
+      // is active. `seededId` exists in the store's pointer only.
+      expect(seededId).not.toBe('')
+      expect(result.current.activeViewId).toBeNull()
 
-      // And switching back must clear it again.
+      // And switching back must clear the list again.
       rerender({ storageKey: 'key-a' })
 
       expect(result.current.views).toEqual([])

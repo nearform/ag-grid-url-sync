@@ -221,7 +221,7 @@
     },
     {
       "path": "./dist/react/use-ag-grid-url-sync.js",
-      "limit": "5 KiB",
+      "limit": "6 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     }

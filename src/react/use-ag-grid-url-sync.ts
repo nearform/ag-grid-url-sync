@@ -501,28 +501,33 @@ export function useAGGridUrlSync(
 
       try {
         // The session marker, not the store's pointer: only this says the view
-        // was actually applied to the live grid. Read the view before deleting,
-        // since the store drops it.
+        // was actually applied to the live grid. Capture the view before
+        // deleting, since the store drops it.
         const wasActive = activeViewId === id
         const view = viewStore.listViews().find(entry => entry.id === id)
 
-        // Clear the grid only while it still shows exactly this view. Once the
-        // user hand-edits the filters the model is theirs, not the view's, and
-        // deleting the view must not discard it.
-        const showingThisView =
-          wasActive &&
-          view !== undefined &&
-          gridApi !== null &&
-          sameFilterModel(gridApi.getFilterModel(), view.filterModel)
-
+        // Delete first: it is what was asked for, so it must not be gated behind
+        // the grid inspection below, which can throw.
         viewStore.deleteView(id)
         syncViewsFromStore()
 
         if (wasActive) {
           setActiveViewId(null)
         }
-        if (showingThisView) {
-          gridApi?.setFilterModel({})
+
+        // Clearing the grid is cosmetic by comparison, so best-effort. Only when
+        // the grid still shows exactly this view — after a hand-edit the model is
+        // the user's, not the view's. getFilterModel throws on a destroyed grid
+        // and can return null despite its type.
+        if (wasActive && view !== undefined && gridApi !== null) {
+          try {
+            const current = gridApi.getFilterModel()
+            if (current && sameFilterModel(current, view.filterModel)) {
+              gridApi.setFilterModel({})
+            }
+          } catch (error) {
+            handleError(error, 'delete-view')
+          }
         }
       } catch (error) {
         handleError(error, 'delete-view')

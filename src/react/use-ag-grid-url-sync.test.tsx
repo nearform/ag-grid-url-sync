@@ -786,6 +786,56 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.views).toEqual([])
     })
 
+    test('deletes the view even when reading the grid model throws', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+
+      // As on a destroyed grid.
+      mockGridApi.getFilterModel = vi.fn(() => {
+        throw new Error('grid destroyed')
+      })
+
+      act(() => result.current.deleteView(id))
+
+      // The delete is what the user asked for, so it must land regardless.
+      expect(result.current.views).toEqual([])
+      expect(result.current.activeViewId).toBeNull()
+    })
+
+    test('tolerates a null filter model when deciding whether to clear', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+
+      // AG Grid can hand back null despite the declared return type.
+      mockGridApi.getFilterModel = vi.fn(() => null as unknown as object)
+
+      act(() => result.current.deleteView(id))
+
+      expect(result.current.views).toEqual([])
+    })
+
     test('deleting a view clears filters when the grid still shows exactly that view', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

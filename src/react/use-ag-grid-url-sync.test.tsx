@@ -735,6 +735,50 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.activeViewId).toBe(id)
     })
 
+    test('marks the loaded view even when persisting the pointer fails', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+
+      let a = ''
+      let b = ''
+      act(() => {
+        a = result.current.saveView('A')!.id
+      })
+      act(() => {
+        b = result.current.saveView('B')!.id
+      })
+      act(() => result.current.loadView(a))
+      expect(result.current.activeViewId).toBe(a)
+
+      // Reads keep working; only the durable write fails.
+      const realSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = () => {
+        throw new DOMException('quota', 'QuotaExceededError')
+      }
+
+      try {
+        vi.mocked(mockGridApi.setFilterModel).mockClear()
+        act(() => result.current.loadView(b))
+
+        // The grid was told to show B, so the marker must say B — losing
+        // durability is fine, misreporting what is on screen is not.
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(
+          expect.objectContaining({})
+        )
+        expect(result.current.activeViewId).toBe(b)
+        expect(onError).toHaveBeenCalledWith(expect.any(Error), 'load-view')
+      } finally {
+        Storage.prototype.setItem = realSetItem
+      }
+    })
+
     test('loadView(null) clears filters and the active view', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

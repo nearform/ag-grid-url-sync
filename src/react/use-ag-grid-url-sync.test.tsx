@@ -664,6 +664,32 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.activeViewId).toBe(firstId)
     })
 
+    test('a view saved from a null filter model survives a re-read', () => {
+      // AG Grid can hand back null despite the declared return type.
+      mockGridApi.getFilterModel = vi.fn(() => null as unknown as object)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      let saved: { id: string } | null = null
+      act(() => {
+        saved = result.current.saveView('Unfiltered')
+      })
+
+      expect(saved).not.toBeNull()
+      // The reported symptom: told it saved and marked active, but absent from
+      // the list because the stored blob failed validation on the next read.
+      expect(result.current.views).toHaveLength(1)
+      expect(result.current.activeViewId).toBe(saved!.id)
+
+      // And it is still there for a later session.
+      const remount = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      expect(remount.result.current.views).toHaveLength(1)
+    })
+
     test('rejects an empty name and reports it through onError', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
       const onError = vi.fn()

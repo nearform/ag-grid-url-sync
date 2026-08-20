@@ -213,9 +213,9 @@ export function useAGGridUrlSync(
 
           // The URL won, so no saved view is active. Clear the stored pointer
           // too: deleteView reads the store, and a stale pointer there makes it
-          // wipe the URL filters on delete.
-          viewStore?.persistActiveViewId(null)
+          // wipe the URL filters on delete. State first, same as loadView.
           setActiveViewId(null)
+          viewStore?.persistActiveViewId(null)
           return
         }
 
@@ -467,10 +467,14 @@ export function useAGGridUrlSync(
         // hasFilters through the existing listener.
         // Loose comparison so a JavaScript caller passing nothing gets the reset
         // they intended, rather than a lookup for a view whose id is undefined.
+        // Mirror state before the durable write in both branches. The write can
+        // throw, and the grid has already been changed by then — losing the
+        // pointer across a reload is a fair trade, but leaving the marker naming
+        // a different view than the grid shows is not. The throw still reports.
         if (id == null) {
           gridApi.setFilterModel({})
-          viewStore.persistActiveViewId(null)
           setActiveViewId(null)
+          viewStore.persistActiveViewId(null)
           return
         }
 
@@ -484,8 +488,8 @@ export function useAGGridUrlSync(
         }
 
         gridApi.setFilterModel(view.filterModel)
-        viewStore.persistActiveViewId(view.id)
         setActiveViewId(view.id)
+        viewStore.persistActiveViewId(view.id)
       } catch (error) {
         handleError(error, 'load-view')
       }

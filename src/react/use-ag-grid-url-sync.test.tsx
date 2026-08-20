@@ -1100,6 +1100,39 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.views).toHaveLength(1)
     })
 
+    test('a failed pointer write does not reach onParseError', async () => {
+      setSearch('?f_name_contains=fromurl')
+      const onError = vi.fn()
+      const onParseError = vi.fn()
+
+      const realSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = () => {
+        throw new DOMException('quota', 'QuotaExceededError')
+      }
+
+      try {
+        renderHook(() =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: STORAGE_KEY,
+            autoApplyOnMount: true,
+            onError,
+            onParseError
+          })
+        )
+        await waitForEffects()
+
+        // Storage failing is not the URL failing. applyFromUrl succeeded, so a
+        // parse-error handler must not hear about it.
+        expect(onError).toHaveBeenCalledWith(
+          expect.any(Error),
+          'auto-apply-filters'
+        )
+        expect(onParseError).not.toHaveBeenCalled()
+      } finally {
+        Storage.prototype.setItem = realSetItem
+      }
+    })
+
     test('auto-applies once when the pointer write throws', async () => {
       setSearch('?f_name_contains=fromurl')
       const onError = vi.fn()

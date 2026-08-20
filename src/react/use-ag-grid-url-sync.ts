@@ -212,10 +212,16 @@ export function useAGGridUrlSync(
           urlSyncRef.current.applyFromUrl()
 
           // The URL won, so no saved view is active. Clear the stored pointer
-          // too: deleteView reads the store, and a stale pointer there makes it
-          // wipe the URL filters on delete. State first, same as loadView.
+          // too, or the next mount would restore a view the user never chose
+          // here. State first, same as loadView.
           setActiveViewId(null)
-          viewStore?.persistActiveViewId(null)
+          try {
+            viewStore?.persistActiveViewId(null)
+          } catch (error) {
+            // Storage failing is not the URL failing: applyFromUrl already
+            // succeeded, so this must not reach onParseError below.
+            handleError(error, 'auto-apply-filters')
+          }
           return
         }
 

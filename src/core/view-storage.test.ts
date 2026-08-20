@@ -67,6 +67,19 @@ describe('createViewStore', () => {
       expect(store.listViews()).toEqual([])
     })
 
+    it('stores a readable view when the filter model is null', () => {
+      const store = createViewStore('test-grid')
+
+      // AG Grid's getFilterModel can return null despite its declared type.
+      // Persisting that verbatim writes a blob isGridView later rejects, so the
+      // save appears to succeed and the view then never appears in the list.
+      const view = store.saveView('X', null as unknown as FilterModel)
+
+      expect(view.filterModel).toEqual({})
+      expect(store.listViews()).toHaveLength(1)
+      expect(store.getActiveViewId()).toBe(view.id)
+    })
+
     it('overwrites in place when the name already exists', () => {
       const store = createViewStore('test-grid')
       const first = store.saveView('Same', filters())

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
@@ -33,6 +33,11 @@ export default function BasicGrid() {
     []
   )
 
+  // Set by onError below. The hook reports failures synchronously during a view
+  // operation, so handlers check this before claiming success — otherwise the
+  // success message overwrites the error the user needs to see.
+  const errorReportedRef = useRef(false)
+
   // Create hook options based on current config
   const hookOptions = useMemo(
     () => ({
@@ -42,7 +47,10 @@ export default function BasicGrid() {
       paramPrefix: 'filter_',
       // Surface the hook's own errors to the user. Without this they only reach
       // the dev console, so a full-storage save would fail with no explanation.
-      onError: (error: Error) => showMessage(error.message, 'error'),
+      onError: (error: Error) => {
+        errorReportedRef.current = true
+        showMessage(error.message, 'error')
+      },
       ...(config.mode === 'grouped' && {
         serialization: 'grouped' as const,
         format: config.format,
@@ -92,7 +100,12 @@ export default function BasicGrid() {
 
   const handleLoadView = useCallback(
     (id: string | null) => {
+      errorReportedRef.current = false
       loadView(id)
+      // A storage failure, or an id that no longer exists, already reported
+      // through onError. Do not paper over it with a success message.
+      if (errorReportedRef.current) return
+
       const name = views.find(view => view.id === id)?.name
       showMessage(
         name ? `Loaded view "${name}"` : 'Reset to unfiltered grid',
@@ -104,7 +117,10 @@ export default function BasicGrid() {
 
   const handleDeleteView = useCallback(
     (id: string) => {
+      errorReportedRef.current = false
       deleteView(id)
+      if (errorReportedRef.current) return
+
       showMessage('View deleted', 'info')
     },
     [deleteView, showMessage]

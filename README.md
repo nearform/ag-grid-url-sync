@@ -600,15 +600,15 @@ interface UseAGGridUrlSyncOptions {
 | `getFiltersAsFormat` | `(format: 'querystring'          | 'json'                                          | 'base64') => string`                                       | Serialize filters to any supported format (for sharing/export) |
 | `getCurrentFormat`   | `() => 'individual'              | 'grouped'`                                      | Get the current serialization mode (individual or grouped) |
 
-Saved views (present only when `storageKey` is set — inert otherwise):
+Saved views (present only when `storageKey` is set, inert otherwise):
 
-| Property       | Type                                | Description                                                              |
-| -------------- | ----------------------------------- | ------------------------------------------------------------------------ |
-| `views`        | `GridView[]`                        | Saved views for this grid, in save order. Empty when views are disabled   |
-| `activeViewId` | `string \| null`                    | Id of the view currently applied to the grid, or `null` when none is     |
-| `saveView`     | `(name: string) => GridView \| null` | Save current filters under a name; overwrites an existing name in place   |
-| `loadView`     | `(id: string \| null) => void`      | Apply a saved view, or pass `null` to reset to unfiltered                 |
-| `deleteView`   | `(id: string) => void`              | Delete a saved view                                                      |
+| Property       | Type                                 | Description                                                             |
+| -------------- | ------------------------------------ | ----------------------------------------------------------------------- |
+| `views`        | `GridView[]`                         | Saved views for this grid, in save order. Empty when views are disabled |
+| `activeViewId` | `string \| null`                     | Id of the view currently applied to the grid, or `null` when none is    |
+| `saveView`     | `(name: string) => GridView \| null` | Save current filters under a name; overwrites an existing name in place |
+| `loadView`     | `(id: string \| null) => void`       | Apply a saved view, or pass `null` to reset to unfiltered               |
+| `deleteView`   | `(id: string) => void`               | Delete a saved view                                                     |
 
 > **Note:** `getFiltersAsFormat` and `getCurrentFormat` are especially useful for grouped serialization, format conversion, and advanced sharing scenarios.
 
@@ -619,10 +619,8 @@ the feature and namespaces its storage, so two grids on the same origin must use
 different keys:
 
 ```tsx
-const { views, activeViewId, saveView, loadView, deleteView } = useAGGridUrlSync(
-  gridApi,
-  { storageKey: 'employee-grid' }
-)
+const { views, activeViewId, saveView, loadView, deleteView } =
+  useAGGridUrlSync(gridApi, { storageKey: 'employee-grid' })
 
 // Save whatever is currently filtered. Use the returned view rather than reading
 // it back out of `views`: that array is React state, so it does not update until
@@ -637,7 +635,7 @@ if (view) {
 loadView(null) // reset the grid to unfiltered
 ```
 
-Render the list from `views` and drive the buttons from it — `views[i].id` is only
+Render the list from `views` and drive the buttons from it. `views[i].id` is only
 stale immediately after a mutation, not during render.
 
 Only the filter model is stored, using AG Grid's native format so set filters and
@@ -647,7 +645,7 @@ groups are not stored.
 Behaviour worth knowing:
 
 - **Names are unique.** Saving over an existing name updates that view in place,
-  keeping its id and list position — so "load, adjust, save under the same name" is
+  keeping its id and list position, so "load, adjust, save under the same name" is
   how you update one. Names are trimmed and must not be empty.
 - **`activeViewId` describes the live grid**, not what is persisted. A stored view
   is only applied on mount when `autoApplyOnMount` is set, so with it off this
@@ -657,8 +655,8 @@ Behaviour worth knowing:
   sender's filters rather than the recipient's saved default.
 - **Deleting is conservative.** `deleteView` clears the grid only if it still shows
   exactly that view's filters, so hand-edited filters survive.
-- **Failures are reported, not silent.** A save that cannot be persisted — quota
-  exhausted, storage blocked by policy — returns `null` and reports through
+- **Failures are reported, not silent.** A save that cannot be persisted (quota
+  exhausted, storage blocked by policy) returns `null` and reports through
   `onError` with context `'save-view'`. Reads degrade to an empty list instead of
   throwing, so server rendering is safe.
 

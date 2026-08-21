@@ -56,14 +56,14 @@ export interface ViewStore {
    * Saves a filter model under a name and makes it active.
    *
    * Names are unique and matched exactly after trimming, so saving over an
-   * existing name updates that view in place — keeping its id and its position
-   * in the list — rather than adding a duplicate label. That is what gives
+   * existing name updates that view in place, keeping its id and its position
+   * in the list, rather than adding a duplicate label. That is what gives
    * "load, adjust, re-save" its update semantics without a separate method.
    *
    * A null or undefined filterModel is stored as an empty model, since that is
    * what AG Grid means by it and what getFilterModel returns in practice.
    *
-   * @throws when the name is empty, or when the write fails — storage full,
+   * @throws when the name is empty, or when the write fails: storage full,
    *   blocked by policy, or no DOM present
    */
   saveView(name: string, filterModel: FilterModel): GridView
@@ -189,13 +189,13 @@ export function createViewStore(storageKey: string): ViewStore {
 
       const view: GridView = {
         // Overwriting keeps the original id so anything holding a reference to
-        // this view — an active pointer, a consumer's selection — stays valid.
+        // this view (an active pointer, a consumer's selection) stays valid.
         id: existing?.id ?? createId(),
         name: trimmedName,
         updatedAt: Date.now(),
         // Snapshot by value: the grid mutates its own model objects in place.
         // Coerced because getFilterModel returns null in practice despite its
-        // type, and persisting that writes a blob isGridView later rejects — the
+        // type, and persisting that writes a blob isGridView later rejects. The
         // save would appear to succeed and the view would never load again.
         filterModel: structuredClone(filterModel ?? {})
       }

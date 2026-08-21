@@ -125,7 +125,7 @@ export interface UseAGGridUrlSyncReturn {
    *
    * This describes the live grid, not what is persisted. A stored view is only
    * applied on mount when `autoApplyOnMount` is set, so with it off this stays
-   * null until `loadView` or `saveView` is called — even though a previous
+   * null until `loadView` or `saveView` is called, even though a previous
    * session's view is still listed in `views`.
    */
   activeViewId: string | null

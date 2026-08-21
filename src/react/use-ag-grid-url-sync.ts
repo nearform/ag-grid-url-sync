@@ -174,7 +174,14 @@ export function useAGGridUrlSync(
   const urlHasFilterParams = useCallback((): boolean => {
     if (typeof window === 'undefined') return false
 
-    const prefix = coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix
+    // Normalised the same way url-parser.ts does: an empty string falls back to
+    // the default rather than passing through (startsWith('') matches every
+    // param), and a missing trailing underscore is added so 'filter' cannot
+    // match 'filterMode'. Without this a stray ?page=2 reads as a filter claim,
+    // takes the URL-wins branch, and clears the user's stored view.
+    const rawPrefix = coreOptions.paramPrefix || DEFAULT_CONFIG.paramPrefix
+    const prefix = rawPrefix.endsWith('_') ? rawPrefix : `${rawPrefix}_`
+
     const groupedParams = new Set([
       coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
       'grid_filters',

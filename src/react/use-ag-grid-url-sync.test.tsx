@@ -965,6 +965,68 @@ describe('useAGGridUrlSync', () => {
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
     })
 
+    test('an empty paramPrefix does not make every query param a filter', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // Seed a stored active view from a previous session.
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      // A pagination param, nothing to do with filters.
+      setSearch('?page=2')
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          paramPrefix: '',
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      // The URL makes no claim about filters, so the stored view must be
+      // restored — not cleared, and the pointer not wiped.
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBe(id)
+      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+    })
+
+    test('a prefix without a trailing underscore does not match by substring', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      // 'filterMode' is not 'filter_' + column, and the parser would not match it.
+      setSearch('?filterMode=advanced')
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          paramPrefix: 'filter',
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(result.current.activeViewId).toBe(id)
+    })
+
     test('prefers URL filters over the stored view on mount', async () => {
       setSearch('?f_name_contains=fromurl')
       mockGridApi.getFilterModel = vi.fn(() => savedModel)

@@ -600,7 +600,7 @@ interface UseAGGridUrlSyncOptions {
 | `getFiltersAsFormat` | `(format: 'querystring'          | 'json'                                          | 'base64') => string`                                       | Serialize filters to any supported format (for sharing/export) |
 | `getCurrentFormat`   | `() => 'individual'              | 'grouped'`                                      | Get the current serialization mode (individual or grouped) |
 
-Saved views (present only when `storageKey` is set, inert otherwise):
+Saved views (inert unless `storageKey` is set):
 
 | Property       | Type                                 | Description                                                             |
 | -------------- | ------------------------------------ | ----------------------------------------------------------------------- |

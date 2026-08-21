@@ -145,9 +145,11 @@ export interface UseAGGridUrlSyncReturn {
    * update one.
    *
    * @param name - Display name for the view
-   * @returns The saved view, or null if views are disabled, the hook is disabled,
-   *   the name was empty, or the write failed. Failures are reported through
-   *   `onError`.
+   * @returns The saved view, or null if it could not be saved. Every reason but
+   *   one is reported through `onError`: an empty name, a failed write, and being
+   *   called before the grid is ready or while the hook is disabled. The
+   *   exception is `storageKey` not being set, which is silent because the
+   *   feature was never switched on.
    */
   saveView: (name: string) => GridView | null
 

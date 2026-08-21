@@ -80,23 +80,15 @@ export default function BasicGrid() {
   const memoizedDefaultColDef = useMemo(() => defaultColDef, [])
 
   const handleSaveView = useCallback(() => {
-    // Check readiness here so that a null return below can only mean the hook
-    // reported a reason through onError: no generic message overwriting it.
-    // Name trimming and empty rejection are the library's job, not ours.
-    if (!isReady) {
-      showMessage(
-        'The grid is still initialising. Try again in a moment.',
-        'error'
-      )
-      return
-    }
-
+    // No readiness check needed: the hook reports a not-ready save through
+    // onError, same as an empty name or a failed write. Name trimming and empty
+    // rejection are the library's job too.
     const view = saveView(viewName)
     if (!view) return
 
     setViewName('')
     showMessage(`Saved view "${view.name}"`, 'success')
-  }, [viewName, isReady, saveView, showMessage])
+  }, [viewName, saveView, showMessage])
 
   const handleLoadView = useCallback(
     (id: string | null) => {

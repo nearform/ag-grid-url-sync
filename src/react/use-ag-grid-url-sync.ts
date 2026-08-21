@@ -454,9 +454,29 @@ export function useAGGridUrlSync(
   // is disabled: urlSyncRef is null on the init effect's disabled branch, which
   // is what every pre-existing mutator guards on, so views go inert with the
   // rest of the hook rather than staying live behind a feature flag.
+  //
+  // The two reasons are reported differently on purpose. No storageKey means the
+  // feature was never switched on, so silence is the contract. Not being ready is
+  // a timing problem the caller wants to hear about: without it, clicking Save
+  // before the grid resolves does nothing and says nothing, which is why the
+  // example had to hand-roll its own isReady check.
+  const reportNotReady = useCallback(
+    (operation: string, context: string): void => {
+      handleError(
+        new Error(`${operation} called while the hook is not ready.`),
+        context
+      )
+    },
+    [handleError]
+  )
+
   const saveView = useCallback(
     (name: string): GridView | null => {
-      if (!urlSyncRef.current || !viewStore || !gridApi) {
+      if (!viewStore) {
+        return null
+      }
+      if (!urlSyncRef.current || !gridApi) {
+        reportNotReady('saveView', 'save-view')
         return null
       }
 
@@ -472,7 +492,7 @@ export function useAGGridUrlSync(
         return null
       }
     },
-    [viewStore, gridApi, handleError, syncViewsFromStore]
+    [viewStore, gridApi, handleError, syncViewsFromStore, reportNotReady]
   )
 
   const loadView = useCallback(
@@ -481,7 +501,11 @@ export function useAGGridUrlSync(
       // deleteView. Without this, loadView(null) resets the grid even with views
       // disabled, which contradicts the documented contract. clearFilters
       // is already the API for that, independently of saved views.
-      if (!urlSyncRef.current || !viewStore || !gridApi) {
+      if (!viewStore) {
+        return
+      }
+      if (!urlSyncRef.current || !gridApi) {
+        reportNotReady('loadView', 'load-view')
         return
       }
 
@@ -517,14 +541,18 @@ export function useAGGridUrlSync(
         handleError(error, 'load-view')
       }
     },
-    [gridApi, viewStore, handleError]
+    [gridApi, viewStore, handleError, reportNotReady]
   )
 
   const deleteView = useCallback(
     (id: string): void => {
       // No gridApi requirement: deleting a stored view is a storage operation,
       // and the body already handles the grid being absent.
-      if (!urlSyncRef.current || !viewStore) {
+      if (!viewStore) {
+        return
+      }
+      if (!urlSyncRef.current) {
+        reportNotReady('deleteView', 'delete-view')
         return
       }
 
@@ -562,7 +590,14 @@ export function useAGGridUrlSync(
         handleError(error, 'delete-view')
       }
     },
-    [viewStore, gridApi, handleError, syncViewsFromStore, activeViewId]
+    [
+      viewStore,
+      gridApi,
+      handleError,
+      syncViewsFromStore,
+      activeViewId,
+      reportNotReady
+    ]
   )
 
   // Return the hook API

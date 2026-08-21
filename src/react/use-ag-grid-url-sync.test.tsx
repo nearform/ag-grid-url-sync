@@ -597,6 +597,39 @@ describe('useAGGridUrlSync', () => {
       setSearch('')
     })
 
+    test('reports view operations attempted before the grid is ready', () => {
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { storageKey: STORAGE_KEY, onError })
+      )
+
+      expect(result.current.saveView('Too early')).toBeNull()
+      act(() => result.current.loadView('anything'))
+      act(() => result.current.deleteView('anything'))
+
+      // Silence here is what makes consumers hand-roll their own isReady check.
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'save-view')
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'load-view')
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'delete-view')
+    })
+
+    test('does not report when saved views are simply not configured', () => {
+      const onError = vi.fn()
+
+      // No storageKey: the feature is off by configuration, not broken. A
+      // consumer using views conditionally must not get error noise.
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { onError })
+      )
+
+      expect(result.current.saveView('Nope')).toBeNull()
+      act(() => result.current.loadView('anything'))
+      act(() => result.current.deleteView('anything'))
+
+      expect(onError).not.toHaveBeenCalled()
+    })
+
     test('view members are inert when the hook is disabled', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

@@ -624,15 +624,21 @@ const { views, activeViewId, saveView, loadView, deleteView } = useAGGridUrlSync
   { storageKey: 'employee-grid' }
 )
 
-// Save whatever is currently filtered
-saveView('Engineering, high salary')
+// Save whatever is currently filtered. Use the returned view rather than reading
+// it back out of `views`: that array is React state, so it does not update until
+// the next render.
+const view = saveView('Engineering, high salary')
 
-// Apply one, or reset the grid
-loadView(views[0].id)
-loadView(null)
+if (view) {
+  loadView(view.id) // apply it
+  deleteView(view.id) // and remove it again
+}
 
-deleteView(views[0].id)
+loadView(null) // reset the grid to unfiltered
 ```
+
+Render the list from `views` and drive the buttons from it — `views[i].id` is only
+stale immediately after a mutation, not during render.
 
 Only the filter model is stored, using AG Grid's native format so set filters and
 combined conditions survive a round trip. Column order, row selection and expanded

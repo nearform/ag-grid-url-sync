@@ -1162,7 +1162,55 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.views).toHaveLength(1)
     })
 
+    /**
+     * Seeds a stored active view so the URL-wins branch has a non-null pointer
+     * to clear. Without one the branch skips the write entirely, and a test that
+     * means to exercise a failing write silently exercises nothing.
+     */
+    const seedActiveView = (): string => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Seeded')!.id
+      })
+      seed.unmount()
+      return id
+    }
+
+    test('opening a shared link with blocked storage and no saved views is silent', async () => {
+      setSearch('?f_name_contains=fromurl')
+      const onError = vi.fn()
+
+      // Never saved a view, so there is no pointer to clear.
+      const realSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = () => {
+        throw new DOMException('quota', 'QuotaExceededError')
+      }
+
+      try {
+        renderHook(() =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: STORAGE_KEY,
+            autoApplyOnMount: true,
+            onError
+          })
+        )
+        await waitForEffects()
+
+        // The user took no action. Clearing an already-null pointer is not worth
+        // a storage write, and "delete a saved view" is nonsense advice here.
+        expect(onError).not.toHaveBeenCalled()
+        expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+      } finally {
+        Storage.prototype.setItem = realSetItem
+      }
+    })
+
     test('a failed pointer write does not reach onParseError', async () => {
+      seedActiveView()
       setSearch('?f_name_contains=fromurl')
       const onError = vi.fn()
       const onParseError = vi.fn()
@@ -1200,11 +1248,17 @@ describe('useAGGridUrlSync', () => {
       const onError = vi.fn()
 
       // Storage that reads fine but cannot be written, as when localStorage is
-      // blocked by policy or the quota is exhausted.
+      // blocked by policy or the quota is exhausted. The read returns a non-null
+      // active pointer on purpose: the URL-wins branch only writes when there is
+      // something to clear, so without one this would exercise no write at all.
+      const stored = JSON.stringify({
+        views: [{ id: 'seeded', name: 'Seeded', updatedAt: 1, filterModel: {} }],
+        activeId: 'seeded'
+      })
       const original = window.localStorage
       Object.defineProperty(window, 'localStorage', {
         value: {
-          getItem: () => null,
+          getItem: () => stored,
           setItem: () => {
             throw new DOMException('quota', 'QuotaExceededError')
           },

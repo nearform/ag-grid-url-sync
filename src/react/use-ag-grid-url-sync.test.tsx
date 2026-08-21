@@ -597,6 +597,47 @@ describe('useAGGridUrlSync', () => {
       setSearch('')
     })
 
+    test('view members are inert when the hook is disabled', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // Seed a view while enabled, so there is something to load and delete.
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Seeded')!.id
+      })
+      seed.unmount()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          enabledWhenReady: false
+        })
+      )
+
+      expect(result.current.isReady).toBe(false)
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+
+      // The URL half is inert when disabled, so the view half must be too:
+      // otherwise a feature flag silences one and leaves the other writing to
+      // localStorage and driving the grid.
+      expect(result.current.saveView('While disabled')).toBeNull()
+      act(() => result.current.loadView(id))
+      act(() => result.current.deleteView(id))
+
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
+
+      // Nothing was written or removed: the store still holds exactly the seed.
+      const after = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      expect(after.result.current.views.map(view => view.name)).toEqual([
+        'Seeded'
+      ])
+    })
+
     test('view members are inert without a storageKey', () => {
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi)

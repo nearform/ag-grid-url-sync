@@ -34,6 +34,12 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
 
   /**
    * Whether the hook should be enabled when the grid API is ready
+   *
+   * Set to false and every operation goes inert, saved views included: no URL is
+   * generated, no filters are applied, and no view is saved, loaded or deleted.
+   * `views` still reflects what is in storage, since reading it has no effect on
+   * the grid.
+   *
    * Default: true
    */
   enabledWhenReady?: boolean
@@ -139,15 +145,16 @@ export interface UseAGGridUrlSyncReturn {
    * update one.
    *
    * @param name - Display name for the view
-   * @returns The saved view, or null if views are disabled, the name was empty,
-   *   or the write failed. Failures are reported through `onError`.
+   * @returns The saved view, or null if views are disabled, the hook is disabled,
+   *   the name was empty, or the write failed. Failures are reported through
+   *   `onError`.
    */
   saveView: (name: string) => GridView | null
 
   /**
    * Applies a saved view's filters to the grid, or clears filters when passed
-   * null. No-ops when `storageKey` is not set; use `clearFilters` to reset
-   * filters independently of saved views.
+   * null. No-ops when `storageKey` is not set or the hook is disabled; use
+   * `clearFilters` to reset filters independently of saved views.
    *
    * @param id - Id of the view to load, or null to reset to unfiltered
    */
@@ -156,7 +163,7 @@ export interface UseAGGridUrlSyncReturn {
   /**
    * Deletes a saved view. Clears the grid's filters only if the grid still shows
    * exactly that view's filters, so hand-edited filters survive. No-ops when
-   * `storageKey` is not set.
+   * `storageKey` is not set or the hook is disabled.
    *
    * @param id - Id of the view to delete
    */

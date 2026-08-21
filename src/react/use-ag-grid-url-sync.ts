@@ -450,10 +450,13 @@ export function useAGGridUrlSync(
     }
   }, [handleError])
 
-  // Saved view operations. All no-op when storageKey is unset.
+  // Saved view operations. All no-op when storageKey is unset, and when the hook
+  // is disabled: urlSyncRef is null on the init effect's disabled branch, which
+  // is what every pre-existing mutator guards on, so views go inert with the
+  // rest of the hook rather than staying live behind a feature flag.
   const saveView = useCallback(
     (name: string): GridView | null => {
-      if (!viewStore || !gridApi) {
+      if (!urlSyncRef.current || !viewStore || !gridApi) {
         return null
       }
 
@@ -478,7 +481,7 @@ export function useAGGridUrlSync(
       // deleteView. Without this, loadView(null) resets the grid even with views
       // disabled, which contradicts the documented contract. clearFilters
       // is already the API for that, independently of saved views.
-      if (!viewStore || !gridApi) {
+      if (!urlSyncRef.current || !viewStore || !gridApi) {
         return
       }
 
@@ -519,7 +522,9 @@ export function useAGGridUrlSync(
 
   const deleteView = useCallback(
     (id: string): void => {
-      if (!viewStore) {
+      // No gridApi requirement: deleting a stored view is a storage operation,
+      // and the body already handles the grid being absent.
+      if (!urlSyncRef.current || !viewStore) {
         return
       }
 

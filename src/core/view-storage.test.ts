@@ -181,7 +181,7 @@ describe('createViewStore', () => {
 
       vi.stubGlobal('window', undefined)
       try {
-        // Reading during a server render must not throw — that is deliberate.
+        // Reading during a server render must not throw. That is deliberate.
         expect(store.listViews()).toEqual([])
         expect(store.getActiveViewId()).toBeNull()
 
@@ -197,21 +197,15 @@ describe('createViewStore', () => {
 
     it('gives each degraded read its own array', () => {
       // Corrupt blobs under two different keys, so both reads degrade.
-      window.localStorage.setItem(
-        'ag-grid-url-sync:views:v1:pa',
-        '{ not json'
-      )
-      window.localStorage.setItem(
-        'ag-grid-url-sync:views:v1:pb',
-        '{ not json'
-      )
+      window.localStorage.setItem('ag-grid-url-sync:views:v1:pa', '{ not json')
+      window.localStorage.setItem('ag-grid-url-sync:views:v1:pb', '{ not json')
 
       const a = createViewStore('pa')
       const b = createViewStore('pb')
 
       expect(a.listViews()).not.toBe(b.listViews())
 
-      // A consumer mutating its own result must not affect any other store —
+      // A consumer mutating its own result must not affect any other store:
       // listViews is public API through the ./view-storage subpath.
       const mine = a.listViews()
       mine.push({
@@ -258,14 +252,11 @@ describe('createViewStore', () => {
 
     /**
      * jsdom's Storage is proxy-backed, so an instance-level spy on getItem or
-     * setItem does not shadow the real method — the spy is silently ignored and
+     * setItem does not shadow the real method. The spy is silently ignored and
      * the test passes without ever reaching the code under test. Replace the
      * whole object instead.
      */
-    const withStorage = (
-      stub: Partial<Storage>,
-      run: () => void
-    ): void => {
+    const withStorage = (stub: Partial<Storage>, run: () => void): void => {
       const original = window.localStorage
       Object.defineProperty(window, 'localStorage', {
         value: {
@@ -289,7 +280,7 @@ describe('createViewStore', () => {
     }
 
     it('degrades to empty when storage cannot be read', () => {
-      // Seed a view first, so an empty result can only mean the read failed —
+      // Seed a view first, so an empty result can only mean the read failed.
       // asserting [] against an already-empty store would prove nothing.
       createViewStore('test-grid').saveView('Seeded', filters())
       expect(createViewStore('test-grid').listViews()).toHaveLength(1)

@@ -609,7 +609,7 @@ describe('useAGGridUrlSync', () => {
       act(() => result.current.deleteView('anything'))
       expect(result.current.views).toEqual([])
 
-      // loadView must not touch the grid either — clearFilters is the API for
+      // loadView must not touch the grid either. clearFilters is the API for
       // resetting filters, and it works independently of saved views.
       vi.mocked(mockGridApi.setFilterModel).mockClear()
       act(() => result.current.loadView(null))
@@ -767,7 +767,7 @@ describe('useAGGridUrlSync', () => {
         vi.mocked(mockGridApi.setFilterModel).mockClear()
         act(() => result.current.loadView(b))
 
-        // The grid was told to show B, so the marker must say B — losing
+        // The grid was told to show B, so the marker must say B. Losing
         // durability is fine, misreporting what is on screen is not.
         expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(
           expect.objectContaining({})
@@ -993,7 +993,7 @@ describe('useAGGridUrlSync', () => {
       await waitForEffects()
 
       // The URL makes no claim about filters, so the stored view must be
-      // restored — not cleared, and the pointer not wiped.
+      // restored, not cleared, and the pointer not wiped.
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBe(id)
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
@@ -1052,7 +1052,7 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockInstance.applyFromUrl).toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(savedModel)
-      // The URL won, so nothing is active — otherwise the UI mislabels a saved
+      // The URL won, so nothing is active. Otherwise the UI mislabels a saved
       // view as loaded while showing the URL's filters.
       expect(result.current.activeViewId).toBeNull()
     })
@@ -1158,7 +1158,7 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
       expect(result.current.activeViewId).toBeNull()
-      // The list itself is still mirrored — only the active marker is withheld.
+      // The list itself is still mirrored. Only the active marker is withheld.
       expect(result.current.views).toHaveLength(1)
     })
 
@@ -1252,7 +1252,9 @@ describe('useAGGridUrlSync', () => {
       // active pointer on purpose: the URL-wins branch only writes when there is
       // something to clear, so without one this would exercise no write at all.
       const stored = JSON.stringify({
-        views: [{ id: 'seeded', name: 'Seeded', updatedAt: 1, filterModel: {} }],
+        views: [
+          { id: 'seeded', name: 'Seeded', updatedAt: 1, filterModel: {} }
+        ],
         activeId: 'seeded'
       })
       const original = window.localStorage
@@ -1357,4 +1359,3 @@ describe('useAGGridUrlSync', () => {
     })
   })
 })
-

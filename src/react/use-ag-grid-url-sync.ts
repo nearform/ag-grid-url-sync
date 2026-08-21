@@ -28,7 +28,7 @@ function sameViews(a: GridView[], b: GridView[]): boolean {
 /**
  * Whether the grid's filter model still matches a saved view's.
  *
- * Compared per column so key order does not matter — the grid rebuilds its model
+ * Compared per column, so key order does not matter. The grid rebuilds its model
  * as filters are edited. Any doubt resolves to "different", which errs towards
  * leaving the user's filters alone.
  */
@@ -80,7 +80,7 @@ export function useAGGridUrlSync(
   //
   // Neither is seeded from storage in a useState initialiser: that reads
   // localStorage during the first render, which makes a server render produce []
-  // and the first client render produce the stored views — a hydration mismatch.
+  // and the first client render produce the stored views: a hydration mismatch.
   // The effect below does the initial read instead.
   const [views, setViews] = useState<GridView[]>([])
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
@@ -207,13 +207,13 @@ export function useAGGridUrlSync(
       // Armed before any work, not after it. This effect's dependencies are
       // fresh objects on every render, so it re-runs constantly; if a throw in
       // the body could leave the guard unset, the whole path would re-run and
-      // re-report forever — and a consumer whose onError sets state would make
+      // re-report forever, and a consumer whose onError sets state would make
       // that self-sustaining. The guard means "auto-apply was attempted".
       autoAppliedRef.current = true
 
       try {
         // Without saved views the URL is the only source, so apply it
-        // unconditionally — an empty URL clearing filters is the long-standing
+        // unconditionally. An empty URL clearing filters is the long-standing
         // behaviour and stays that way.
         if (!viewStore || !gridApi || urlHasFilterParams()) {
           urlSyncRef.current.applyFromUrl()
@@ -226,7 +226,7 @@ export function useAGGridUrlSync(
             // Only write when it would actually change something. This is a
             // read-modify-write that throws whenever setItem does, so writing an
             // already-null pointer means anyone with storage blocked gets an
-            // error on page load having done nothing — and "delete a saved view"
+            // error on page load having done nothing, and "delete a saved view"
             // is useless advice to someone who has none.
             if (viewStore && viewStore.getActiveViewId() !== null) {
               viewStore.persistActiveViewId(null)
@@ -476,7 +476,7 @@ export function useAGGridUrlSync(
     (id: string | null): void => {
       // Guard on the store as well as the grid, matching saveView and
       // deleteView. Without this, loadView(null) resets the grid even with views
-      // disabled, which contradicts the documented contract — and clearFilters
+      // disabled, which contradicts the documented contract. clearFilters
       // is already the API for that, independently of saved views.
       if (!viewStore || !gridApi) {
         return
@@ -488,7 +488,7 @@ export function useAGGridUrlSync(
         // Loose comparison so a JavaScript caller passing nothing gets the reset
         // they intended, rather than a lookup for a view whose id is undefined.
         // Mirror state before the durable write in both branches. The write can
-        // throw, and the grid has already been changed by then — losing the
+        // throw, and the grid has already been changed by then. Losing the
         // pointer across a reload is a fair trade, but leaving the marker naming
         // a different view than the grid shows is not. The throw still reports.
         if (id == null) {
@@ -540,7 +540,7 @@ export function useAGGridUrlSync(
         }
 
         // Clearing the grid is cosmetic by comparison, so best-effort. Only when
-        // the grid still shows exactly this view — after a hand-edit the model is
+        // the grid still shows exactly this view. After a hand-edit the model is
         // the user's, not the view's. getFilterModel throws on a destroyed grid
         // and can return null despite its type.
         if (wasActive && view !== undefined && gridApi !== null) {

@@ -34,7 +34,7 @@ export default function BasicGrid() {
   )
 
   // Set by onError below. The hook reports failures synchronously during a view
-  // operation, so handlers check this before claiming success — otherwise the
+  // operation, so handlers check this before claiming success. Otherwise the
   // success message overwrites the error the user needs to see.
   const errorReportedRef = useRef(false)
 
@@ -81,7 +81,7 @@ export default function BasicGrid() {
 
   const handleSaveView = useCallback(() => {
     // Check readiness here so that a null return below can only mean the hook
-    // reported a reason through onError — no generic message overwriting it.
+    // reported a reason through onError: no generic message overwriting it.
     // Name trimming and empty rejection are the library's job, not ours.
     if (!isReady) {
       showMessage(
@@ -541,7 +541,7 @@ export default function BasicGrid() {
         </h3>
         <p style={{ color: '#6c757d', fontSize: '14px', margin: '0 0 15px 0' }}>
           Filter the grid, name it, and save. Managed by the hook via its{' '}
-          <code>storageKey</code> option — stored in this browser only.
+          <code>storageKey</code> option. Stored in this browser only.
         </p>
 
         <div

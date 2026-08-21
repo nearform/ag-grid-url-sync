@@ -223,7 +223,14 @@ export function useAGGridUrlSync(
           // here. State first, same as loadView.
           setActiveViewId(null)
           try {
-            viewStore?.persistActiveViewId(null)
+            // Only write when it would actually change something. This is a
+            // read-modify-write that throws whenever setItem does, so writing an
+            // already-null pointer means anyone with storage blocked gets an
+            // error on page load having done nothing — and "delete a saved view"
+            // is useless advice to someone who has none.
+            if (viewStore && viewStore.getActiveViewId() !== null) {
+              viewStore.persistActiveViewId(null)
+            }
           } catch (error) {
             // Storage failing is not the URL failing: applyFromUrl already
             // succeeded, so this must not reach onParseError below.

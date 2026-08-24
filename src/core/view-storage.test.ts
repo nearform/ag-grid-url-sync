@@ -189,9 +189,37 @@ describe('createViewStore', () => {
         // GridView here would tell the caller a save happened that did not.
         expect(() => store.saveView('X', filters())).toThrow(/storage/i)
         expect(() => store.persistActiveViewId('x')).toThrow(/storage/i)
-        expect(() => store.deleteView('x')).toThrow(/storage/i)
+
+        // deleteView cannot throw here, and that is correct rather than a gap:
+        // with no DOM the read yields an empty store, so there is nothing to
+        // delete, and a write that changes nothing is a no-op.
+        expect(() => store.deleteView('x')).not.toThrow()
       } finally {
         vi.unstubAllGlobals()
+      }
+    })
+
+    it('does not write when the value is unchanged', () => {
+      const store = createViewStore('test-grid')
+      const view = store.saveView('Seeded', filters())
+
+      const realSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = () => {
+        throw new DOMException('quota', 'QuotaExceededError')
+      }
+
+      try {
+        // Each of these would change nothing, so none may attempt a write and
+        // none may report a storage failure. Callers should not need their own
+        // guard around a throwing read-modify-write.
+        expect(() => store.persistActiveViewId(view.id)).not.toThrow()
+        expect(() => store.deleteView('never-stored')).not.toThrow()
+
+        // A real change still reports failure.
+        expect(() => store.persistActiveViewId(null)).toThrow(/storage/i)
+        expect(() => store.deleteView(view.id)).toThrow(/storage/i)
+      } finally {
+        Storage.prototype.setItem = realSetItem
       }
     })
 

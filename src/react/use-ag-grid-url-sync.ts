@@ -531,6 +531,10 @@ export function useAGGridUrlSync(
           .find(candidate => candidate.id === id)
 
         if (!view) {
+          // The store just disagreed with the mirror, so trust the store. Another
+          // tab may have deleted this view; without a resync its button stays on
+          // screen and every click reports the same miss.
+          syncViewsFromStore()
           handleError(new Error(`No saved view with id "${id}"`), 'load-view')
           return
         }
@@ -542,7 +546,7 @@ export function useAGGridUrlSync(
         handleError(error, 'load-view')
       }
     },
-    [gridApi, viewStore, handleError, reportNotReady]
+    [gridApi, viewStore, handleError, reportNotReady, syncViewsFromStore]
   )
 
   const deleteView = useCallback(

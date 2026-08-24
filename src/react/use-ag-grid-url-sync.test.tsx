@@ -1372,6 +1372,46 @@ describe('useAGGridUrlSync', () => {
       }
     })
 
+    test('applies the stored view when storageKey resolves after first render', async () => {
+      setSearch('')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // A previous session saved a view under the tenant's key.
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-b' })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+
+      // First render has no key yet, as when it comes from an async tenant id.
+      const { result, rerender } = renderHook(
+        (props: { storageKey?: string }) =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: props.storageKey,
+            autoApplyOnMount: true
+          }),
+        { initialProps: { storageKey: undefined } as { storageKey?: string } }
+      )
+      await waitForEffects()
+
+      expect(result.current.activeViewId).toBeNull()
+
+      // The key resolves. The list already handled this case; the restore must
+      // too, or auto-apply stays armed from the keyless first pass and the saved
+      // view is never applied.
+      rerender({ storageKey: 'tenant-b' })
+      await waitForEffects()
+
+      expect(result.current.views).toHaveLength(1)
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBe(id)
+    })
+
     test('resyncs views and activeViewId when storageKey changes', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

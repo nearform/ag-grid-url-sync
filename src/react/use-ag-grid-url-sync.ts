@@ -102,21 +102,26 @@ export function useAGGridUrlSync(
     setViews(prev => (sameViews(prev, nextViews) ? prev : nextViews))
   }, [viewStore])
 
+  // Refs to track state and prevent memory leaks
+  const urlSyncRef = useRef<AGGridUrlSync | null>(null)
+  const autoAppliedRef = useRef(false)
+  const lastGridApiRef = useRef<GridApi | null>(null)
+
   // Mirror the list on mount and whenever storageKey swaps the store for a
   // different namespace. Without this, switching key leaves the previous
   // namespace's views on screen until the next mutation happens to resync them.
   //
   // The active marker resets here too: on a fresh mount nothing has been applied
   // yet, and a new namespace's view certainly has not been.
+  //
+  // Auto-apply re-arms for the same reason: a storageKey resolving after the
+  // first render would otherwise have burned the guard on the keyless pass. Safe
+  // because storageKey is a primitive, so this fires on a real key change only.
   useEffect(() => {
     syncViewsFromStore()
     setActiveViewId(null)
+    autoAppliedRef.current = false
   }, [syncViewsFromStore])
-
-  // Refs to track state and prevent memory leaks
-  const urlSyncRef = useRef<AGGridUrlSync | null>(null)
-  const autoAppliedRef = useRef(false)
-  const lastGridApiRef = useRef<GridApi | null>(null)
 
   // Helper function to handle errors consistently
   const handleError = useCallback(

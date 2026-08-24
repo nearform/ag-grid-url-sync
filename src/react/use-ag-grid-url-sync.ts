@@ -84,6 +84,15 @@ export function useAGGridUrlSync(
   // The effect below does the initial read instead.
   const [views, setViews] = useState<GridView[]>([])
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
+  // The same marker in a form callbacks can read. State is a render behind, and
+  // deleteView needs to know what saveView or loadView did earlier in the same
+  // tick, so it reads the ref while consumers read the state. Every write goes
+  // through commitActiveViewId below to keep the two from drifting.
+  const activeViewIdRef = useRef<string | null>(null)
+  const commitActiveViewId = useCallback((id: string | null): void => {
+    activeViewIdRef.current = id
+    setActiveViewId(id)
+  }, [])
 
   /**
    * Refreshes the mirrored view list from the store, or empties it when views are
@@ -125,11 +134,11 @@ export function useAGGridUrlSync(
   // apply, so there is nothing to re-arm for.
   useEffect(() => {
     syncViewsFromStore()
-    setActiveViewId(null)
+    commitActiveViewId(null)
     if (viewStore) {
       autoAppliedRef.current = false
     }
-  }, [syncViewsFromStore, viewStore])
+  }, [syncViewsFromStore, viewStore, commitActiveViewId])
 
   // Helper function to handle errors consistently
   const handleError = useCallback(
@@ -234,7 +243,7 @@ export function useAGGridUrlSync(
           // The URL won, so no saved view is active. Clear the stored pointer
           // too, or the next mount would restore a view the user never chose
           // here. State first, same as loadView.
-          setActiveViewId(null)
+          commitActiveViewId(null)
           try {
             // No-ops in the store when the pointer is already null, so a
             // blocked-storage user is not told a write failed that never needed
@@ -258,7 +267,7 @@ export function useAGGridUrlSync(
         if (stored) {
           gridApi.setFilterModel(stored.filterModel)
           // Applied, so the marker is now true of the live grid.
-          setActiveViewId(stored.id)
+          commitActiveViewId(stored.id)
         } else {
           urlSyncRef.current.applyFromUrl()
         }
@@ -274,7 +283,8 @@ export function useAGGridUrlSync(
     handleError,
     urlHasFilterParams,
     viewStore,
-    gridApi
+    gridApi,
+    commitActiveViewId
   ])
 
   // Update current URL and filter state on filter changes
@@ -496,7 +506,7 @@ export function useAGGridUrlSync(
         const view = viewStore.saveView(name, gridApi.getFilterModel())
         syncViewsFromStore()
         // The grid holds exactly these filters, so this view really is loaded.
-        setActiveViewId(view.id)
+        commitActiveViewId(view.id)
         return view
       } catch (error) {
         handleError(error, 'save-view')
@@ -509,7 +519,8 @@ export function useAGGridUrlSync(
       handleError,
       syncViewsFromStore,
       reportNotReady,
-      enabledWhenReady
+      enabledWhenReady,
+      commitActiveViewId
     ]
   )
 
@@ -538,7 +549,7 @@ export function useAGGridUrlSync(
         // a different view than the grid shows is not. The throw still reports.
         if (id == null) {
           gridApi.setFilterModel({})
-          setActiveViewId(null)
+          commitActiveViewId(null)
           viewStore.persistActiveViewId(null)
           return
         }
@@ -557,7 +568,7 @@ export function useAGGridUrlSync(
         }
 
         gridApi.setFilterModel(view.filterModel)
-        setActiveViewId(view.id)
+        commitActiveViewId(view.id)
         viewStore.persistActiveViewId(view.id)
       } catch (error) {
         handleError(error, 'load-view')
@@ -569,7 +580,8 @@ export function useAGGridUrlSync(
       handleError,
       reportNotReady,
       syncViewsFromStore,
-      enabledWhenReady
+      enabledWhenReady,
+      commitActiveViewId
     ]
   )
 
@@ -589,7 +601,13 @@ export function useAGGridUrlSync(
         // The session marker, not the store's pointer: only this says the view
         // was actually applied to the live grid. Capture the view before
         // deleting, since the store drops it.
-        const wasActive = activeViewId === id
+        //
+        // Read from the ref rather than the state. A handler can save, load and
+        // delete in one tick, and the state would still hold the value from the
+        // last committed render: wasActive would come out false against a view
+        // the same tick just made active, leaving the marker naming a deleted
+        // view and the grid filtered by it.
+        const wasActive = activeViewIdRef.current === id
         const view = viewStore.listViews().find(entry => entry.id === id)
 
         // Delete first: it is what was asked for, so it must not be gated behind
@@ -598,7 +616,7 @@ export function useAGGridUrlSync(
         syncViewsFromStore()
 
         if (wasActive) {
-          setActiveViewId(null)
+          commitActiveViewId(null)
         }
 
         // Clearing the grid is cosmetic by comparison, so best-effort. Only when
@@ -624,8 +642,8 @@ export function useAGGridUrlSync(
       gridApi,
       handleError,
       syncViewsFromStore,
-      activeViewId,
-      enabledWhenReady
+      enabledWhenReady,
+      commitActiveViewId
     ]
   )
 

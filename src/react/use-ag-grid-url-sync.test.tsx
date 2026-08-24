@@ -1141,6 +1141,50 @@ describe('useAGGridUrlSync', () => {
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
     })
 
+    // The tests above drive each step from its own act(), so state commits in
+    // between. A real handler holds one render's closures for the whole
+    // sequence, which is what these two cover.
+    test('deleting a view saved and loaded in the same tick clears the grid', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      act(() => {
+        const view = result.current.saveView('Engineering')!
+        result.current.loadView(view.id)
+        result.current.deleteView(view.id)
+      })
+
+      expect(result.current.views).toEqual([])
+      expect(result.current.activeViewId).toBeNull()
+      // loadView wrote the model earlier in the same block, so the point is that
+      // the delete's clear is the last word on the grid.
+      expect(mockGridApi.setFilterModel).toHaveBeenLastCalledWith({})
+    })
+
+    test('deleting a view saved in the same tick clears the grid', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      // Without the loadView above, this is saveView's own marker write: the
+      // grid already holds these filters, so saving makes the view active.
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      act(() => {
+        const view = result.current.saveView('Engineering')!
+        result.current.deleteView(view.id)
+      })
+
+      expect(result.current.views).toEqual([])
+      expect(result.current.activeViewId).toBeNull()
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
+    })
+
     test('restores the stored active view on mount when the URL has no filters', async () => {
       setSearch('')
       mockGridApi.getFilterModel = vi.fn(() => savedModel)

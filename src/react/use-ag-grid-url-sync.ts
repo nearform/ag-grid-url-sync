@@ -551,13 +551,13 @@ export function useAGGridUrlSync(
 
   const deleteView = useCallback(
     (id: string): void => {
-      // No gridApi requirement: deleting a stored view is a storage operation,
-      // and the body already handles the grid being absent.
-      if (!viewStore) {
-        return
-      }
-      if (!urlSyncRef.current) {
-        reportNotReady('deleteView', 'delete-view')
+      // Guarded on configuration rather than readiness, unlike saveView and
+      // loadView. Those need the grid: one reads its filter model, the other
+      // writes it. Deleting only touches storage, and the body below already
+      // handles a null grid, so a view-management panel beside an unresolved grid
+      // can still delete. urlSyncRef would have implied a grid requirement,
+      // because it is only ever assigned when gridApi is present.
+      if (!viewStore || !enabledWhenReady) {
         return
       }
 
@@ -601,7 +601,7 @@ export function useAGGridUrlSync(
       handleError,
       syncViewsFromStore,
       activeViewId,
-      reportNotReady
+      enabledWhenReady
     ]
   )
 

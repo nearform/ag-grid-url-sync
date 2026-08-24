@@ -164,8 +164,11 @@ export interface UseAGGridUrlSyncReturn {
 
   /**
    * Deletes a saved view. Clears the grid's filters only if the grid still shows
-   * exactly that view's filters, so hand-edited filters survive. No-ops when
-   * `storageKey` is not set or the hook is disabled.
+   * exactly that view's filters, so hand-edited filters survive.
+   *
+   * Unlike `saveView` and `loadView`, this does not need the grid: it works
+   * before the grid API resolves, since deleting only touches storage. No-ops
+   * when `storageKey` is not set or the hook is disabled.
    *
    * @param id - Id of the view to delete
    */

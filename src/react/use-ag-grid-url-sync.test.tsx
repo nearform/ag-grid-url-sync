@@ -606,12 +606,14 @@ describe('useAGGridUrlSync', () => {
 
       expect(result.current.saveView('Too early')).toBeNull()
       act(() => result.current.loadView('anything'))
-      act(() => result.current.deleteView('anything'))
 
-      // Silence here is what makes consumers hand-roll their own isReady check.
+      // Only the two that need the grid: one reads its filter model, the other
+      // writes it. Silence here is what makes consumers hand-roll an isReady
+      // check. deleteView is deliberately absent, since it only touches storage
+      // and works without a grid.
       expect(onError).toHaveBeenCalledWith(expect.any(Error), 'save-view')
       expect(onError).toHaveBeenCalledWith(expect.any(Error), 'load-view')
-      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'delete-view')
+      expect(onError).not.toHaveBeenCalledWith(expect.any(Error), 'delete-view')
     })
 
     test('does not report when saved views are simply not configured', () => {
@@ -628,6 +630,34 @@ describe('useAGGridUrlSync', () => {
       act(() => result.current.deleteView('anything'))
 
       expect(onError).not.toHaveBeenCalled()
+    })
+
+    test('deletes a stored view while the grid is still unresolved', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Seeded')!.id
+      })
+      seed.unmount()
+
+      // A view-management panel rendered beside a grid that has not resolved.
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { storageKey: STORAGE_KEY, onError })
+      )
+
+      act(() => result.current.deleteView(id))
+
+      // Deleting touches only localStorage, so a missing grid must not stop it.
+      expect(onError).not.toHaveBeenCalled()
+      const after = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      expect(after.result.current.views).toEqual([])
     })
 
     test('view members are inert when the hook is disabled', () => {

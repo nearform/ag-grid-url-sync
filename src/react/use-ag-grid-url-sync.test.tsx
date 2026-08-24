@@ -1584,6 +1584,45 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.activeViewId).toBeNull()
     })
 
+    test('leaves the grid alone when storageKey drops to undefined', async () => {
+      setSearch('')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // A saved view exists and is the stored active one.
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-b' })
+      )
+      act(() => {
+        seed.result.current.saveView('Engineering')
+      })
+      seed.unmount()
+
+      const { rerender } = renderHook(
+        (props: { storageKey?: string }) =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: props.storageKey,
+            autoApplyOnMount: true
+          }),
+        { initialProps: { storageKey: 'tenant-b' } as { storageKey?: string } }
+      )
+      await waitForEffects()
+
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      // Views switched off behind a feature flag, or the key dropped on logout.
+      // The store disappearing is not a reason to re-run auto-apply: the URL
+      // carries no filters, so applying it would wipe what the user is looking
+      // at with nothing to restore it from.
+      rerender({ storageKey: undefined })
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
+    })
+
     test('views are namespaced by storageKey', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

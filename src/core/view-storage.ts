@@ -50,6 +50,9 @@ export interface ViewStore {
    *
    * Named `persist…` rather than `set…` so it cannot be mistaken for a React
    * state setter: this writes storage and triggers no re-render.
+   *
+   * Writing the value the pointer already holds is a no-op, so callers need not
+   * check first and a redundant call cannot fail on blocked storage.
    */
   persistActiveViewId(id: string | null): void
   /**
@@ -67,7 +70,12 @@ export interface ViewStore {
    *   blocked by policy, or no DOM present
    */
   saveView(name: string, filterModel: FilterModel): GridView
-  /** Deletes a view, clearing the active id if it pointed at that view */
+  /**
+   * Deletes a view, clearing the active id if it pointed at that view.
+   *
+   * Deleting an id that is not stored is a no-op, so it cannot fail on blocked
+   * storage.
+   */
   deleteView(id: string): void
 }
 
@@ -175,7 +183,15 @@ export function createViewStore(storageKey: string): ViewStore {
     getActiveViewId: () => read().activeId,
 
     persistActiveViewId: (id: string | null) => {
-      write({ ...read(), activeId: id })
+      const current = read()
+
+      // No-op when the pointer already holds this value. This is a
+      // read-modify-write that throws whenever setItem does, so writing an
+      // unchanged pointer reports a failure for an operation that had nothing to
+      // do, and advises a user with no saved views to delete one.
+      if (current.activeId === id) return
+
+      write({ ...current, activeId: id })
     },
 
     saveView: (name: string, filterModel: FilterModel): GridView => {
@@ -214,8 +230,17 @@ export function createViewStore(storageKey: string): ViewStore {
 
     deleteView: (id: string) => {
       const current = read()
+      const views = current.views.filter(view => view.id !== id)
+
+      // Same reasoning as persistActiveViewId: deleting an id that is not here
+      // changes nothing, and a write that changes nothing should not be able to
+      // report a storage failure.
+      if (views.length === current.views.length && current.activeId !== id) {
+        return
+      }
+
       write({
-        views: current.views.filter(view => view.id !== id),
+        views,
         activeId: current.activeId === id ? null : current.activeId
       })
     }

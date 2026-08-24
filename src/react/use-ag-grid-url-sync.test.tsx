@@ -883,6 +883,67 @@ describe('useAGGridUrlSync', () => {
       }
     })
 
+    test('resetting with no active view does not write, so blocked storage is silent', () => {
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+
+      const realSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = () => {
+        throw new DOMException('quota', 'QuotaExceededError')
+      }
+
+      try {
+        act(() => result.current.loadView(null))
+
+        // The grid resets correctly, and there was no pointer to clear, so
+        // nothing should have been written or reported.
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
+        expect(onError).not.toHaveBeenCalled()
+      } finally {
+        Storage.prototype.setItem = realSetItem
+      }
+    })
+
+    test('re-loading the already-active view does not rewrite the pointer', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+      expect(result.current.activeViewId).toBe(id)
+
+      const realSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = () => {
+        throw new DOMException('quota', 'QuotaExceededError')
+      }
+
+      try {
+        // The pointer already names this view, so there is nothing to persist.
+        act(() => result.current.loadView(id))
+
+        expect(result.current.activeViewId).toBe(id)
+        expect(onError).not.toHaveBeenCalled()
+      } finally {
+        Storage.prototype.setItem = realSetItem
+      }
+    })
+
     test('loadView(null) clears filters and the active view', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

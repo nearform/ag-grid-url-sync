@@ -622,21 +622,19 @@ different keys:
 const { views, activeViewId, saveView, loadView, deleteView } =
   useAGGridUrlSync(gridApi, { storageKey: 'employee-grid' })
 
-// Save whatever is currently filtered. Use the returned view rather than reading
-// it back out of `views`: that array is React state, so it does not update until
-// the next render.
-const view = saveView('Engineering, high salary')
-
-if (view) {
-  loadView(view.id) // apply it
-  deleteView(view.id) // and remove it again
-}
-
-loadView(null) // reset the grid to unfiltered
+// One handler each, as a user drives them: save whatever is currently filtered,
+// then apply or remove a view by id in a later interaction.
+const handleSave = () => saveView('Engineering, high salary')
+const handleLoad = (id: string) => loadView(id)
+const handleDelete = (id: string) => deleteView(id)
+const handleReset = () => loadView(null) // back to an unfiltered grid
 ```
 
 Render the list from `views` and drive the buttons from it. `views[i].id` is only
-stale immediately after a mutation, not during render.
+stale immediately after a mutation, not during render. If you do need the new
+view's id in the same handler that saved it, use `saveView`'s return value rather
+than reading it back out of `views`: that array is React state, so it does not
+update until the next render.
 
 Only the filter model is stored, using AG Grid's native format so set filters and
 combined conditions survive a round trip. Column order, row selection and expanded

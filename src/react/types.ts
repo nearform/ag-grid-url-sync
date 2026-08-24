@@ -145,18 +145,20 @@ export interface UseAGGridUrlSyncReturn {
    * update one.
    *
    * @param name - Display name for the view
-   * @returns The saved view, or null if it could not be saved. Every reason but
-   *   one is reported through `onError`: an empty name, a failed write, and being
-   *   called before the grid is ready or while the hook is disabled. The
-   *   exception is `storageKey` not being set, which is silent because the
-   *   feature was never switched on.
+   * @returns The saved view, or null if it could not be saved. An empty name, a
+   *   failed write, and being called before the grid is ready are all reported
+   *   through `onError`. Silent when `storageKey` is not set or the hook is
+   *   disabled, since the feature was switched off by configuration rather than
+   *   having failed.
    */
   saveView: (name: string) => GridView | null
 
   /**
    * Applies a saved view's filters to the grid, or clears filters when passed
-   * null. No-ops when `storageKey` is not set or the hook is disabled; use
-   * `clearFilters` to reset filters independently of saved views.
+   * null. Use `clearFilters` to reset filters independently of saved views.
+   *
+   * Silent when `storageKey` is not set or the hook is disabled; reports through
+   * `onError` when called before the grid is ready, or when the id is not found.
    *
    * @param id - Id of the view to load, or null to reset to unfiltered
    */
@@ -167,8 +169,9 @@ export interface UseAGGridUrlSyncReturn {
    * exactly that view's filters, so hand-edited filters survive.
    *
    * Unlike `saveView` and `loadView`, this does not need the grid: it works
-   * before the grid API resolves, since deleting only touches storage. No-ops
-   * when `storageKey` is not set or the hook is disabled.
+   * before the grid API resolves, since deleting only touches storage, so it
+   * never reports a not-ready error. Silent when `storageKey` is not set or the
+   * hook is disabled.
    *
    * @param id - Id of the view to delete
    */

@@ -674,10 +674,12 @@ describe('useAGGridUrlSync', () => {
       })
       seed.unmount()
 
+      const onError = vi.fn()
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
           storageKey: STORAGE_KEY,
-          enabledWhenReady: false
+          enabledWhenReady: false,
+          onError
         })
       )
 
@@ -692,6 +694,10 @@ describe('useAGGridUrlSync', () => {
       act(() => result.current.deleteView(id))
 
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
+
+      // Silent, not reported. A deliberate disable is configuration, like an
+      // absent storageKey, and "not ready" is misleading when nothing is pending.
+      expect(onError).not.toHaveBeenCalled()
 
       // Nothing was written or removed: the store still holds exactly the seed.
       const after = renderHook(() =>

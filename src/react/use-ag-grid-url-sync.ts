@@ -117,11 +117,19 @@ export function useAGGridUrlSync(
   // Auto-apply re-arms for the same reason: a storageKey resolving after the
   // first render would otherwise have burned the guard on the keyless pass. Safe
   // because storageKey is a primitive, so this fires on a real key change only.
+  //
+  // Only when a store still exists, though. storageKey dropping to undefined
+  // also runs this effect, and re-arming there would send the auto-apply effect
+  // down its !viewStore branch: applyFromUrl() against a URL carrying no filter
+  // params clears the grid. A store that has gone away has no namespace left to
+  // apply, so there is nothing to re-arm for.
   useEffect(() => {
     syncViewsFromStore()
     setActiveViewId(null)
-    autoAppliedRef.current = false
-  }, [syncViewsFromStore])
+    if (viewStore) {
+      autoAppliedRef.current = false
+    }
+  }, [syncViewsFromStore, viewStore])
 
   // Helper function to handle errors consistently
   const handleError = useCallback(

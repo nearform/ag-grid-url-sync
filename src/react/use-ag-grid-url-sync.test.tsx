@@ -5,6 +5,7 @@ import type { GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters } from '../core/url-parser.js'
+import { createViewStore } from '../core/view-storage.js'
 import { waitForEffects } from '../test-helpers.js'
 
 // Create a shared mock instance that will be used across all tests.
@@ -942,6 +943,38 @@ describe('useAGGridUrlSync', () => {
       } finally {
         Storage.prototype.setItem = realSetItem
       }
+    })
+
+    test('drops a stale entry when loading a view another tab deleted', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      expect(result.current.views).toHaveLength(1)
+
+      // Another tab deletes it. Nothing notifies this one, so its mirror is now
+      // stale and still renders a button for the missing view.
+      act(() => {
+        createViewStore(STORAGE_KEY).deleteView(id)
+      })
+      expect(result.current.views).toHaveLength(1)
+
+      act(() => result.current.loadView(id))
+
+      // Reporting the miss is not enough: without a resync the button stays and
+      // every click reports again, with no way back short of a remount.
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'load-view')
+      expect(result.current.views).toEqual([])
     })
 
     test('loadView(null) clears filters and the active view', () => {

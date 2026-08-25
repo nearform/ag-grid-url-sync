@@ -602,6 +602,21 @@ describe('useAGGridUrlSync', () => {
       })
     }
 
+    // The mock grid records listeners rather than dispatching to them, so a
+    // model change has to be announced by hand. The hook re-registers on every
+    // grid change, so the newest handler is the live one.
+    const fireFilterChanged = async (api: MockGridApi = mockGridApi) => {
+      const handler = vi
+        .mocked(api.addEventListener)
+        .mock.calls.filter(([event]) => event === 'filterChanged')
+        .at(-1)?.[1] as (() => void) | undefined
+
+      if (!handler) throw new Error('no filterChanged listener registered')
+      await act(async () => {
+        handler()
+      })
+    }
+
     beforeEach(() => {
       window.localStorage.clear()
       // test-setup.ts replaces window.location wholesale each test, which already
@@ -1197,6 +1212,163 @@ describe('useAGGridUrlSync', () => {
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
     })
 
+    test('clearing the grid drops the active view marker and its pointer', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+      expect(result.current.activeViewId).toBe(id)
+
+      // The user clicks Clear Filters. That empties the model and announces it
+      // through filterChanged without going near loadView, so the marker has to
+      // fall away on the evidence of the grid alone.
+      mockGridApi.getFilterModel = vi.fn(() => ({}))
+      await fireFilterChanged()
+
+      expect(result.current.activeViewId).toBeNull()
+      // The pointer as well as the marker: it is what autoApplyOnMount restores
+      // from, so leaving it would reapply the view on the next load.
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+    })
+
+    test('a hand-edited filter drops the active view marker', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+
+      // Adjusting a column filter in the grid's own UI: the view's filters are
+      // still there, but the grid no longer shows that view.
+      mockGridApi.getFilterModel = vi.fn(() => ({
+        ...savedModel,
+        salary: { filterType: 'number', type: 'greaterThan', filter: 120000 }
+      }))
+      await fireFilterChanged()
+
+      expect(result.current.activeViewId).toBeNull()
+    })
+
+    test('a filter change that still matches keeps the view active', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+
+      // filterChanged fires for reasons that leave the model alone too. The
+      // marker must survive those, or loading a view would immediately unload
+      // it on its own event.
+      await fireFilterChanged()
+
+      expect(result.current.activeViewId).toBe(id)
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+    })
+
+    test('replacing the grid clears the marker but keeps the stored pointer', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const { result, rerender } = renderHook(
+        (props: { api: MockGridApi }) =>
+          useAGGridUrlSync(props.api as GridApi, { storageKey: STORAGE_KEY }),
+        { initialProps: { api: mockGridApi } }
+      )
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+      expect(result.current.activeViewId).toBe(id)
+
+      // A different grid instance, with autoApplyOnMount off so nothing
+      // reapplies. The marker described the grid that went away.
+      rerender({ api: createMockGridApi() })
+      await waitForEffects()
+
+      expect(result.current.activeViewId).toBeNull()
+      // Only the session marker. The pointer still records what to restore.
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+    })
+
+    test('loading a view does not report a filter-change error on the way', () => {
+      // AG Grid fires filterChanged from inside setFilterModel, so this grid
+      // announces its own change the way a real one does.
+      const listeners: Array<() => void> = []
+      let model: Record<string, unknown> = {}
+      const liveGrid: MockGridApi = {
+        setFilterModel: vi.fn((next: Record<string, unknown>) => {
+          model = next ?? {}
+          listeners.forEach(fire => fire())
+        }),
+        getFilterModel: vi.fn(() => model),
+        addEventListener: vi.fn((event: string, fire: () => void) => {
+          if (event === 'filterChanged') listeners.push(fire)
+        }),
+        removeEventListener: vi.fn((_event: string, fire: () => void) => {
+          const at = listeners.indexOf(fire)
+          if (at >= 0) listeners.splice(at, 1)
+        })
+      } as unknown as MockGridApi
+
+      const onError = vi.fn()
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(liveGrid as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+
+      // Two views, so loading one replaces the other and the marker has an
+      // outgoing value to be compared against.
+      model = savedModel
+      let aId = ''
+      act(() => {
+        aId = result.current.saveView('A')!.id
+      })
+      model = {
+        salary: { filterType: 'number', type: 'greaterThan', filter: 1 }
+      }
+      act(() => {
+        result.current.saveView('B')
+      })
+
+      // Storage stops accepting writes just before the load.
+      const realSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = () => {
+        throw new DOMException('quota', 'QuotaExceededError')
+      }
+
+      try {
+        act(() => result.current.loadView(aId))
+      } finally {
+        Storage.prototype.setItem = realSetItem
+      }
+
+      // The load itself may fail to persist, and says so. What it must not do is
+      // report a filter-change on top: the marker names the view being loaded
+      // before the grid announces it, so the listener sees a match and stays out
+      // of the way.
+      const contexts = onError.mock.calls.map(([, context]) => context)
+      expect(contexts).not.toContain('filter-change')
+      expect(result.current.activeViewId).toBe(aId)
+    })
+
     test('restores the stored active view on mount when the URL has no filters', async () => {
       setSearch('')
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
@@ -1706,6 +1878,94 @@ describe('useAGGridUrlSync', () => {
 
       expect(result.current.views).toEqual([])
       expect(result.current.activeViewId).toBeNull()
+    })
+
+    test('swapping storageKey to an empty namespace leaves the grid alone', async () => {
+      setSearch('')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // tenant-a has a saved, active view from a previous session. tenant-b has
+      // never been used.
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-a' })
+      )
+      act(() => {
+        seed.result.current.saveView('Engineering')
+      })
+      seed.unmount()
+
+      const { result, rerender } = renderHook(
+        (props: { storageKey: string }) =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: props.storageKey,
+            autoApplyOnMount: true
+          }),
+        { initialProps: { storageKey: 'tenant-a' } }
+      )
+      await waitForEffects()
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+
+      // The user then filters by hand, so the grid holds something no namespace
+      // has stored.
+      mockGridApi.getFilterModel = vi.fn(() => ({
+        salary: { filterType: 'number', type: 'greaterThan', filter: 120000 }
+      }))
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      // The swap re-arms auto-apply, which is the intent: tenant-b's view should
+      // get its chance. It just does not have one, and the URL carries no
+      // filters either, so neither source has anything to say about the grid.
+      rerender({ storageKey: 'tenant-b' })
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
+      expect(result.current.views).toEqual([])
+      expect(result.current.activeViewId).toBeNull()
+    })
+
+    test('swapping storageKey still applies the new namespace stored view', async () => {
+      setSearch('')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      // Both namespaces have a stored view, so the swap has something to apply.
+      const seedB = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-b' })
+      )
+      let bId = ''
+      act(() => {
+        bId = seedB.result.current.saveView('Belongs to B')!.id
+      })
+      seedB.unmount()
+
+      const seedA = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-a' })
+      )
+      act(() => {
+        seedA.result.current.saveView('Belongs to A')
+      })
+      seedA.unmount()
+
+      const { result, rerender } = renderHook(
+        (props: { storageKey: string }) =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: props.storageKey,
+            autoApplyOnMount: true
+          }),
+        { initialProps: { storageKey: 'tenant-a' } }
+      )
+      await waitForEffects()
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+
+      // Leaving the grid alone for an empty namespace must not have cost a
+      // populated one its restore.
+      rerender({ storageKey: 'tenant-b' })
+      await waitForEffects()
+
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBe(bId)
     })
 
     test('leaves the grid alone when storageKey drops to undefined', async () => {

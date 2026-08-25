@@ -162,6 +162,12 @@ export function useAGGridUrlSync(
         urlSyncRef.current?.destroy()
         urlSyncRef.current = null
         autoAppliedRef.current = false
+        // The marker described the grid that just went away. This one has had
+        // nothing applied to it yet, so the claim cannot carry over. Only the
+        // session marker: the stored pointer still records what to restore, and
+        // with autoApplyOnMount the re-armed effect above does restore it and
+        // sets the marker again.
+        commitActiveViewId(null)
       }
 
       // Create new instance if needed
@@ -181,11 +187,15 @@ export function useAGGridUrlSync(
         urlSyncRef.current.destroy()
         urlSyncRef.current = null
         autoAppliedRef.current = false
+        // Same reasoning as the swap above: there is no live grid left for the
+        // marker to describe. Guarded on urlSyncRef so the common first render
+        // with a null gridApi does not touch state it never set.
+        commitActiveViewId(null)
       }
       setIsReady(false)
       lastGridApiRef.current = null
     }
-  }, [gridApi, enabledWhenReady, coreOptions, handleError])
+  }, [gridApi, enabledWhenReady, coreOptions, handleError, commitActiveViewId])
 
   /**
    * Whether the current URL carries any filter parameters.
@@ -315,9 +325,21 @@ export function useAGGridUrlSync(
           gridApi.setFilterModel(stored.filterModel)
           // Applied, so the marker is now true of the live grid.
           commitActiveViewId(stored.id)
-        } else {
-          urlSyncRef.current.applyFromUrl()
         }
+
+        // No stored view, and deliberately nothing else. Reaching here means
+        // views are enabled, the URL makes no claim, and this namespace has
+        // nothing saved, so neither source has anything to say about the grid.
+        // applyFromUrl() here would not be a no-op: against a filterless URL it
+        // calls setFilterModel({}) and wipes whatever the user has set by hand.
+        //
+        // That matters on a storageKey swap between two real namespaces, which
+        // re-arms the guard above and runs this effect again on a live grid. It
+        // is the same reasoning as the re-arm guard at :139-141, in the other
+        // direction: a namespace with nothing to apply has nothing to apply.
+        //
+        // The !viewStore case is not reachable from here, having returned at the
+        // branch above, so it keeps its unconditional applyFromUrl there.
       } catch (error) {
         handleError(error, 'auto-apply-filters')
         coreOptions.onParseError?.(error as Error)
@@ -342,7 +364,54 @@ export function useAGGridUrlSync(
       return
     }
 
+    /**
+     * Drops the active view marker once the grid stops showing that view.
+     *
+     * activeViewId claims a view is applied to the live grid, so every route
+     * that changes the model has to be able to falsify it. saveView, loadView,
+     * deleteView and auto-apply set it directly, but clearFilters,
+     * applyFilters, applyUrlFilters and a user editing a filter in the grid's
+     * own UI do not go through any of them. They all reach filterChanged, which
+     * until now refreshed currentUrl and hasFilters and left the marker naming a
+     * view the grid no longer shows.
+     */
+    const syncActiveViewToGrid = () => {
+      const activeId = activeViewIdRef.current
+      if (!activeId || !viewStore) return
+
+      const active = viewStore.listViews().find(view => view.id === activeId)
+      // Gone from the store already: deleteView owns that case and does its own
+      // clearing, so there is nothing to compare against and nothing to do.
+      if (!active) return
+
+      let live: Record<string, unknown>
+      try {
+        // Throws on a destroyed grid, and can return null despite its type.
+        live = gridApi.getFilterModel() ?? {}
+      } catch {
+        // No reading of the grid means no evidence the view stopped applying.
+        // Leaving the marker alone is the answer that invents nothing.
+        return
+      }
+
+      if (sameFilterModel(live, active.filterModel)) return
+
+      commitActiveViewId(null)
+      try {
+        // The stored pointer has to go too, not just the marker: it is what
+        // autoApplyOnMount restores from, so leaving it would reapply on the
+        // next load the very view the user just filtered away.
+        viewStore.persistActiveViewId(null)
+      } catch (error) {
+        // The marker is already correct for this session; only the durable
+        // pointer is stale. Worth reporting, not worth throwing over.
+        handleError(error, 'filter-change')
+      }
+    }
+
     const updateState = () => {
+      syncActiveViewToGrid()
+
       try {
         const newUrl = urlSyncRef.current!.generateUrl()
         setCurrentUrl(newUrl)
@@ -367,7 +436,7 @@ export function useAGGridUrlSync(
     return () => {
       gridApi.removeEventListener('filterChanged', onFilterChanged)
     }
-  }, [isReady, gridApi, handleError])
+  }, [isReady, gridApi, handleError, viewStore, commitActiveViewId])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -594,9 +663,20 @@ export function useAGGridUrlSync(
         // throw, and the grid has already been changed by then. Losing the
         // pointer across a reload is a fair trade, but leaving the marker naming
         // a different view than the grid shows is not. The throw still reports.
+        //
+        // The marker also leads the grid write, not just the durable one. That
+        // listener now drops the marker when the grid stops matching the active
+        // view, and AG Grid fires filterChanged from inside setFilterModel. With
+        // the marker still naming the outgoing view, the listener compares this
+        // view's model against that one, calls it a mismatch, and clears the
+        // pointer on the way through. The lines below then set both again, so
+        // the end state is the same either way; what this ordering avoids is the
+        // redundant round trip - a storage write per load, and an onError under
+        // context 'filter-change' when storage is blocked, from a plain load
+        // that did nothing wrong.
         if (id == null) {
-          gridApi.setFilterModel({})
           commitActiveViewId(null)
+          gridApi.setFilterModel({})
           viewStore.persistActiveViewId(null)
           return
         }
@@ -614,8 +694,8 @@ export function useAGGridUrlSync(
           return
         }
 
-        gridApi.setFilterModel(view.filterModel)
         commitActiveViewId(view.id)
+        gridApi.setFilterModel(view.filterModel)
         viewStore.persistActiveViewId(view.id)
       } catch (error) {
         handleError(error, 'load-view')

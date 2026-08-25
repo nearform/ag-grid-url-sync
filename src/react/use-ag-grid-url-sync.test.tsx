@@ -61,6 +61,18 @@ vi.mock('../core/url-parser.js', () => ({
         age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
       }
     }
+    // A grouped param carries filters only if its value decodes. The real
+    // parser hands back {} for one it cannot read - ?filters=recent and
+    // ?filters=chips-abc both do - so the mock has to model that rather than
+    // fall through to the default below. urlHasFilterParams decodes to tell a
+    // real payload from a host app's own param of the same name, and against a
+    // mock that always yielded filters the distinction would be untestable.
+    const grouped = /[?&](?:filters|grid_filters)=([^&]*)/.exec(url)
+    if (grouped) {
+      return grouped[1].includes('f_')
+        ? { name: { filterType: 'text', type: 'contains', filter: 'grouped' } }
+        : {}
+    }
     // Default text filter response
     return {
       name: { filterType: 'text', type: 'contains', filter: 'test' }
@@ -1273,6 +1285,74 @@ describe('useAGGridUrlSync', () => {
       await waitForEffects()
 
       expect(result.current.activeViewId).toBe(id)
+    })
+
+    test('a grouped param the parser cannot decode is not a filter claim', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      // 'filters' is one of the names checked for a grouped payload, but it is
+      // just as plausible a name for a host app's own quick-filter chips. This
+      // value decodes to nothing, so it says nothing about this grid.
+      setSearch('?filters=recent')
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      // Treating it as a claim would apply an empty model over the user's
+      // filters and drop the stored pointer for good, neither of which they
+      // asked for.
+      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBe(id)
+      // The pointer has to survive the mount, not just this render: it is what
+      // restores the view on the next one.
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+    })
+
+    test('a grouped param the parser can decode still wins over the stored view', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      act(() => {
+        seed.result.current.saveView('Engineering')
+      })
+      seed.unmount()
+
+      // The same param name, this time carrying a payload that decodes. The
+      // decodability check must not have cost grouped URLs their precedence.
+      setSearch('?filters=f_name_contains%3Dfromurl')
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBeNull()
     })
 
     test('prefers URL filters over the stored view on mount', async () => {

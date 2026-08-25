@@ -6,6 +6,7 @@ import { createViewStore, type GridView } from '../core/view-storage.js'
 import { DEFAULT_CONFIG } from '../core/validation.js'
 import type {
   FilterState,
+  InternalConfig,
   SerializationFormat,
   SerializationMode
 } from '../core/types.js'
@@ -189,9 +190,10 @@ export function useAGGridUrlSync(
   /**
    * Whether the current URL carries any filter parameters.
    *
-   * Deliberately a cheap key scan rather than a full parse: this only needs to
-   * know whether the URL is making a claim about filters, and it must not depend
-   * on a grid API being available.
+   * A key scan settles the prefixed case, since a prefixed param names a column
+   * and an operation and so is a claim on its own. A grouped param needs its
+   * value decoded before it counts, so that case falls through to a parse.
+   * Neither path depends on a grid API being available.
    */
   const urlHasFilterParams = useCallback((): boolean => {
     if (typeof window === 'undefined') return false
@@ -210,11 +212,56 @@ export function useAGGridUrlSync(
       'filters'
     ])
 
-    const params = new URLSearchParams(window.location.search)
+    const search = window.location.search
+    const params = new URLSearchParams(search)
+    let hasGroupedParam = false
     for (const key of params.keys()) {
-      if (key.startsWith(prefix) || groupedParams.has(key)) return true
+      if (key.startsWith(prefix)) return true
+      if (groupedParams.has(key)) hasGroupedParam = true
     }
-    return false
+
+    if (!hasGroupedParam) return false
+
+    // Presence is not a claim for a grouped param. Two of the three names are
+    // guesses at what a payload might be called, and 'filters' is just as
+    // plausible a name for a host app's own quick-filter chips; a value written
+    // under an older format can also stop decoding. Either way the param holds
+    // nothing for this grid, but counting it as a claim takes the URL-wins
+    // branch below, writes an empty model over the filters the user is looking
+    // at, and clears the stored view pointer permanently.
+    //
+    // detectGroupedSerialization cannot distinguish these: detectFormat falls
+    // back to 'querystring' for anything it does not recognise
+    // (src/core/serialization/grouped.ts:139-151), so ?filters=recent comes back
+    // isGrouped with both a value and a format, exactly like a real payload.
+    // What separates them is what the decode yields, so decode and look.
+    const probeConfig: InternalConfig = {
+      // Nothing on the parsing path reads gridApi, and this has to stay callable
+      // before the grid resolves, so there is none to hand over.
+      gridApi: null as unknown as InternalConfig['gridApi'],
+      // The raw option rather than the normalised `prefix` above: the grouped
+      // querystring format decodes against config.paramPrefix, so the probe has
+      // to use the value the real parse in applyFromUrl will use.
+      paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
+      maxValueLength:
+        coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
+      // Silent by design. This is a probe, and applyFromUrl parses again and
+      // reports for itself. A URL this call is about to dismiss must not raise.
+      onParseError: () => {},
+      serialization: coreOptions.serialization ?? DEFAULT_CONFIG.serialization,
+      groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
+      format: coreOptions.format ?? DEFAULT_CONFIG.format
+    }
+
+    try {
+      // The query string, not href, so the decode reads exactly the params the
+      // scan above walked. url-parser.ts handles a leading '?' directly.
+      return Object.keys(parseFilters(search, probeConfig)).length > 0
+    } catch {
+      // A URL the parser cannot even read is not a claim on the grid. The real
+      // parse reports it if it is reached; here it just means "no".
+      return false
+    }
   }, [coreOptions])
 
   // Auto-apply on mount. URL filters win over a stored view: a shared link

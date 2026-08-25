@@ -1,6 +1,5 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { setTimeout } from 'timers/promises'
 import type { GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'

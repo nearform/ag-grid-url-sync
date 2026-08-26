@@ -648,6 +648,14 @@ Behaviour worth knowing:
 - **`activeViewId` describes the live grid**, not what is persisted. A stored view
   is only applied on mount when `autoApplyOnMount` is set, so with it off this
   stays `null` until you call `loadView` or `saveView`.
+- **Filtering away from a view unloads it.** `activeViewId` returns to `null` as
+  soon as the grid stops showing that view, including through routes that never
+  mention views: `clearFilters`, `applyFilters`, `applyUrlFilters`, or the user
+  editing a filter in the grid's own UI. The stored pointer is cleared with it,
+  so `autoApplyOnMount` will not bring the view back on the next load. Render the
+  active state from `activeViewId` and it follows the grid on its own. Replacing
+  `gridApi` also clears `activeViewId`, but keeps the stored pointer, so with
+  `autoApplyOnMount` the view is restored against the new grid.
 - **URL filters win on mount.** With `autoApplyOnMount` set, an incoming URL that
   carries filters takes precedence over the stored view, so a shared link shows the
   sender's filters rather than the recipient's saved default.

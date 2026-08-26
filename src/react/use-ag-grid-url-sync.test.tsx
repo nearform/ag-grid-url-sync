@@ -1375,6 +1375,34 @@ describe('useAGGridUrlSync', () => {
       expect(onError).toHaveBeenCalledWith(expect.any(Error), 'load-view')
     })
 
+    test('a grid that rejects the reset keeps the view marked', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+      let id = ''
+      act(() => {
+        id = result.current.saveView('Engineering')!.id
+      })
+      act(() => result.current.loadView(id))
+
+      mockGridApi.setFilterModel = vi.fn(() => {
+        throw new Error('grid destroyed')
+      })
+      act(() => result.current.loadView(null))
+
+      // The reset never landed, so the grid still shows the view and the marker
+      // has to stay with it. Same rule as the load case, other direction.
+      expect(result.current.activeViewId).toBe(id)
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'load-view')
+    })
+
     test('a failed pointer write keeps the marker on the view the grid shows', () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
       const onError = vi.fn()

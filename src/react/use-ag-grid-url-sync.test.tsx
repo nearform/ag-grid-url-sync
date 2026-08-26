@@ -1340,6 +1340,131 @@ describe('useAGGridUrlSync', () => {
       expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
     })
 
+    test('a grid that rejects the model leaves the marker where it was', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+      let aId = ''
+      act(() => {
+        aId = result.current.saveView('A')!.id
+      })
+      let bId = ''
+      act(() => {
+        bId = result.current.saveView('B')!.id
+      })
+      act(() => result.current.loadView(aId))
+      expect(result.current.activeViewId).toBe(aId)
+
+      // As on a destroyed grid, or a saved model naming a column AG Grid will
+      // not accept.
+      mockGridApi.setFilterModel = vi.fn(() => {
+        throw new Error('grid rejected the model')
+      })
+      act(() => result.current.loadView(bId))
+
+      // The grid never took B, so nothing may claim it did. The pointer was
+      // never written either, so both still name A and agree.
+      expect(result.current.activeViewId).toBe(aId)
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(aId)
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'load-view')
+    })
+
+    test('a failed pointer write keeps the marker on the view the grid shows', () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          onError
+        })
+      )
+      let aId = ''
+      act(() => {
+        aId = result.current.saveView('A')!.id
+      })
+      let bId = ''
+      act(() => {
+        bId = result.current.saveView('B')!.id
+      })
+      act(() => result.current.loadView(aId))
+
+      // Storage stops accepting writes. The grid still takes the model.
+      const realSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = () => {
+        throw new DOMException('quota', 'QuotaExceededError')
+      }
+      try {
+        act(() => result.current.loadView(bId))
+      } finally {
+        Storage.prototype.setItem = realSetItem
+      }
+
+      // The opposite call to the test above, and the older rule: the grid did
+      // change, so the marker stays with it and the stale pointer is the price.
+      // Rolling the marker back here would leave it naming a view the grid is
+      // not showing.
+      expect(result.current.activeViewId).toBe(bId)
+      expect(aId).not.toBe(bId)
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'load-view')
+    })
+
+    test('a view the grid does not round-trip stays loaded', () => {
+      // A grid that announces synchronously and hands back something other than
+      // what it was given, as when a view names a column the grid no longer has.
+      const listeners: Array<() => void> = []
+      const liveGrid: MockGridApi = {
+        setFilterModel: vi.fn(() => {
+          listeners.forEach(fire => fire())
+        }),
+        getFilterModel: vi.fn(() => savedModel),
+        addEventListener: vi.fn((event: string, fire: () => void) => {
+          if (event === 'filterChanged') listeners.push(fire)
+        }),
+        removeEventListener: vi.fn((_event: string, fire: () => void) => {
+          const at = listeners.indexOf(fire)
+          if (at >= 0) listeners.splice(at, 1)
+        })
+      } as unknown as MockGridApi
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(liveGrid as GridApi, { storageKey: STORAGE_KEY })
+      )
+
+      // Saved from savedModel, so the store holds that. The grid keeps handing
+      // savedModel back regardless of what it is told.
+      let aId = ''
+      act(() => {
+        aId = result.current.saveView('A')!.id
+      })
+
+      // A second view whose model the grid will not reproduce.
+      liveGrid.getFilterModel = vi.fn(() => ({
+        salary: { filterType: 'number', type: 'greaterThan', filter: 1 }
+      }))
+      let bId = ''
+      act(() => {
+        bId = result.current.saveView('B')!.id
+      })
+
+      liveGrid.getFilterModel = vi.fn(() => savedModel)
+      act(() => result.current.loadView(bId))
+
+      // Mid-load reconciliation would have compared B against a grid still
+      // reporting A's model, cleared both, and then let loadView write the
+      // pointer back - marker null against a pointer naming B, from a load that
+      // reported nothing wrong.
+      expect(result.current.activeViewId).toBe(bId)
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(bId)
+      expect(aId).not.toBe(bId)
+    })
+
     test('loading a view does not report a filter-change error on the way', () => {
       // AG Grid fires filterChanged from inside setFilterModel, so this grid
       // announces its own change the way a real one does.

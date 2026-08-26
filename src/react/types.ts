@@ -133,6 +133,17 @@ export interface UseAGGridUrlSyncReturn {
    * applied on mount when `autoApplyOnMount` is set, so with it off this stays
    * null until `loadView` or `saveView` is called, even though a previous
    * session's view is still listed in `views`.
+   *
+   * It goes back to null as soon as the grid stops showing that view, which
+   * includes routes that never mention views: `clearFilters`, `applyFilters`,
+   * `applyUrlFilters`, and the user editing a filter in the grid's own UI. That
+   * also clears the stored pointer, so `autoApplyOnMount` will not restore the
+   * view on the next load either - filtering away from a view is treated as
+   * leaving it, not as a detour back to it.
+   *
+   * Replacing `gridApi` clears this too, since nothing has been applied to the
+   * new grid yet, but leaves the stored pointer alone: with `autoApplyOnMount`
+   * the view is restored against the new grid and this becomes non-null again.
    */
   activeViewId: string | null
 

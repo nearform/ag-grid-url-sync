@@ -116,6 +116,11 @@ export function useAGGridUrlSync(
   const urlSyncRef = useRef<AGGridUrlSync | null>(null)
   const autoAppliedRef = useRef(false)
   const lastGridApiRef = useRef<GridApi | null>(null)
+  // Raised while a view is written to the grid on purpose. AG Grid fires
+  // filterChanged from inside setFilterModel, and the marker is authoritative
+  // then: it was just set from the view being applied. Always lowered in a
+  // finally, or a throw would mute reconciliation for the rest of the session.
+  const applyingViewRef = useRef(false)
 
   // Mirror the list on mount and whenever storageKey swaps the store for a
   // different namespace. Without this, switching key leaves the previous
@@ -128,11 +133,10 @@ export function useAGGridUrlSync(
   // first render would otherwise have burned the guard on the keyless pass. Safe
   // because storageKey is a primitive, so this fires on a real key change only.
   //
-  // Only when a store still exists, though. storageKey dropping to undefined
-  // also runs this effect, and re-arming there would send the auto-apply effect
-  // down its !viewStore branch: applyFromUrl() against a URL carrying no filter
-  // params clears the grid. A store that has gone away has no namespace left to
-  // apply, so there is nothing to re-arm for.
+  // Only when a store still exists. storageKey dropping to undefined runs this
+  // too, and re-arming there sends auto-apply down its !viewStore branch, where
+  // applyFromUrl() against a filterless URL clears the grid. A store that has
+  // gone away has no namespace left to apply.
   useEffect(() => {
     syncViewsFromStore()
     commitActiveViewId(null)
@@ -162,11 +166,9 @@ export function useAGGridUrlSync(
         urlSyncRef.current?.destroy()
         urlSyncRef.current = null
         autoAppliedRef.current = false
-        // The marker described the grid that just went away. This one has had
-        // nothing applied to it yet, so the claim cannot carry over. Only the
-        // session marker: the stored pointer still records what to restore, and
-        // with autoApplyOnMount the re-armed effect above does restore it and
-        // sets the marker again.
+        // The marker described the grid that went away; this one has had
+        // nothing applied. Session marker only - the pointer still records what
+        // to restore, and with autoApplyOnMount the re-arm above does restore it.
         commitActiveViewId(null)
       }
 
@@ -187,9 +189,8 @@ export function useAGGridUrlSync(
         urlSyncRef.current.destroy()
         urlSyncRef.current = null
         autoAppliedRef.current = false
-        // Same reasoning as the swap above: there is no live grid left for the
-        // marker to describe. Guarded on urlSyncRef so the common first render
-        // with a null gridApi does not touch state it never set.
+        // As above: no live grid left for the marker to describe. Guarded on
+        // urlSyncRef so a first render with a null gridApi touches nothing.
         commitActiveViewId(null)
       }
       setIsReady(false)
@@ -200,20 +201,17 @@ export function useAGGridUrlSync(
   /**
    * Whether the current URL carries any filter parameters.
    *
-   * Two steps, and both are needed. A key scan rules out URLs with no filter
-   * param at all, cheaply and without touching the parser. Anything that
-   * survives it is then decoded, because presence alone does not mean the param
-   * yields a filter, and it is yielding a filter that this answer is about.
-   * Neither step depends on a grid API being available.
+   * Scan to rule out URLs with no filter param at all, then decode what
+   * survives: presence does not mean the param yields a filter, and yielding a
+   * filter is what this answers. Neither step needs a grid API.
    */
   const urlHasFilterParams = useCallback((): boolean => {
     if (typeof window === 'undefined') return false
 
-    // Normalised the same way url-parser.ts does: an empty string falls back to
-    // the default rather than passing through (startsWith('') matches every
-    // param), and a missing trailing underscore is added so 'filter' cannot
-    // match 'filterMode'. Without this a stray ?page=2 reads as a filter claim,
-    // takes the URL-wins branch, and clears the user's stored view.
+    // Normalised: an empty string falls back to the default rather than passing
+    // through (startsWith('') matches everything), and a trailing underscore is
+    // added so 'filter' cannot match 'filterMode'. Without it a stray ?page=2
+    // reads as a claim and clears the user's stored view.
     const rawPrefix = coreOptions.paramPrefix || DEFAULT_CONFIG.paramPrefix
     const prefix = rawPrefix.endsWith('_') ? rawPrefix : `${rawPrefix}_`
 
@@ -235,43 +233,33 @@ export function useAGGridUrlSync(
 
     if (!hasFilterParam) return false
 
-    // Presence is not a claim, for either kind of param.
+    // Presence is not a claim, for either kind.
     //
-    // Grouped: two of the three names are guesses at what a payload might be
-    // called, and 'filters' is just as plausible a name for a host app's own
-    // quick-filter buttons; a value written under an older format can also stop
-    // decoding. detectGroupedSerialization cannot tell these apart, because
-    // detectFormat falls back to 'querystring' for anything it does not
-    // recognise (src/core/serialization/grouped.ts:139-151), so ?filters=recent
-    // comes back isGrouped with both a value and a format, exactly like a real
-    // payload.
+    // Grouped: 'filters' and 'grid_filters' are guesses at what a payload might
+    // be called, so a host app's own param answers to one; a value under an
+    // older format also stops decoding. detectGroupedSerialization cannot tell
+    // these from a payload, because detectFormat falls back to 'querystring' for
+    // anything unrecognised (serialization/grouped.ts:139-151).
     //
-    // Prefixed: the key names a column and an operation, but the parser still
-    // has to accept both. It wraps each param in a try and continues past any
-    // that throws (src/core/url-parser.ts:374-381), so ?f_name_regex=abc names
-    // an operation that does not exist and ?f_name_contains= over
-    // maxValueLength names a value that will not validate. Both parse to {}.
+    // Prefixed: the parser wraps each param in a try and continues past any that
+    // throws (url-parser.ts:374-381), so ?f_name_regex=abc (no such operation)
+    // and a value over maxValueLength both parse to {}.
     //
-    // In every one of those cases the URL holds nothing for this grid, and
-    // counting it as a claim takes the URL-wins branch below, writes an empty
-    // model over the filters the user is looking at, and clears the stored view
-    // pointer permanently. What separates a claim from a coincidence is what
-    // the decode yields, so decode and look. The scan above stays as the cheap
-    // way to skip this for the ordinary URL that carries no filter param at all.
+    // Counting any of those as a claim takes the URL-wins branch below, writes
+    // an empty model over the user's filters, and clears the stored pointer for
+    // good. Only the decode separates a claim from a coincidence.
     const probeConfig: InternalConfig = {
-      // Nothing on the parsing path reads gridApi, and this has to stay callable
-      // before the grid resolves, so there is none to hand over.
+      // Unread on the parsing path, and this must stay callable before the grid
+      // resolves.
       gridApi: null as unknown as InternalConfig['gridApi'],
-      // The raw option rather than the normalised `prefix` above, and `??`
-      // rather than `||`, because AGGridUrlSync merges config by spread
-      // (src/core/ag-grid-url-sync.ts:27-31) and so lets an empty prefix
-      // through. The probe has to decide on the same terms the real parse in
-      // applyFromUrl will use, quirks included, or the two can disagree.
+      // Raw rather than normalised, and `??` rather than `||`: AGGridUrlSync
+      // merges by spread (ag-grid-url-sync.ts:27-31) and lets an empty prefix
+      // through. The probe must decide on the same terms as the real parse.
       paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
       maxValueLength:
         coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-      // Silent by design. This is a probe, and applyFromUrl parses again and
-      // reports for itself. A URL this call is about to dismiss must not raise.
+      // Silent: applyFromUrl parses again and reports for itself, and a URL this
+      // is about to dismiss must not raise.
       onParseError: () => {},
       serialization: coreOptions.serialization ?? DEFAULT_CONFIG.serialization,
       groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
@@ -279,12 +267,10 @@ export function useAGGridUrlSync(
     }
 
     try {
-      // The query string, not href, so the decode reads exactly the params the
-      // scan above walked. url-parser.ts handles a leading '?' directly.
-      //
-      // A whole parse on the common path where the prefixed param is valid. It
-      // runs once per armed auto-apply, from the one call site below, so the
-      // cost is a parse or two per session rather than per render.
+      // The query string, not href, so the decode reads the params the scan
+      // walked; url-parser.ts takes a leading '?' directly. A whole parse even
+      // when the prefixed param is valid, but this runs once per armed
+      // auto-apply from the single call site below, not per render.
       return Object.keys(parseFilters(search, probeConfig)).length > 0
     } catch {
       // A URL the parser cannot even read is not a claim on the grid. The real
@@ -341,24 +327,28 @@ export function useAGGridUrlSync(
           : undefined
 
         if (stored) {
-          gridApi.setFilterModel(stored.filterModel)
+          // Same shape as loadView, same guard: the filterChanged this fires
+          // must not reconcile against a half-applied load. Every path that
+          // re-arms auto-apply also clears the marker, so the listener would
+          // bail anyway; this holds locally rather than resting on that.
+          applyingViewRef.current = true
+          try {
+            gridApi.setFilterModel(stored.filterModel)
+          } finally {
+            applyingViewRef.current = false
+          }
           // Applied, so the marker is now true of the live grid.
           commitActiveViewId(stored.id)
         }
 
-        // No stored view, and deliberately nothing else. Reaching here means
-        // views are enabled, the URL makes no claim, and this namespace has
-        // nothing saved, so neither source has anything to say about the grid.
-        // applyFromUrl() here would not be a no-op: against a filterless URL it
-        // calls setFilterModel({}) and wipes whatever the user has set by hand.
-        //
-        // That matters on a storageKey swap between two real namespaces, which
-        // re-arms the guard above and runs this effect again on a live grid. It
-        // is the same reasoning as the re-arm guard at :139-141, in the other
-        // direction: a namespace with nothing to apply has nothing to apply.
-        //
-        // The !viewStore case is not reachable from here, having returned at the
-        // branch above, so it keeps its unconditional applyFromUrl there.
+        // No stored view, and deliberately nothing else. Views are enabled, the
+        // URL makes no claim and this namespace has nothing saved, so neither
+        // source has anything to say. applyFromUrl() would not be a no-op here:
+        // against a filterless URL it calls setFilterModel({}) and wipes what
+        // the user set by hand. That bites on a storageKey swap between two real
+        // namespaces, which re-arms the guard and re-runs this on a live grid.
+        // The !viewStore case returned at the branch above and keeps its
+        // unconditional apply there.
       } catch (error) {
         handleError(error, 'auto-apply-filters')
         coreOptions.onParseError?.(error as Error)
@@ -387,20 +377,23 @@ export function useAGGridUrlSync(
      * Drops the active view marker once the grid stops showing that view.
      *
      * activeViewId claims a view is applied to the live grid, so every route
-     * that changes the model has to be able to falsify it. saveView, loadView,
-     * deleteView and auto-apply set it directly, but clearFilters,
-     * applyFilters, applyUrlFilters and a user editing a filter in the grid's
-     * own UI do not go through any of them. They all reach filterChanged, which
-     * until now refreshed currentUrl and hasFilters and left the marker naming a
-     * view the grid no longer shows.
+     * that changes the model must be able to falsify it. saveView, loadView,
+     * deleteView and auto-apply set it directly; clearFilters, applyFilters,
+     * applyUrlFilters and a user editing a filter in the grid's own UI do not,
+     * and all reach filterChanged instead.
      */
     const syncActiveViewToGrid = () => {
+      // Mid-load: the model arriving is the view's own. AG Grid may normalise it
+      // (a view naming a dropped column comes back different), which would read
+      // as a mismatch and clear the marker inside the load that set it, leaving
+      // it null against a pointer loadView is about to write.
+      if (applyingViewRef.current) return
+
       const activeId = activeViewIdRef.current
       if (!activeId || !viewStore) return
 
+      // Gone from the store: deleteView owns that case and clears for itself.
       const active = viewStore.listViews().find(view => view.id === activeId)
-      // Gone from the store already: deleteView owns that case and does its own
-      // clearing, so there is nothing to compare against and nothing to do.
       if (!active) return
 
       let live: Record<string, unknown>
@@ -408,8 +401,7 @@ export function useAGGridUrlSync(
         // Throws on a destroyed grid, and can return null despite its type.
         live = gridApi.getFilterModel() ?? {}
       } catch {
-        // No reading of the grid means no evidence the view stopped applying.
-        // Leaving the marker alone is the answer that invents nothing.
+        // No read means no evidence the view stopped applying.
         return
       }
 
@@ -417,13 +409,11 @@ export function useAGGridUrlSync(
 
       commitActiveViewId(null)
       try {
-        // The stored pointer has to go too, not just the marker: it is what
-        // autoApplyOnMount restores from, so leaving it would reapply on the
-        // next load the very view the user just filtered away.
+        // The pointer too: autoApplyOnMount restores from it, so leaving it
+        // would reapply the view the user just filtered away.
         viewStore.persistActiveViewId(null)
       } catch (error) {
-        // The marker is already correct for this session; only the durable
-        // pointer is stale. Worth reporting, not worth throwing over.
+        // Only the durable pointer is stale; the marker is already right.
         handleError(error, 'filter-change')
       }
     }
@@ -678,24 +668,36 @@ export function useAGGridUrlSync(
         // hasFilters through the existing listener.
         // Loose comparison so a JavaScript caller passing nothing gets the reset
         // they intended, rather than a lookup for a view whose id is undefined.
-        // Mirror state before the durable write in both branches. The write can
-        // throw, and the grid has already been changed by then. Losing the
-        // pointer across a reload is a fair trade, but leaving the marker naming
-        // a different view than the grid shows is not. The throw still reports.
         //
-        // The marker also leads the grid write, not just the durable one. That
-        // listener now drops the marker when the grid stops matching the active
-        // view, and AG Grid fires filterChanged from inside setFilterModel. With
-        // the marker still naming the outgoing view, the listener compares this
-        // view's model against that one, calls it a mismatch, and clears the
-        // pointer on the way through. The lines below then set both again, so
-        // the end state is the same either way; what this ordering avoids is the
-        // redundant round trip - a storage write per load, and an onError under
-        // context 'filter-change' when storage is blocked, from a plain load
-        // that did nothing wrong.
+        // Ordering, in three parts:
+        //
+        // 1. Marker before the durable write. If persist throws, the grid has
+        //    already changed - a stale pointer across a reload is a fair trade,
+        //    a marker naming a view the grid is not showing is not.
+        // 2. Marker before the grid write too, because the listener drops the
+        //    marker on a mismatch and setFilterModel fires it synchronously.
+        //    Setting it after would have the listener compare this view against
+        //    the outgoing one and clear the pointer on the way through. Both are
+        //    rewritten below, so the end state matches either way; leading
+        //    avoids the round trip - a storage write per load, and a
+        //    'filter-change' onError under blocked storage.
+        // 3. Which costs what the old order got free: a marker set before a grid
+        //    write that throws names a view the grid never took. So the grid
+        //    write gets its own try and rolls the marker back. The durable write
+        //    does not, per (1).
+        const previous = activeViewIdRef.current
+
         if (id == null) {
           commitActiveViewId(null)
-          gridApi.setFilterModel({})
+          applyingViewRef.current = true
+          try {
+            gridApi.setFilterModel({})
+          } catch (error) {
+            commitActiveViewId(previous)
+            throw error
+          } finally {
+            applyingViewRef.current = false
+          }
           viewStore.persistActiveViewId(null)
           return
         }
@@ -714,7 +716,17 @@ export function useAGGridUrlSync(
         }
 
         commitActiveViewId(view.id)
-        gridApi.setFilterModel(view.filterModel)
+        applyingViewRef.current = true
+        try {
+          gridApi.setFilterModel(view.filterModel)
+        } catch (error) {
+          // The grid never took it and the pointer still names `previous`, so
+          // restoring keeps the two agreeing. The outer catch reports.
+          commitActiveViewId(previous)
+          throw error
+        } finally {
+          applyingViewRef.current = false
+        }
         viewStore.persistActiveViewId(view.id)
       } catch (error) {
         handleError(error, 'load-view')
@@ -748,11 +760,9 @@ export function useAGGridUrlSync(
         // was actually applied to the live grid. Capture the view before
         // deleting, since the store drops it.
         //
-        // Read from the ref rather than the state. A handler can save, load and
-        // delete in one tick, and the state would still hold the value from the
-        // last committed render: wasActive would come out false against a view
-        // the same tick just made active, leaving the marker naming a deleted
-        // view and the grid filtered by it.
+        // From the ref, not the state: a handler can save, load and delete in
+        // one tick, and the state is still a render behind, so wasActive would
+        // come out false against a view that same tick just made active.
         const wasActive = activeViewIdRef.current === id
         const view = viewStore.listViews().find(entry => entry.id === id)
 

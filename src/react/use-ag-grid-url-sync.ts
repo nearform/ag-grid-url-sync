@@ -200,10 +200,11 @@ export function useAGGridUrlSync(
   /**
    * Whether the current URL carries any filter parameters.
    *
-   * A key scan settles the prefixed case, since a prefixed param names a column
-   * and an operation and so is a claim on its own. A grouped param needs its
-   * value decoded before it counts, so that case falls through to a parse.
-   * Neither path depends on a grid API being available.
+   * Two steps, and both are needed. A key scan rules out URLs with no filter
+   * param at all, cheaply and without touching the parser. Anything that
+   * survives it is then decoded, because presence alone does not mean the param
+   * yields a filter, and it is yielding a filter that this answer is about.
+   * Neither step depends on a grid API being available.
    */
   const urlHasFilterParams = useCallback((): boolean => {
     if (typeof window === 'undefined') return false
@@ -224,34 +225,48 @@ export function useAGGridUrlSync(
 
     const search = window.location.search
     const params = new URLSearchParams(search)
-    let hasGroupedParam = false
+    let hasFilterParam = false
     for (const key of params.keys()) {
-      if (key.startsWith(prefix)) return true
-      if (groupedParams.has(key)) hasGroupedParam = true
+      if (key.startsWith(prefix) || groupedParams.has(key)) {
+        hasFilterParam = true
+        break
+      }
     }
 
-    if (!hasGroupedParam) return false
+    if (!hasFilterParam) return false
 
-    // Presence is not a claim for a grouped param. Two of the three names are
-    // guesses at what a payload might be called, and 'filters' is just as
-    // plausible a name for a host app's own quick-filter chips; a value written
-    // under an older format can also stop decoding. Either way the param holds
-    // nothing for this grid, but counting it as a claim takes the URL-wins
-    // branch below, writes an empty model over the filters the user is looking
-    // at, and clears the stored view pointer permanently.
+    // Presence is not a claim, for either kind of param.
     //
-    // detectGroupedSerialization cannot distinguish these: detectFormat falls
-    // back to 'querystring' for anything it does not recognise
-    // (src/core/serialization/grouped.ts:139-151), so ?filters=recent comes back
-    // isGrouped with both a value and a format, exactly like a real payload.
-    // What separates them is what the decode yields, so decode and look.
+    // Grouped: two of the three names are guesses at what a payload might be
+    // called, and 'filters' is just as plausible a name for a host app's own
+    // quick-filter buttons; a value written under an older format can also stop
+    // decoding. detectGroupedSerialization cannot tell these apart, because
+    // detectFormat falls back to 'querystring' for anything it does not
+    // recognise (src/core/serialization/grouped.ts:139-151), so ?filters=recent
+    // comes back isGrouped with both a value and a format, exactly like a real
+    // payload.
+    //
+    // Prefixed: the key names a column and an operation, but the parser still
+    // has to accept both. It wraps each param in a try and continues past any
+    // that throws (src/core/url-parser.ts:374-381), so ?f_name_regex=abc names
+    // an operation that does not exist and ?f_name_contains= over
+    // maxValueLength names a value that will not validate. Both parse to {}.
+    //
+    // In every one of those cases the URL holds nothing for this grid, and
+    // counting it as a claim takes the URL-wins branch below, writes an empty
+    // model over the filters the user is looking at, and clears the stored view
+    // pointer permanently. What separates a claim from a coincidence is what
+    // the decode yields, so decode and look. The scan above stays as the cheap
+    // way to skip this for the ordinary URL that carries no filter param at all.
     const probeConfig: InternalConfig = {
       // Nothing on the parsing path reads gridApi, and this has to stay callable
       // before the grid resolves, so there is none to hand over.
       gridApi: null as unknown as InternalConfig['gridApi'],
-      // The raw option rather than the normalised `prefix` above: the grouped
-      // querystring format decodes against config.paramPrefix, so the probe has
-      // to use the value the real parse in applyFromUrl will use.
+      // The raw option rather than the normalised `prefix` above, and `??`
+      // rather than `||`, because AGGridUrlSync merges config by spread
+      // (src/core/ag-grid-url-sync.ts:27-31) and so lets an empty prefix
+      // through. The probe has to decide on the same terms the real parse in
+      // applyFromUrl will use, quirks included, or the two can disagree.
       paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
       maxValueLength:
         coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
@@ -266,6 +281,10 @@ export function useAGGridUrlSync(
     try {
       // The query string, not href, so the decode reads exactly the params the
       // scan above walked. url-parser.ts handles a leading '?' directly.
+      //
+      // A whole parse on the common path where the prefixed param is valid. It
+      // runs once per armed auto-apply, from the one call site below, so the
+      // cost is a parse or two per session rather than per render.
       return Object.keys(parseFilters(search, probeConfig)).length > 0
     } catch {
       // A URL the parser cannot even read is not a claim on the grid. The real

@@ -72,6 +72,41 @@ vi.mock('../core/url-parser.js', () => ({
         ? { name: { filterType: 'text', type: 'contains', filter: 'grouped' } }
         : {}
     }
+    // A prefixed param is not a filter either just for being present. The real
+    // parser wraps each one in a try and continues past the ones that throw, so
+    // an unknown operation or a value over maxValueLength contributes nothing
+    // and a URL carrying only those parses to {}. Verified against the parser:
+    // ?f_name_regex=abc and ?f_name_contains= over 200 chars both do.
+    const prefixed = [...url.matchAll(/[?&](f_[^=&]+)=([^&]*)/g)]
+    if (prefixed.length > 0) {
+      const OPERATIONS = [
+        'contains',
+        'notContains',
+        'equals',
+        'notEqual',
+        'startsWith',
+        'endsWith',
+        'blank',
+        'notBlank',
+        'eq',
+        'gte',
+        'lte',
+        'gt',
+        'lt',
+        'inRange',
+        'dateBefore',
+        'dateAfter',
+        'dateRange'
+      ]
+      const usable = prefixed.filter(([, key, value]) => {
+        const operation = key.split('_').pop() ?? ''
+        return (
+          OPERATIONS.includes(operation) &&
+          decodeURIComponent(value).length <= 200
+        )
+      })
+      if (usable.length === 0) return {}
+    }
     // Default text filter response
     return {
       name: { filterType: 'text', type: 'contains', filter: 'test' }
@@ -1456,6 +1491,99 @@ describe('useAGGridUrlSync', () => {
       await waitForEffects()
 
       expect(result.current.activeViewId).toBe(id)
+    })
+
+    test('a prefixed param the parser rejects is not a filter claim', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      // 'regex' is not an operation this library has. The key looks like a
+      // filter param and is not one, so the parser skips it and yields nothing.
+      setSearch('?f_name_regex=abc')
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBe(id)
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+    })
+
+    test('a prefixed param over maxValueLength is not a filter claim', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      // A valid operation carrying a value validation will reject, as a link
+      // shared from a grid configured with a longer maxValueLength would be.
+      setSearch(`?f_name_contains=${'x'.repeat(250)}`)
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(result.current.activeViewId).toBe(id)
+    })
+
+    test('one rejected param does not cost a URL its other filters', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      act(() => {
+        seed.result.current.saveView('Engineering')
+      })
+      seed.unmount()
+
+      // The parser skips the param it cannot use and keeps the one it can, so
+      // the URL still carries filters and still wins. Deciding on the whole
+      // parse rather than on any single param is what makes this hold.
+      setSearch('?f_name_regex=abc&f_dept_contains=eng')
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBeNull()
     })
 
     test('a grouped param the parser cannot decode is not a filter claim', async () => {

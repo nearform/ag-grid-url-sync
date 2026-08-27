@@ -80,15 +80,21 @@ export default function BasicGrid() {
   const memoizedDefaultColDef = useMemo(() => defaultColDef, [])
 
   const handleSaveView = useCallback(() => {
-    // No readiness check needed: the hook reports a not-ready save through
-    // onError, same as an empty name or a failed write. Name trimming and empty
-    // rejection are the library's job too.
+    // The hook would report a not-ready save through onError, so this guard is
+    // not what makes it safe. It is here so the button can be disabled before
+    // the grid resolves, which reads better than letting the click through to an
+    // error. Checked here rather than at each call site so the keyboard path
+    // below behaves the same as the button.
+    if (!isReady) return
+
+    // Name trimming and empty rejection stay the library's job, as does
+    // reporting a failed write, so there is nothing to check about the name.
     const view = saveView(viewName)
     if (!view) return
 
     setViewName('')
     showMessage(`Saved view "${view.name}"`, 'success')
-  }, [viewName, saveView, showMessage])
+  }, [isReady, viewName, saveView, showMessage])
 
   const handleLoadView = useCallback(
     (id: string | null) => {

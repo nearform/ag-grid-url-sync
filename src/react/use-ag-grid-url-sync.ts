@@ -327,10 +327,15 @@ export function useAGGridUrlSync(
           : undefined
 
         if (stored) {
-          // Same shape as loadView, same guard: the filterChanged this fires
-          // must not reconcile against a half-applied load. Every path that
-          // re-arms auto-apply also clears the marker, so the listener would
-          // bail anyway; this holds locally rather than resting on that.
+          // Same guard as loadView, opposite ordering: nothing here is applied
+          // until setFilterModel returns, so the marker follows the write rather
+          // than leading it, and a throw leaves it where it was with nothing to
+          // roll back. Hence no catch, unlike loadView.
+          //
+          // The guard still earns its place - the filterChanged this fires must
+          // not reconcile against a half-applied load. Every path that re-arms
+          // auto-apply clears the marker too, so the listener would bail anyway;
+          // this holds locally rather than resting on that.
           applyingViewRef.current = true
           try {
             gridApi.setFilterModel(stored.filterModel)

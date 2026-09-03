@@ -36,6 +36,11 @@
       "import": "./dist/core/grid-integration.js",
       "require": "./dist/core/grid-integration.js"
     },
+    "./view-storage": {
+      "types": "./dist/core/view-storage.d.ts",
+      "import": "./dist/core/view-storage.js",
+      "require": "./dist/core/view-storage.js"
+    },
     "./types": {
       "types": "./dist/core/types.d.ts",
       "import": "./dist/core/types.js",
@@ -71,6 +76,9 @@
       ],
       "grid-integration": [
         "dist/core/grid-integration.d.ts"
+      ],
+      "view-storage": [
+        "dist/core/view-storage.d.ts"
       ],
       "types": [
         "dist/core/types.d.ts"
@@ -172,7 +180,7 @@
     {
       "name": "dist/react/index.js (bundled, react external)",
       "path": "./dist/react/index.js",
-      "limit": "7 KiB",
+      "limit": "8 KiB",
       "gzip": true,
       "ignore": ["react"]
     },
@@ -203,6 +211,18 @@
     {
       "path": "./dist/core/grid-integration.js",
       "limit": "3 KiB",
+      "gzip": true,
+      "disablePlugins": ["@size-limit/esbuild"]
+    },
+    {
+      "path": "./dist/core/view-storage.js",
+      "limit": "2.5 KiB",
+      "gzip": true,
+      "disablePlugins": ["@size-limit/esbuild"]
+    },
+    {
+      "path": "./dist/react/use-ag-grid-url-sync.js",
+      "limit": "9.5 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     }

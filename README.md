@@ -450,6 +450,7 @@ The package supports granular subpath exports for advanced usage and optimal bun
 - `ag-grid-url-sync/url-parser` – URL parsing utilities
 - `ag-grid-url-sync/url-generator` – URL generation utilities
 - `ag-grid-url-sync/grid-integration` – AG Grid integration helpers
+- `ag-grid-url-sync/view-storage` – localStorage-backed saved views
 - `ag-grid-url-sync/types` – TypeScript types
 
 Refer to the [package.json](./package.json) for the full export map.
@@ -577,6 +578,9 @@ interface UseAGGridUrlSyncOptions {
   autoApplyOnMount?: boolean // Default: false
   enabledWhenReady?: boolean // Default: true
   onError?: (error: Error, context: string) => void // Advanced error handling
+
+  // Saved views: setting a key enables the feature and namespaces its storage
+  storageKey?: string // Default: undefined (saved views disabled)
 }
 ```
 
@@ -596,7 +600,80 @@ interface UseAGGridUrlSyncOptions {
 | `getFiltersAsFormat` | `(format: 'querystring'          | 'json'                                          | 'base64') => string`                                       | Serialize filters to any supported format (for sharing/export) |
 | `getCurrentFormat`   | `() => 'individual'              | 'grouped'`                                      | Get the current serialization mode (individual or grouped) |
 
+Saved views (inert unless `storageKey` is set):
+
+| Property       | Type                                 | Description                                                             |
+| -------------- | ------------------------------------ | ----------------------------------------------------------------------- |
+| `views`        | `GridView[]`                         | Saved views for this grid, in save order. Empty when views are disabled |
+| `activeViewId` | `string \| null`                     | Id of the view currently applied to the grid, or `null` when none is    |
+| `saveView`     | `(name: string) => GridView \| null` | Save current filters under a name; overwrites an existing name in place |
+| `loadView`     | `(id: string \| null) => void`       | Apply a saved view, or pass `null` to reset to unfiltered               |
+| `deleteView`   | `(id: string) => void`               | Delete a saved view                                                     |
+
 > **Note:** `getFiltersAsFormat` and `getCurrentFormat` are especially useful for grouped serialization, format conversion, and advanced sharing scenarios.
+
+### Saved Views
+
+Pass a `storageKey` to let users name and revisit filter sets. The key both enables
+the feature and namespaces its storage, so two grids on the same origin must use
+different keys:
+
+```tsx
+const { views, activeViewId, saveView, loadView, deleteView } =
+  useAGGridUrlSync(gridApi, { storageKey: 'employee-grid' })
+
+// One handler each, as a user drives them: save whatever is currently filtered,
+// then apply or remove a view by id in a later interaction.
+const handleSave = () => saveView('Engineering, high salary')
+const handleLoad = (id: string) => loadView(id)
+const handleDelete = (id: string) => deleteView(id)
+const handleReset = () => loadView(null) // back to an unfiltered grid
+```
+
+Render the list from `views` and drive the buttons from it. `views[i].id` is only
+stale immediately after a mutation, not during render. If you do need the new
+view's id in the same handler that saved it, use `saveView`'s return value rather
+than reading it back out of `views`: that array is React state, so it does not
+update until the next render.
+
+Only the filter model is stored, using AG Grid's native format so set filters and
+combined conditions survive a round trip. Column order, row selection and expanded
+groups are not stored.
+
+Behaviour worth knowing:
+
+- **Names are unique.** Saving over an existing name updates that view in place,
+  keeping its id and list position, so "load, adjust, save under the same name" is
+  how you update one. Names are trimmed and must not be empty.
+- **`activeViewId` describes the live grid**, not what is persisted. A stored view
+  is only applied on mount when `autoApplyOnMount` is set, so with it off this
+  stays `null` until you call `loadView` or `saveView`.
+- **Filtering away from a view unloads it.** `activeViewId` returns to `null` as
+  soon as the grid stops showing that view, including through routes that never
+  mention views: `clearFilters`, `applyFilters`, `applyUrlFilters`, or the user
+  editing a filter in the grid's own UI. The stored pointer is cleared with it,
+  so `autoApplyOnMount` will not bring the view back on the next load. Render the
+  active state from `activeViewId` and it follows the grid on its own. Replacing
+  `gridApi` also clears `activeViewId`, but keeps the stored pointer, so with
+  `autoApplyOnMount` the view is restored against the new grid.
+- **URL filters win on mount.** With `autoApplyOnMount` set, an incoming URL that
+  carries filters takes precedence over the stored view, so a shared link shows the
+  sender's filters rather than the recipient's saved default.
+- **Deleting is conservative.** `deleteView` clears the grid only if it still shows
+  exactly that view's filters, so hand-edited filters survive.
+- **Failures are reported, not silent.** A save that cannot be persisted (quota
+  exhausted, storage blocked by policy) returns `null` and reports through
+  `onError` with context `'save-view'`. Reads degrade to an empty list instead of
+  throwing, so server rendering is safe.
+
+For non-React consumers the same store is available directly:
+
+```ts
+import { createViewStore } from 'ag-grid-url-sync/view-storage'
+
+const store = createViewStore('employee-grid')
+store.saveView('Engineering', gridApi.getFilterModel())
+```
 
 ### React Features
 
@@ -606,6 +683,7 @@ interface UseAGGridUrlSyncOptions {
 - **🧹 Cleanup**: Automatically cleans up resources when component unmounts
 - **🛡️ Error Boundaries**: Graceful error handling with configurable callbacks
 - **📊 Filter Status**: `hasFilters` tracks whether any filters are active
+- **💾 Saved Views**: `storageKey` enables naming and revisiting filter sets
 
 ### React with Grouped Serialization
 

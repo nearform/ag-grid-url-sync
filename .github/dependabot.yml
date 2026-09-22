@@ -9,6 +9,10 @@ updates:
         patterns:
           - size-limit
           - '@size-limit/*'
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -4,6 +4,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      size-limit:
+        patterns:
+          - size-limit
+          - '@size-limit/*'
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: weekly
     groups:
+      size-limit:
+        patterns:
+          - size-limit
+          - '@size-limit/*'
       vitest:
         patterns:
           - vitest

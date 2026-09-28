@@ -141,6 +141,10 @@ export interface UseAGGridUrlSyncReturn {
    * view on the next load either - filtering away from a view is treated as
    * leaving it, not as a detour back to it.
    *
+   * "Showing" means the model the grid reported once the view was applied, not
+   * the stored one. A view AG Grid normalises on the way in, such as one naming
+   * a column the grid no longer has, stays loaded and keeps its stored pointer.
+   *
    * Replacing `gridApi` clears this too, since nothing has been applied to the
    * new grid yet, but leaves the stored pointer alone: with `autoApplyOnMount`
    * the view is restored against the new grid and this becomes non-null again.

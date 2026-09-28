@@ -1584,6 +1584,93 @@ describe('useAGGridUrlSync', () => {
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
     })
 
+    test('restoring a view the grid normalises keeps the view and its pointer', async () => {
+      setSearch('')
+      // Saved when the grid still had a salary column.
+      const withDroppedColumn = {
+        ...savedModel,
+        salary: { filterType: 'number', type: 'greaterThan', filter: 1 }
+      }
+      mockGridApi.getFilterModel = vi.fn(() => withDroppedColumn)
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      // The column has since gone, so AG Grid drops its entry on the way in.
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+      mockGridApi.getColumn = vi.fn((colId: string) =>
+        colId === 'salary' ? null : { isFilterAllowed: () => true }
+      ) as unknown as GridApi['getColumn']
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+      await fireFilterChanged()
+
+      // The listener's first pass, and any later one with no edit in it, must
+      // not read the normalised model as the user filtering away.
+      expect(result.current.activeViewId).toBe(id)
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+    })
+
+    test('a restore the grid applies late keeps the view and its pointer', async () => {
+      setSearch('')
+      const id = seedActiveView()
+
+      // AG Grid queues setFilterModel until column data types are inferred, so
+      // the grid still reports its old model when the listener first runs.
+      let model: Record<string, unknown> = {}
+      mockGridApi.getFilterModel = vi.fn(() => model)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(result.current.activeViewId).toBe(id)
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+
+      // The queued model lands and announces itself.
+      model = savedModel
+      await fireFilterChanged()
+      expect(result.current.activeViewId).toBe(id)
+
+      // After that, a real edit still unloads it.
+      model = {}
+      await fireFilterChanged()
+      expect(result.current.activeViewId).toBeNull()
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+    })
+
+    test('reconciling a filter change does not read storage', async () => {
+      const id = seedActiveView()
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      act(() => result.current.loadView(id))
+
+      const getItem = vi.spyOn(Storage.prototype, 'getItem')
+      try {
+        await fireFilterChanged()
+        expect(getItem).not.toHaveBeenCalled()
+      } finally {
+        getItem.mockRestore()
+      }
+      expect(result.current.activeViewId).toBe(id)
+    })
+
     test('an empty paramPrefix does not make every query param a filter', async () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 

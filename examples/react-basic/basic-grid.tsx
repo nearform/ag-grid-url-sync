@@ -81,10 +81,8 @@ export default function BasicGrid() {
 
   const handleSaveView = useCallback(() => {
     // The hook would report a not-ready save through onError, so this guard is
-    // not what makes it safe. It is here so the button can be disabled before
-    // the grid resolves, which reads better than letting the click through to an
-    // error. Checked here rather than at each call site so the keyboard path
-    // below behaves the same as the button.
+    // not what makes it safe. Checked here rather than at each call site so the
+    // keyboard path below behaves the same as the disabled button.
     if (!isReady) return
 
     // Name trimming and empty rejection stay the library's job, as does

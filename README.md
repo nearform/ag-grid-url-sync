@@ -652,7 +652,10 @@ Behaviour worth knowing:
   soon as the grid stops showing that view, including through routes that never
   mention views: `clearFilters`, `applyFilters`, `applyUrlFilters`, or the user
   editing a filter in the grid's own UI. The stored pointer is cleared with it,
-  so `autoApplyOnMount` will not bring the view back on the next load. Render the
+  so `autoApplyOnMount` will not bring the view back on the next load. The grid
+  is compared against what it reported once the view was applied, so a view AG
+  Grid normalises (one naming a column the grid no longer has, say) stays loaded
+  and keeps its stored pointer. Render the
   active state from `activeViewId` and it follows the grid on its own. Replacing
   `gridApi` also clears `activeViewId`, but keeps the stored pointer, so with
   `autoApplyOnMount` the view is restored against the new grid.

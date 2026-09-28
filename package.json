@@ -192,25 +192,25 @@
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "dist/core/validation.js",
+      "path": "./dist/core/validation.js",
       "limit": "2.5 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "dist/core/url-parser.js",
+      "path": "./dist/core/url-parser.js",
       "limit": "3 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "dist/core/url-generator.js",
+      "path": "./dist/core/url-generator.js",
       "limit": "2 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "dist/core/grid-integration.js",
+      "path": "./dist/core/grid-integration.js",
       "limit": "3 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
@@ -222,7 +222,7 @@
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
-      "path": "dist/react/use-ag-grid-url-sync.js",
+      "path": "./dist/react/use-ag-grid-url-sync.js",
       "limit": "9.5 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]

@@ -549,6 +549,7 @@ export default function BasicGrid() {
           }}
         >
           <input
+            aria-label="Saved view name"
             type="text"
             value={viewName}
             onChange={event => setViewName(event.target.value)}

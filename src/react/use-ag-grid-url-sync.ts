@@ -379,8 +379,17 @@ export function useAGGridUrlSync(
         if (stored) {
           // Opposite ordering to loadView: the marker follows the write, so a
           // throw leaves it where it was with nothing to roll back.
-          applyModelToGrid(gridApi, stored.filterModel)
-          commitActiveViewId(stored.id)
+          try {
+            applyModelToGrid(gridApi, stored.filterModel)
+            // Cannot throw itself; it sits in the try only so that a failed
+            // write above skips it and the marker is not committed.
+            commitActiveViewId(stored.id)
+          } catch (error) {
+            // A grid rejecting the stored view's model is not the URL being
+            // invalid (the URL made no claim), so it must not reach
+            // onParseError. Same as loadView: onError only.
+            handleError(error, 'auto-apply-filters')
+          }
         }
 
         // No stored view, and deliberately nothing else. Views are enabled, the

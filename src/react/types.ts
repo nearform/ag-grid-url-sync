@@ -28,6 +28,10 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
    * take precedence: a shared link should show the sender's filters rather than
    * the recipient's stored view.
    *
+   * Attempted once per grid. A failed attempt is reported through `onError` and
+   * `onParseError` and is not retried on later renders; pass a new `gridApi`, or
+   * call `applyUrlFilters`, to try again.
+   *
    * Default: false
    */
   autoApplyOnMount?: boolean

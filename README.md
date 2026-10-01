@@ -687,7 +687,9 @@ store.saveView('Engineering', gridApi.getFilterModel())
 
 - **🔄 Automatic State Management**: Tracks grid state and filter changes automatically
 - **⚡ Ready State**: `isReady` indicates when the grid API is available
-- **🎯 Auto-Apply**: `autoApplyOnMount` applies URL filters when component mounts
+- **🎯 Auto-Apply**: `autoApplyOnMount` applies URL filters when component mounts.
+  It is attempted once per grid: a failure is reported through `onError` and
+  `onParseError` and is not retried on later renders
 - **🧹 Cleanup**: Automatically cleans up resources when component unmounts
 - **🛡️ Error Boundaries**: Graceful error handling with configurable callbacks
 - **📊 Filter Status**: `hasFilters` tracks whether any filters are active

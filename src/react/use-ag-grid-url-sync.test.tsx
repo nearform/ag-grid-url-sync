@@ -220,6 +220,32 @@ describe('useAGGridUrlSync', () => {
 
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
     })
+
+    test('a failed auto-apply is reported once and not retried on re-render', async () => {
+      const failure = new Error('cannot apply')
+      mockInstance.applyFromUrl.mockImplementationOnce(() => {
+        throw failure
+      })
+      const onError = vi.fn()
+      const onParseError = vi.fn()
+
+      const { rerender } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          autoApplyOnMount: true,
+          onError,
+          onParseError
+        })
+      )
+      await waitForEffects()
+      rerender()
+      rerender()
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+      expect(onError).toHaveBeenCalledTimes(1)
+      expect(onError).toHaveBeenCalledWith(failure, 'auto-apply-filters')
+      expect(onParseError).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('API Methods', () => {

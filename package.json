@@ -98,7 +98,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rimraf dist",
-    "compile": "tsc",
+    "compile": "tsc --removeComments && tsc --emitDeclarationOnly",
     "build": "npm run clean && npm run compile && npm run validate",
     "validate": "npm run size-check && npm run type-check",
     "size-check": "size-limit",
@@ -216,13 +216,13 @@
     },
     {
       "path": "./dist/core/view-storage.js",
-      "limit": "2.5 KiB",
+      "limit": "1.5 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     },
     {
       "path": "./dist/react/use-ag-grid-url-sync.js",
-      "limit": "9.5 KiB",
+      "limit": "4 KiB",
       "gzip": true,
       "disablePlugins": ["@size-limit/esbuild"]
     }

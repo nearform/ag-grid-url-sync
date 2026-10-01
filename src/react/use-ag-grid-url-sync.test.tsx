@@ -1690,6 +1690,164 @@ describe('useAGGridUrlSync', () => {
       expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
     })
 
+    test('the first edit after a restore the grid ignored unloads the view', async () => {
+      setSearch('')
+      const id = seedActiveView()
+
+      // The grid silently drops a model it no longer accepts (a changed filter
+      // type or option), so it still reads back as before the restore.
+      mockGridApi.getFilterModel = vi.fn(() => ({}))
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+      expect(result.current.activeViewId).toBe(id)
+
+      // The user's own edit, not the view landing.
+      mockGridApi.getFilterModel = vi.fn(() => ({
+        name: { filterType: 'text', type: 'contains', filter: 'John' }
+      }))
+      await fireFilterChanged()
+
+      expect(result.current.activeViewId).toBeNull()
+      expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+    })
+
+    test('a restore the grid read back in another form keeps the view until edited', async () => {
+      setSearch('')
+      const id = seedActiveView()
+      const normalised = {
+        name: { filterType: 'text', type: 'contains', filter: 'x' }
+      }
+      mockGridApi.getFilterModel = vi
+        .fn()
+        .mockReturnValueOnce({})
+        .mockReturnValue(normalised)
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+      await fireFilterChanged()
+      expect(result.current.activeViewId).toBe(id)
+
+      mockGridApi.getFilterModel = vi.fn(() => ({}))
+      await fireFilterChanged()
+      expect(result.current.activeViewId).toBeNull()
+    })
+
+    describe('a view the grid normalises', () => {
+      // AG Grid rebuilds a date condition with a time and its own key order, so
+      // a hand-built view never reads back the way it was stored.
+      const handBuilt = {
+        created: { filterType: 'date', type: 'equals', dateFrom: '2024-01-01' }
+      }
+      const normalised = {
+        created: {
+          dateFrom: '2024-01-01 00:00:00',
+          dateTo: null,
+          filterType: 'date',
+          type: 'equals'
+        }
+      }
+
+      const emitFilterChanged = (source?: string): void => {
+        const handler = vi
+          .mocked(mockGridApi.addEventListener)
+          .mock.calls.filter(([event]) => event === 'filterChanged')
+          .at(-1)?.[1] as ((event?: { source?: string }) => void) | undefined
+        if (!handler) throw new Error('no filterChanged listener registered')
+        handler(source ? { source } : undefined)
+      }
+
+      test('stays loaded when the grid announces the write synchronously', async () => {
+        const id = createViewStore(STORAGE_KEY).saveView('Dated', handBuilt).id
+        createViewStore(STORAGE_KEY).persistActiveViewId(null)
+
+        let model: Record<string, unknown> = {}
+        mockGridApi.getFilterModel = vi.fn(() => model)
+        // A ready grid applies at once and fires from inside the call.
+        mockGridApi.setFilterModel = vi.fn(() => {
+          model = normalised
+          emitFilterChanged('api')
+        })
+
+        const { result } = renderHook(() =>
+          useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+        )
+        await waitForEffects()
+        act(() => result.current.loadView(id))
+
+        expect(result.current.activeViewId).toBe(id)
+        expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+
+        model = {}
+        await act(async () => emitFilterChanged('columnFilter'))
+        expect(result.current.activeViewId).toBeNull()
+        expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+      })
+
+      test('stays loaded when a deferred restore lands', async () => {
+        const id = createViewStore(STORAGE_KEY).saveView('Dated', handBuilt).id
+
+        let model: Record<string, unknown> = {}
+        mockGridApi.getFilterModel = vi.fn(() => model)
+        // Column types are still being inferred, so the grid queues the write.
+        mockGridApi.setFilterModel = vi.fn()
+
+        const { result } = renderHook(() =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: STORAGE_KEY,
+            autoApplyOnMount: true
+          })
+        )
+        await waitForEffects()
+        expect(result.current.activeViewId).toBe(id)
+
+        // The grid replays the queued write as an API change.
+        model = normalised
+        await act(async () => emitFilterChanged('api'))
+        expect(result.current.activeViewId).toBe(id)
+        expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+
+        model = {}
+        await act(async () => emitFilterChanged('columnFilter'))
+        expect(result.current.activeViewId).toBeNull()
+        expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+      })
+
+      test('unloads on a user edit over a restore the grid never applied', async () => {
+        const id = createViewStore(STORAGE_KEY).saveView('Dated', handBuilt).id
+
+        let model: Record<string, unknown> = {}
+        mockGridApi.getFilterModel = vi.fn(() => model)
+        mockGridApi.setFilterModel = vi.fn()
+
+        const { result } = renderHook(() =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: STORAGE_KEY,
+            autoApplyOnMount: true
+          })
+        )
+        await waitForEffects()
+        expect(result.current.activeViewId).toBe(id)
+
+        model = {
+          age: { filterType: 'number', type: 'greaterThan', filter: 30 }
+        }
+        await act(async () => emitFilterChanged('columnFilter'))
+        expect(result.current.activeViewId).toBeNull()
+        expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+      })
+    })
+
     test('reconciling a filter change does not read storage', async () => {
       const id = seedActiveView()
       const { result } = renderHook(() =>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import type { GridApi } from 'ag-grid-community'
+import type { FilterChangedEvent, GridApi } from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
@@ -110,31 +110,53 @@ export function useAGGridUrlSync(
   // reconciliation compares against: a grid that normalises the stored model
   // would otherwise read as the user filtering away.
   const appliedModelRef = useRef<Record<string, unknown> | null>(null)
-  // Raised while a view write may not have reached the grid. AG Grid can defer
+  // Set while a view write may not have reached the grid. AG Grid can defer
   // setFilterModel (until column types are inferred, or filter components
-  // resolve), so the model can land after the call returns.
-  const applyPendingRef = useRef(false)
+  // resolve), so the model can land after the call returns. Holds the model the
+  // grid showed before the write and the form it should show once it lands, so
+  // filterChanged can tell the view landing from the user editing instead of
+  // assuming the former.
+  const pendingWriteRef = useRef<{
+    before: Record<string, unknown> | null
+    expected: Record<string, unknown>
+  } | null>(null)
+  // True only inside applyModelToGrid's own setFilterModel call. AG Grid fires
+  // filterChanged synchronously when it can apply straight away, and an event
+  // raised from inside the write is the write landing, whatever form it took.
+  const writingRef = useRef(false)
   const commitActiveViewId = useCallback((id: string | null): void => {
     activeViewIdRef.current = id
     setActiveViewId(id)
     if (id === null) {
       appliedModelRef.current = null
-      applyPendingRef.current = false
+      pendingWriteRef.current = null
     }
   }, [])
 
   /** Writes a view's model to the grid and records what the grid made of it. */
   const applyModelToGrid = useCallback(
     (api: GridApi, model: Record<string, unknown>): void => {
-      applyPendingRef.current = true
+      let before: Record<string, unknown> | null = null
+      try {
+        before = api.getFilterModel() ?? {}
+      } catch {
+        // Unknown pre-write state: the first event is taken as the landing.
+      }
+      pendingWriteRef.current = {
+        before,
+        expected: applicableModel(api, model)
+      }
+      writingRef.current = true
       try {
         api.setFilterModel(model)
       } catch (error) {
-        applyPendingRef.current = false
+        pendingWriteRef.current = null
         throw error
+      } finally {
+        writingRef.current = false
       }
       // Already settled if the grid announced the change synchronously.
-      if (!applyPendingRef.current) return
+      if (!pendingWriteRef.current) return
 
       let live: Record<string, unknown> | null = null
       try {
@@ -142,8 +164,11 @@ export function useAGGridUrlSync(
       } catch {
         // Leave it to filterChanged.
       }
-      if (live && sameFilterModel(live, applicableModel(api, model))) {
-        applyPendingRef.current = false
+      // Anything other than the pre-write model means the write has landed,
+      // possibly in a different form (AG Grid ignores entries it no longer
+      // accepts). Only an unchanged model can still be a deferred write.
+      if (live && (!before || !sameFilterModel(live, before))) {
+        pendingWriteRef.current = null
         appliedModelRef.current = live
       }
     },
@@ -434,10 +459,13 @@ export function useAGGridUrlSync(
      * applyUrlFilters and a user editing a filter in the grid's own UI do not,
      * and all reach filterChanged instead.
      */
-    const syncActiveViewToGrid = (fromEvent: boolean) => {
+    const syncActiveViewToGrid = (
+      fromEvent: boolean,
+      source?: FilterChangedEvent['source']
+    ) => {
       const activeId = activeViewIdRef.current
-      const applied = appliedModelRef.current
-      if (!applyPendingRef.current && (!activeId || !applied || !viewStore)) {
+      let applied = appliedModelRef.current
+      if (!pendingWriteRef.current && (!activeId || !applied || !viewStore)) {
         return
       }
 
@@ -452,12 +480,35 @@ export function useAGGridUrlSync(
 
       // A view write is in flight. The next filterChanged is it landing; until
       // then the grid may still show its previous model.
-      if (applyPendingRef.current) {
-        if (fromEvent) {
-          applyPendingRef.current = false
-          appliedModelRef.current = live
+      const pending = pendingWriteRef.current
+      if (pending) {
+        if (!fromEvent) return
+        const inWrite = writingRef.current
+        // Outside the write, an event still showing the pre-write model is not
+        // the landing; keep waiting.
+        if (
+          !inWrite &&
+          pending.before &&
+          sameFilterModel(live, pending.before)
+        ) {
+          return
         }
-        return
+        pendingWriteRef.current = null
+        // The landing, in whatever form the grid accepted: raised from inside
+        // the write, replayed by the grid as an API change once a deferred
+        // write goes through, or simply matching the view.
+        if (
+          inWrite ||
+          source === 'api' ||
+          sameFilterModel(live, pending.expected)
+        ) {
+          appliedModelRef.current = live
+          return
+        }
+        // Anything else is the user editing over a view the grid never
+        // applied: reconcile against what the view should have produced, so
+        // it unloads like any other edit.
+        applied = pending.expected
       }
 
       if (!activeId || !applied || !viewStore) return
@@ -477,8 +528,11 @@ export function useAGGridUrlSync(
       }
     }
 
-    const updateState = (fromEvent: boolean) => {
-      syncActiveViewToGrid(fromEvent)
+    const updateState = (
+      fromEvent: boolean,
+      source?: FilterChangedEvent['source']
+    ) => {
+      syncActiveViewToGrid(fromEvent, source)
 
       try {
         const newUrl = urlSyncRef.current!.generateUrl()
@@ -494,7 +548,8 @@ export function useAGGridUrlSync(
     }
 
     // Attach event listener for filter changes
-    const onFilterChanged = () => updateState(true)
+    const onFilterChanged = (event?: FilterChangedEvent) =>
+      updateState(true, event?.source)
     gridApi.addEventListener('filterChanged', onFilterChanged)
 
     // Initial state update
@@ -692,7 +747,7 @@ export function useAGGridUrlSync(
         // The grid holds exactly these filters, in its own form.
         commitActiveViewId(view.id)
         appliedModelRef.current = view.filterModel
-        applyPendingRef.current = false
+        pendingWriteRef.current = null
         return view
       } catch (error) {
         handleError(error, 'save-view')
@@ -775,7 +830,12 @@ export function useAGGridUrlSync(
           rollBack()
           throw error
         }
-        viewStore.persistActiveViewId(view.id)
+        // Only while the marker still names it: a pointer to a view the marker
+        // has already dropped would restore on the next mount a view the UI
+        // never showed as loaded.
+        if (activeViewIdRef.current === view.id) {
+          viewStore.persistActiveViewId(view.id)
+        }
       } catch (error) {
         handleError(error, 'load-view')
       }

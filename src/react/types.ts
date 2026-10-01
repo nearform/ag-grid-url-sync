@@ -144,6 +144,9 @@ export interface UseAGGridUrlSyncReturn {
    * "Showing" means the model the grid reported once the view was applied, not
    * the stored one. A view AG Grid normalises on the way in, such as one naming
    * a column the grid no longer has, stays loaded and keeps its stored pointer.
+   * A write AG Grid defers is recognised when it lands by the event's
+   * `source: 'api'`. On versions that report no source, a deferred view the
+   * grid also normalises unloads when it lands.
    *
    * Replacing `gridApi` clears this too, since nothing has been applied to the
    * new grid yet, but leaves the stored pointer alone: with `autoApplyOnMount`

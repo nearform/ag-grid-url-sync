@@ -655,7 +655,10 @@ Behaviour worth knowing:
   so `autoApplyOnMount` will not bring the view back on the next load. The grid
   is compared against what it reported once the view was applied, so a view AG
   Grid normalises (one naming a column the grid no longer has, say) stays loaded
-  and keeps its stored pointer. Render the
+  and keeps its stored pointer. A write AG Grid defers, such as a restore made
+  before column data types are inferred, is recognised when it lands by the
+  event's `source: 'api'`; on AG Grid versions that do not report a source, a
+  deferred view the grid also normalises unloads when it lands. Render the
   active state from `activeViewId` and it follows the grid on its own. Replacing
   `gridApi` also clears `activeViewId`, but keeps the stored pointer, so with
   `autoApplyOnMount` the view is restored against the new grid.

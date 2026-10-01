@@ -176,6 +176,21 @@ export function useAGGridUrlSync(
   )
 
   /**
+   * Stops waiting on a view write before the hook writes filters of its own.
+   *
+   * AG Grid reports both as 'api' changes, so a write still pending would take
+   * the hook's for its landing and keep a view the grid never showed. Settled
+   * against the form the view should have taken instead, so the hook's write is
+   * reconciled like any other edit.
+   */
+  const supersedePendingWrite = useCallback((): void => {
+    const pending = pendingWriteRef.current
+    if (!pending) return
+    pendingWriteRef.current = null
+    appliedModelRef.current = pending.expected
+  }, [])
+
+  /**
    * Refreshes the mirrored view list from the store, or empties it when views are
    * disabled.
    *
@@ -631,13 +646,14 @@ export function useAGGridUrlSync(
         return
       }
       try {
+        supersedePendingWrite()
         urlSyncRef.current.applyFromUrl(url)
       } catch (error) {
         handleError(error, 'apply-url-filters')
         coreOptions.onParseError?.(error as Error)
       }
     },
-    [coreOptions, handleError]
+    [coreOptions, handleError, supersedePendingWrite]
   )
 
   const clearFilters = useCallback((): void => {
@@ -648,11 +664,12 @@ export function useAGGridUrlSync(
       return
     }
     try {
+      supersedePendingWrite()
       urlSyncRef.current.clearFilters()
     } catch (error) {
       handleError(error, 'clear-filters')
     }
-  }, [handleError, coreOptions])
+  }, [handleError, coreOptions, supersedePendingWrite])
 
   const parseUrlFilters = useCallback(
     (url: string): FilterState => {
@@ -691,12 +708,13 @@ export function useAGGridUrlSync(
         return
       }
       try {
+        supersedePendingWrite()
         urlSyncRef.current.applyFilters(filters)
       } catch (error) {
         handleError(error, 'apply-filters')
       }
     },
-    [handleError, coreOptions]
+    [handleError, coreOptions, supersedePendingWrite]
   )
 
   const getFiltersAsFormat = useCallback(

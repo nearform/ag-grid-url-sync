@@ -5,6 +5,7 @@ import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters } from '../core/url-parser.js'
 import { createViewStore } from '../core/view-storage.js'
+import type { FilterState } from '../core/types.js'
 import { waitForEffects } from '../test-helpers.js'
 
 // Create a shared mock instance that will be used across all tests.
@@ -675,6 +676,17 @@ describe('useAGGridUrlSync', () => {
       await act(async () => {
         handler()
       })
+    }
+
+    // Like fireFilterChanged, but synchronous and carrying an event source, so a
+    // mocked write can raise it from inside the call as AG Grid does.
+    const emitFilterChanged = (source?: string): void => {
+      const handler = vi
+        .mocked(mockGridApi.addEventListener)
+        .mock.calls.filter(([event]) => event === 'filterChanged')
+        .at(-1)?.[1] as ((event?: { source?: string }) => void) | undefined
+      if (!handler) throw new Error('no filterChanged listener registered')
+      handler(source ? { source } : undefined)
     }
 
     beforeEach(() => {
@@ -1784,15 +1796,6 @@ describe('useAGGridUrlSync', () => {
         }
       }
 
-      const emitFilterChanged = (source?: string): void => {
-        const handler = vi
-          .mocked(mockGridApi.addEventListener)
-          .mock.calls.filter(([event]) => event === 'filterChanged')
-          .at(-1)?.[1] as ((event?: { source?: string }) => void) | undefined
-        if (!handler) throw new Error('no filterChanged listener registered')
-        handler(source ? { source } : undefined)
-      }
-
       test('stays loaded when the grid announces the write synchronously', async () => {
         const id = createViewStore(STORAGE_KEY).saveView('Dated', handBuilt).id
         createViewStore(STORAGE_KEY).persistActiveViewId(null)
@@ -1871,6 +1874,83 @@ describe('useAGGridUrlSync', () => {
         await act(async () => emitFilterChanged('columnFilter'))
         expect(result.current.activeViewId).toBeNull()
         expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+      })
+    })
+
+    describe('a hook filter write while a restore is pending', () => {
+      const john = {
+        name: { filterType: 'text', type: 'contains', filter: 'John' }
+      }
+
+      // The grid ignored the restored view (a filter option the column no
+      // longer allows), so the restore is still pending when the app writes.
+      const mountWithIgnoredRestore = async () => {
+        setSearch('')
+        const id = seedActiveView()
+        let model: Record<string, unknown> = {}
+        mockGridApi.getFilterModel = vi.fn(() => model)
+        const setModel = (next: Record<string, unknown>): void => {
+          model = next
+          emitFilterChanged('api')
+        }
+
+        const { result } = renderHook(() =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: STORAGE_KEY,
+            autoApplyOnMount: true
+          })
+        )
+        await waitForEffects()
+        expect(result.current.activeViewId).toBe(id)
+        return { id, result, setModel }
+      }
+
+      test.each([
+        [
+          'applyUrlFilters',
+          'applyFromUrl',
+          (hook: ReturnType<typeof useAGGridUrlSync>) =>
+            hook.applyUrlFilters('http://example.com?f_name_contains=John')
+        ],
+        [
+          'applyFilters',
+          'applyFilters',
+          (hook: ReturnType<typeof useAGGridUrlSync>) =>
+            hook.applyFilters(john as FilterState)
+        ],
+        [
+          'clearFilters',
+          'clearFilters',
+          (hook: ReturnType<typeof useAGGridUrlSync>) => hook.clearFilters()
+        ]
+      ] as const)(
+        '%s is not taken for the restore landing',
+        async (_name, coreMethod, write) => {
+          const { result, setModel } = await mountWithIgnoredRestore()
+          const target = coreMethod === 'clearFilters' ? {} : john
+          mockInstance[coreMethod].mockImplementationOnce(() =>
+            setModel(target)
+          )
+
+          await act(async () => write(result.current))
+
+          expect(result.current.activeViewId).toBeNull()
+          expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+        }
+      )
+
+      test('a hook write of the view itself keeps it loaded', async () => {
+        const { id, result, setModel } = await mountWithIgnoredRestore()
+        mockInstance.applyFilters.mockImplementationOnce(() =>
+          setModel(savedModel)
+        )
+
+        await act(async () =>
+          result.current.applyFilters(savedModel as FilterState)
+        )
+
+        expect(result.current.activeViewId).toBe(id)
+        expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
       })
     })
 

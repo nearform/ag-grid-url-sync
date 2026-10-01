@@ -2529,6 +2529,65 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.activeViewId).toBe(bId)
     })
 
+    test('swapping storageKey does not apply the URL a second time', async () => {
+      // Arrived through a shared link, whose params stay in the address bar.
+      setSearch('?f_name_contains=test')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seedB = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-b' })
+      )
+      let bId = ''
+      act(() => {
+        bId = seedB.result.current.saveView('Belongs to B')!.id
+      })
+      seedB.unmount()
+
+      const { result, rerender } = renderHook(
+        (props: { storageKey: string }) =>
+          useAGGridUrlSync(mockGridApi as GridApi, {
+            storageKey: props.storageKey,
+            autoApplyOnMount: true
+          }),
+        { initialProps: { storageKey: 'tenant-a' } }
+      )
+      await waitForEffects()
+      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+
+      rerender({ storageKey: 'tenant-b' })
+      await waitForEffects()
+
+      // The link already had its say on this grid, so the user's edits since
+      // are not overwritten by it, and tenant-b keeps its remembered view.
+      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+      expect(createViewStore('tenant-b').getActiveViewId()).toBe(bId)
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBe(bId)
+    })
+
+    test('a replacement grid gets the URL filters again', async () => {
+      setSearch('?f_name_contains=test')
+
+      const { rerender } = renderHook(
+        (props: { api: MockGridApi }) =>
+          useAGGridUrlSync(props.api as GridApi, {
+            storageKey: STORAGE_KEY,
+            autoApplyOnMount: true
+          }),
+        { initialProps: { api: mockGridApi } }
+      )
+      await waitForEffects()
+      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+
+      // Nothing has been applied to the new grid yet, so the URL wins there too.
+      rerender({ api: createMockGridApi() })
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(2)
+    })
+
     test('leaves the grid alone when storageKey drops to undefined', async () => {
       setSearch('')
       mockGridApi.getFilterModel = vi.fn(() => savedModel)

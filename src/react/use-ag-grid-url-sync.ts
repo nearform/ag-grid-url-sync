@@ -195,6 +195,11 @@ export function useAGGridUrlSync(
   // Refs to track state and prevent memory leaks
   const urlSyncRef = useRef<AGGridUrlSync | null>(null)
   const autoAppliedRef = useRef(false)
+  // Whether the URL's filters have already won over a stored view on this grid.
+  // The library never rewrites the address bar, so a shared link's params stay
+  // there all session: without this, a storageKey swap would apply them again
+  // over the user's edits and clear the new namespace's pointer.
+  const urlAppliedRef = useRef(false)
   const lastGridApiRef = useRef<GridApi | null>(null)
 
   // Mirror the list on mount and whenever storageKey swaps the store for a
@@ -241,6 +246,7 @@ export function useAGGridUrlSync(
         urlSyncRef.current?.destroy()
         urlSyncRef.current = null
         autoAppliedRef.current = false
+        urlAppliedRef.current = false
         // The marker described the grid that went away; this one has had
         // nothing applied. Session marker only - the pointer still records what
         // to restore, and with autoApplyOnMount the re-arm above does restore it.
@@ -264,6 +270,7 @@ export function useAGGridUrlSync(
         urlSyncRef.current.destroy()
         urlSyncRef.current = null
         autoAppliedRef.current = false
+        urlAppliedRef.current = false
         // As above: no live grid left for the marker to describe. Guarded on
         // urlSyncRef so a first render with a null gridApi touches nothing.
         commitActiveViewId(null)
@@ -374,8 +381,19 @@ export function useAGGridUrlSync(
         // Without saved views the URL is the only source, so apply it
         // unconditionally. An empty URL clearing filters is the long-standing
         // behaviour and stays that way.
-        if (!viewStore || !gridApi || urlHasFilterParams()) {
+        //
+        // With views, the URL wins once per grid. A storageKey swap re-arms
+        // this on a live grid, and by then the URL has had its say: go straight
+        // to the new namespace's stored view.
+        if (
+          !viewStore ||
+          !gridApi ||
+          (!urlAppliedRef.current && urlHasFilterParams())
+        ) {
           urlSyncRef.current.applyFromUrl()
+          if (viewStore && gridApi) {
+            urlAppliedRef.current = true
+          }
 
           // The URL won, so no saved view is active. Clear the stored pointer
           // too, or the next mount would restore a view the user never chose
@@ -394,8 +412,8 @@ export function useAGGridUrlSync(
           return
         }
 
-        // Views are enabled and the URL makes no claim, so restore the stored
-        // active view instead of clearing.
+        // Views are enabled and the URL makes no claim, or already won on this
+        // grid, so restore the stored active view instead of clearing.
         const storedId = viewStore.getActiveViewId()
         const stored = storedId
           ? viewStore.listViews().find(view => view.id === storedId)

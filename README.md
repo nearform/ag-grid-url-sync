@@ -664,7 +664,9 @@ Behaviour worth knowing:
   `autoApplyOnMount` the view is restored against the new grid.
 - **URL filters win on mount.** With `autoApplyOnMount` set, an incoming URL that
   carries filters takes precedence over the stored view, so a shared link shows the
-  sender's filters rather than the recipient's saved default.
+  sender's filters rather than the recipient's saved default. It wins once per
+  grid: switching `storageKey` later restores the new namespace's stored view
+  instead of applying the link again.
 - **Deleting is conservative.** `deleteView` clears the grid only if it still shows
   exactly that view's filters, so hand-edited filters survive.
 - **Failures are reported, not silent.** A save that cannot be persisted (quota

@@ -1584,6 +1584,42 @@ describe('useAGGridUrlSync', () => {
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
     })
 
+    test('a grid rejecting the stored view on restore reaches onError only, not onParseError', async () => {
+      setSearch('')
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      act(() => {
+        seed.result.current.saveView('Engineering')
+      })
+      seed.unmount()
+
+      const failure = new Error('grid rejected the model')
+      mockGridApi.setFilterModel = vi.fn(() => {
+        throw failure
+      })
+      const onError = vi.fn()
+      const onParseError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true,
+          onError,
+          onParseError
+        })
+      )
+      await waitForEffects()
+
+      expect(onError).toHaveBeenCalledWith(failure, 'auto-apply-filters')
+      // The URL made no claim, so this is not a parse failure.
+      expect(onParseError).not.toHaveBeenCalled()
+      // The failed write must not leave a view marked as active.
+      expect(result.current.activeViewId).toBeNull()
+    })
+
     test('restoring a view the grid normalises keeps the view and its pointer', async () => {
       setSearch('')
       // Saved when the grid still had a salary column.

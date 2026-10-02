@@ -61,6 +61,29 @@ function applicableModel(
 }
 
 /**
+ * Whether a model could be a view write landing, in any form the grid gave it.
+ *
+ * setFilterModel resets every column filter the model leaves out, so once a
+ * view lands the grid filters only the view's columns. The exception is a
+ * column AG Grid still holds in its initial filter state, which the write does
+ * not reset, so a column the grid was already filtering exactly as before is
+ * allowed too. Any other column means some other write, whatever its source.
+ */
+function couldBeLanding(
+  live: Record<string, unknown>,
+  expected: Record<string, unknown>,
+  before: Record<string, unknown> | null
+): boolean {
+  return Object.keys(live).every(
+    colId =>
+      Object.hasOwn(expected, colId) ||
+      (before !== null &&
+        Object.hasOwn(before, colId) &&
+        JSON.stringify(live[colId]) === JSON.stringify(before[colId]))
+  )
+}
+
+/**
  * React hook for AG Grid URL synchronization
  *
  * @param gridApi - AG Grid API instance (can be null during initialization)
@@ -579,10 +602,13 @@ export function useAGGridUrlSync(
         pendingWriteRef.current = null
         // The landing, in whatever form the grid accepted: raised from inside
         // the write, replayed by the grid as an API change once a deferred
-        // write goes through, or simply matching the view.
+        // write goes through, or simply matching the view. An API change is
+        // not enough on its own: AG Grid reports an app's setFilterModel the
+        // same way, so it must also filter nothing the view could not have.
         if (
           inWrite ||
-          source === 'api' ||
+          (source === 'api' &&
+            couldBeLanding(live, pending.expected, pending.before)) ||
           sameFilterModel(live, pending.expected)
         ) {
           appliedModelRef.current = live

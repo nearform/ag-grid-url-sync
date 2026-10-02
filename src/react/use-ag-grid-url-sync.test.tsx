@@ -1877,7 +1877,7 @@ describe('useAGGridUrlSync', () => {
       })
     })
 
-    describe('a hook filter write while a restore is pending', () => {
+    describe('a filter write while a restore is pending', () => {
       type Hook = ReturnType<typeof useAGGridUrlSync>
       const john = {
         name: { filterType: 'text', type: 'contains', filter: 'John' }
@@ -1914,7 +1914,7 @@ describe('useAGGridUrlSync', () => {
           if (changed) emitFilterChanged('api')
         }
 
-        const { result } = renderHook(() =>
+        const { result, unmount } = renderHook(() =>
           useAGGridUrlSync(mockGridApi as GridApi, {
             storageKey: STORAGE_KEY,
             autoApplyOnMount: true
@@ -1922,7 +1922,7 @@ describe('useAGGridUrlSync', () => {
         )
         await waitForEffects()
         expect(result.current.activeViewId).toBe(id)
-        return { id, result, setModel }
+        return { id, result, setModel, unmount }
       }
 
       const expectUnloaded = (result: { current: Hook }): void => {
@@ -2025,6 +2025,87 @@ describe('useAGGridUrlSync', () => {
           expectUnloaded(result)
         }
       )
+
+      // The app writing to the grid directly, e.g. gridApi.setFilterModel. AG
+      // Grid reports that as 'api' too, and the hook never sees the call.
+      describe('by the app itself', () => {
+        test('unloads a restore the grid ignored, which a reload does not bring back', async () => {
+          const { result, setModel, unmount } =
+            await mountWithPendingRestore(savedModel)
+
+          await act(async () => setModel(john))
+          expectUnloaded(result)
+
+          unmount()
+          vi.mocked(mockGridApi.setFilterModel).mockClear()
+          renderHook(() =>
+            useAGGridUrlSync(mockGridApi as GridApi, {
+              storageKey: STORAGE_KEY,
+              autoApplyOnMount: true
+            })
+          )
+          await waitForEffects()
+          expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(
+            savedModel
+          )
+        })
+
+        test('unloads the view when it changes a column the grid already filtered', async () => {
+          const { result, setModel } = await mountWithPendingRestore(
+            savedModel,
+            age
+          )
+
+          await act(async () => setModel({ age: { ...age.age, filter: 40 } }))
+
+          expectUnloaded(result)
+        })
+
+        test('unloads the view when it lands together with the restore', async () => {
+          const { result, setModel } = await mountWithPendingRestore(handBuilt)
+
+          // AG Grid replays queued writes back to back, so one event can show
+          // the restore and the app's write over it.
+          await act(async () => setModel({ ...normalised, ...john }))
+
+          expectUnloaded(result)
+        })
+
+        test('a restore landing beside the initial filter state keeps the view', async () => {
+          // setFilterModel leaves a column AG Grid still holds in its initial
+          // filter state, so it survives the restore unchanged.
+          const { id, result, setModel } = await mountWithPendingRestore(
+            handBuilt,
+            age
+          )
+
+          await act(async () => setModel({ ...normalised, ...age }))
+          expect(result.current.activeViewId).toBe(id)
+          expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+
+          await act(async () => setModel(normalised))
+          expectUnloaded(result)
+        })
+
+        // What is left ambiguous: a write that filters only the view's own
+        // columns looks like the view landing in a form the grid normalised.
+        test("a write confined to the view's columns is still taken for the landing", async () => {
+          const { id, result, setModel } =
+            await mountWithPendingRestore(savedModel)
+
+          await act(async () =>
+            setModel({
+              department: {
+                filterType: 'text',
+                type: 'equals',
+                filter: 'Sales'
+              }
+            })
+          )
+
+          expect(result.current.activeViewId).toBe(id)
+        })
+      })
     })
 
     test('reconciling a filter change does not read storage', async () => {

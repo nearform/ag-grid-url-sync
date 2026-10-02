@@ -658,7 +658,11 @@ Behaviour worth knowing:
   and keeps its stored pointer. A write AG Grid defers, such as a restore made
   before column data types are inferred, is recognised when it lands by the
   event's `source: 'api'`; on AG Grid versions that do not report a source, a
-  deferred view the grid also normalises unloads when it lands. Render the
+  deferred view the grid also normalises unloads when it lands. An API change
+  that filters a column the view does not, such as your own `setFilterModel`
+  over a view the grid ignored, is not taken for the view and unloads it. One
+  that filters only the view's columns cannot be told from the view landing.
+  Render the
   active state from `activeViewId` and it follows the grid on its own. Replacing
   `gridApi` also clears `activeViewId`, but keeps the stored pointer, so with
   `autoApplyOnMount` the view is restored against the new grid.

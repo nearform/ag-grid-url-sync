@@ -176,19 +176,69 @@ export function useAGGridUrlSync(
   )
 
   /**
-   * Stops waiting on a view write before the hook writes filters of its own.
+   * Runs a filter write of the hook's own over a view write that may still be
+   * pending.
    *
-   * AG Grid reports both as 'api' changes, so a write still pending would take
-   * the hook's for its landing and keep a view the grid never showed. Settled
-   * against the form the view should have taken instead, so the hook's write is
+   * AG Grid reports both as 'api' changes, so a pending write would take the
+   * hook's for its landing and keep a view the grid never showed. It is settled
+   * against the form the view should have taken before the write runs, which
+   * also covers an event raised from inside it, and the hook's write is then
    * reconciled like any other edit.
+   *
+   * That only holds if the write reached the grid. When it threw, or left the
+   * model as it found it (the core swallows its own errors, the advanced filter
+   * turns setFilterModel into a no-op, and a write that changes nothing raises
+   * no event), the restore is as undecided as before, so it goes back to
+   * pending. A restore that then lands normalised is still told apart from an
+   * edit.
    */
-  const supersedePendingWrite = useCallback((): void => {
-    const pending = pendingWriteRef.current
-    if (!pending) return
-    pendingWriteRef.current = null
-    appliedModelRef.current = pending.expected
-  }, [])
+  const writeOverPendingView = useCallback(
+    (write: () => void): void => {
+      const pending = pendingWriteRef.current
+      if (!pending || !gridApi) {
+        write()
+        return
+      }
+
+      const applied = appliedModelRef.current
+      const activeId = activeViewIdRef.current
+      let before: Record<string, unknown> | null = null
+      try {
+        before = gridApi.getFilterModel() ?? {}
+      } catch {
+        // Unreadable: nothing to tell a landed write from a missed one by.
+      }
+
+      pendingWriteRef.current = null
+      appliedModelRef.current = pending.expected
+
+      // Not if an event during the write already settled the view one way or
+      // the other: that decision is newer than this snapshot.
+      const reinstate = (): void => {
+        if (pendingWriteRef.current || activeViewIdRef.current !== activeId) {
+          return
+        }
+        pendingWriteRef.current = pending
+        appliedModelRef.current = applied
+      }
+
+      try {
+        write()
+      } catch (error) {
+        reinstate()
+        throw error
+      }
+
+      if (!before) return
+      try {
+        const live = gridApi.getFilterModel() ?? {}
+        if (sameFilterModel(live, before)) reinstate()
+      } catch {
+        // Leave it superseded; the next event reconciles.
+      }
+    },
+    [gridApi]
+  )
 
   /**
    * Refreshes the mirrored view list from the store, or empties it when views are
@@ -646,14 +696,14 @@ export function useAGGridUrlSync(
         return
       }
       try {
-        supersedePendingWrite()
-        urlSyncRef.current.applyFromUrl(url)
+        const sync = urlSyncRef.current
+        writeOverPendingView(() => sync.applyFromUrl(url))
       } catch (error) {
         handleError(error, 'apply-url-filters')
         coreOptions.onParseError?.(error as Error)
       }
     },
-    [coreOptions, handleError, supersedePendingWrite]
+    [coreOptions, handleError, writeOverPendingView]
   )
 
   const clearFilters = useCallback((): void => {
@@ -664,12 +714,12 @@ export function useAGGridUrlSync(
       return
     }
     try {
-      supersedePendingWrite()
-      urlSyncRef.current.clearFilters()
+      const sync = urlSyncRef.current
+      writeOverPendingView(() => sync.clearFilters())
     } catch (error) {
       handleError(error, 'clear-filters')
     }
-  }, [handleError, coreOptions, supersedePendingWrite])
+  }, [handleError, coreOptions, writeOverPendingView])
 
   const parseUrlFilters = useCallback(
     (url: string): FilterState => {
@@ -708,13 +758,13 @@ export function useAGGridUrlSync(
         return
       }
       try {
-        supersedePendingWrite()
-        urlSyncRef.current.applyFilters(filters)
+        const sync = urlSyncRef.current
+        writeOverPendingView(() => sync.applyFilters(filters))
       } catch (error) {
         handleError(error, 'apply-filters')
       }
     },
-    [handleError, coreOptions, supersedePendingWrite]
+    [handleError, coreOptions, writeOverPendingView]
   )
 
   const getFiltersAsFormat = useCallback(

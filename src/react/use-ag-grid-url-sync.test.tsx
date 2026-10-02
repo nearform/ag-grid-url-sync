@@ -1878,20 +1878,40 @@ describe('useAGGridUrlSync', () => {
     })
 
     describe('a hook filter write while a restore is pending', () => {
+      type Hook = ReturnType<typeof useAGGridUrlSync>
       const john = {
         name: { filterType: 'text', type: 'contains', filter: 'John' }
       }
+      const age = { age: { filterType: 'number', type: 'equals', filter: 30 } }
+      const handBuilt = {
+        created: { filterType: 'date', type: 'equals', dateFrom: '2024-01-01' }
+      }
+      const normalised = {
+        created: {
+          dateFrom: '2024-01-01 00:00:00',
+          dateTo: null,
+          filterType: 'date',
+          type: 'equals'
+        }
+      }
 
-      // The grid ignored the restored view (a filter option the column no
-      // longer allows), so the restore is still pending when the app writes.
-      const mountWithIgnoredRestore = async () => {
+      // The restore is still pending when the app writes: the grid either
+      // ignored the view or has not applied it yet. `initial` is what it shows
+      // meanwhile.
+      const mountWithPendingRestore = async (
+        view: Record<string, unknown> = savedModel,
+        initial: Record<string, unknown> = {}
+      ) => {
         setSearch('')
-        const id = seedActiveView()
-        let model: Record<string, unknown> = {}
+        const id = createViewStore(STORAGE_KEY).saveView('Pending', view).id
+        let model = initial
         mockGridApi.getFilterModel = vi.fn(() => model)
+        mockGridApi.setFilterModel = vi.fn()
+        // As AG Grid does: an event only when the model actually changed.
         const setModel = (next: Record<string, unknown>): void => {
+          const changed = JSON.stringify(next) !== JSON.stringify(model)
           model = next
-          emitFilterChanged('api')
+          if (changed) emitFilterChanged('api')
         }
 
         const { result } = renderHook(() =>
@@ -1905,42 +1925,51 @@ describe('useAGGridUrlSync', () => {
         return { id, result, setModel }
       }
 
+      const expectUnloaded = (result: { current: Hook }): void => {
+        expect(result.current.activeViewId).toBeNull()
+        expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+      }
+
       test.each([
         [
           'applyUrlFilters',
           'applyFromUrl',
-          (hook: ReturnType<typeof useAGGridUrlSync>) =>
+          john,
+          (hook: Hook) =>
             hook.applyUrlFilters('http://example.com?f_name_contains=John')
         ],
         [
           'applyFilters',
           'applyFilters',
-          (hook: ReturnType<typeof useAGGridUrlSync>) =>
-            hook.applyFilters(john as FilterState)
+          john,
+          (hook: Hook) => hook.applyFilters(john as FilterState)
         ],
         [
+          'clearFilters over filters the grid shows',
           'clearFilters',
-          'clearFilters',
-          (hook: ReturnType<typeof useAGGridUrlSync>) => hook.clearFilters()
+          {},
+          (hook: Hook) => hook.clearFilters()
         ]
       ] as const)(
         '%s is not taken for the restore landing',
-        async (_name, coreMethod, write) => {
-          const { result, setModel } = await mountWithIgnoredRestore()
-          const target = coreMethod === 'clearFilters' ? {} : john
+        async (_name, coreMethod, target, write) => {
+          // Shows a filter of its own, so every case changes the model.
+          const { result, setModel } = await mountWithPendingRestore(
+            savedModel,
+            age
+          )
           mockInstance[coreMethod].mockImplementationOnce(() =>
             setModel(target)
           )
 
           await act(async () => write(result.current))
 
-          expect(result.current.activeViewId).toBeNull()
-          expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBeNull()
+          expectUnloaded(result)
         }
       )
 
       test('a hook write of the view itself keeps it loaded', async () => {
-        const { id, result, setModel } = await mountWithIgnoredRestore()
+        const { id, result, setModel } = await mountWithPendingRestore()
         mockInstance.applyFilters.mockImplementationOnce(() =>
           setModel(savedModel)
         )
@@ -1952,6 +1981,50 @@ describe('useAGGridUrlSync', () => {
         expect(result.current.activeViewId).toBe(id)
         expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
       })
+
+      // These writes never reach the grid, so they say nothing about the
+      // restore, which can still land normalised and must not read as an edit.
+      test.each([
+        [
+          'throws',
+          'applyFromUrl',
+          (hook: Hook) => hook.applyUrlFilters('nonsense'),
+          () => {
+            throw new Error('bad url')
+          }
+        ],
+        [
+          'is swallowed by the core',
+          'applyFilters',
+          (hook: Hook) => hook.applyFilters(john as FilterState),
+          () => {}
+        ],
+        [
+          'changes nothing',
+          'clearFilters',
+          (hook: Hook) => hook.clearFilters(),
+          () => {}
+        ]
+      ] as const)(
+        'a hook write that %s leaves the restore pending',
+        async (_name, coreMethod, write, behaviour) => {
+          const { id, result, setModel } =
+            await mountWithPendingRestore(handBuilt)
+          mockInstance[coreMethod].mockImplementationOnce(behaviour)
+
+          await act(async () => write(result.current))
+          expect(result.current.activeViewId).toBe(id)
+
+          // The deferred restore now lands, in the grid's own form.
+          await act(async () => setModel(normalised))
+          expect(result.current.activeViewId).toBe(id)
+          expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+
+          // And a real edit afterwards still unloads it.
+          await act(async () => setModel({}))
+          expectUnloaded(result)
+        }
+      )
     })
 
     test('reconciling a filter change does not read storage', async () => {

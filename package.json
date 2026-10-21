@@ -109,7 +109,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nearform/ag-grid-url-state-sync.git"
+    "url": "git+https://github.com/nearform/ag-grid-url-sync.git"
   },
   "keywords": [
     "ag-grid",
@@ -124,12 +124,12 @@
   "author": "NearForm",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/nearform/ag-grid-url-state-sync/issues"
+    "url": "https://github.com/nearform/ag-grid-url-sync/issues"
   },
   "files": [
     "dist"
   ],
-  "homepage": "https://github.com/nearform/ag-grid-url-state-sync#readme",
+  "homepage": "https://github.com/nearform/ag-grid-url-sync#readme",
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
     "@commitlint/cli": "^21.2.2",

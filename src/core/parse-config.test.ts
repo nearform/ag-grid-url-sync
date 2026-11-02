@@ -8,6 +8,7 @@ import {
 import { QueryStringSerializer } from './serialization/formats.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import type { FilterState, ParseConfig, SerializationFormat } from './types.js'
+import { InvalidFilterError, InvalidSerializationError } from './types.js'
 
 // The parse/serialize path must work without a grid (issue #109). These tests
 // call it with no gridApi, with gridApi: null, and with a gridApi that throws
@@ -135,6 +136,17 @@ describe('grouped querystring serialization with caller config (#201)', () => {
       age: { filterType: 'number', type: 'greaterThan', filter: 25 }
     })
     expect(config.onParseError).toHaveBeenCalledOnce()
+  })
+
+  it('wraps errors inside the grouped value in InvalidSerializationError', () => {
+    const config = createGroupedConfig()
+    const grouped = new URLSearchParams({ grid_filters: 'f_age_gt=abc' })
+
+    parseUrlFilters(`${BASE_URL}?${grouped}`, config)
+
+    const error = vi.mocked(config.onParseError).mock.calls[0]?.[0]
+    expect(error).toBeInstanceOf(InvalidSerializationError)
+    expect(error?.cause).toBeInstanceOf(InvalidFilterError)
   })
 
   it('keeps the default maxValueLength when the caller leaves it out', () => {

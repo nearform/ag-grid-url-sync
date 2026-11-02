@@ -4,6 +4,7 @@ import type {
   FormatSerializer,
   ParseConfig
 } from '../types.js'
+import { InvalidSerializationError } from '../types.js'
 import {
   parseIndividualParams,
   serializeFilters
@@ -38,12 +39,16 @@ export class QueryStringSerializer implements FormatSerializer {
  */
 function innerConfig(config?: ParseConfig): ParseConfig {
   if (!config) return DEFAULT_CONFIG
+  // `??` keeps the defaults when a JS caller or a partial config leaves a
+  // field out
+  const onParseError = config.onParseError ?? DEFAULT_CONFIG.onParseError
   return {
     ...DEFAULT_CONFIG,
-    // `??` keeps the defaults when a JS caller or a partial config leaves a
-    // field out
     maxValueLength: config.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-    onParseError: config.onParseError ?? DEFAULT_CONFIG.onParseError
+    // Errors for parameters inside the grouped value are wrapped like the
+    // other grouped serialization errors. The original error is the cause.
+    onParseError: error =>
+      onParseError(new InvalidSerializationError('querystring', error))
   }
 }
 

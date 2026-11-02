@@ -56,6 +56,10 @@ export interface AGGridUrlSyncConfig {
   /**
    * Optional error handler for parsing errors.
    * Allows graceful error handling without breaking the application.
+   *
+   * In grouped mode, an error that comes from the grouped URL value is an
+   * `InvalidSerializationError`, and the original error is in `error.cause`.
+   * In individual mode, the same failure arrives with no wrapper.
    */
   onParseError?: (error: Error) => void
 

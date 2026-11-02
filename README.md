@@ -418,7 +418,7 @@ import {
 
 ### Error Handling for Grouped Serialization
 
-You can provide a custom error handler to gracefully handle malformed grouped parameters or serialization errors. The library will throw an `InvalidSerializationError` for invalid formats:
+You can provide a custom error handler to gracefully handle malformed grouped parameters or serialization errors. In grouped mode, `onParseError` receives an `InvalidSerializationError` for invalid formats:
 
 ```typescript
 import { InvalidSerializationError } from 'ag-grid-url-sync/types'
@@ -436,6 +436,16 @@ const urlSync = createUrlSync(gridApi, {
     }
   }
 })
+```
+
+In grouped mode, an error that comes from the grouped URL value is an `InvalidSerializationError`. This includes an error for one bad parameter inside a grouped querystring value, such as a value over `maxValueLength`. The original error is in `error.cause`. In individual mode, the same failure arrives as the original error, with no wrapper. To handle a specific error in both modes, check the error and its cause:
+
+```typescript
+import { InvalidFilterError } from 'ag-grid-url-sync/types'
+
+const isFilterError = (error: Error) =>
+  error instanceof InvalidFilterError ||
+  error.cause instanceof InvalidFilterError
 ```
 
 ### Exports

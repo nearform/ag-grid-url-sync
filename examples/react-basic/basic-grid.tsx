@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
-import { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
 import {
   employeeData,
@@ -17,10 +17,12 @@ interface SerializationConfig {
 
 export default function BasicGrid() {
   const [gridApi, setGridApi] = useState<GridApi | null>(null)
+
   const [config, setConfig] = useState<SerializationConfig>({
     mode: 'individual',
     format: 'querystring'
   })
+
   const [message, setMessage] = useState<string>('')
 
   const [viewName, setViewName] = useState<string>('')
@@ -87,6 +89,7 @@ export default function BasicGrid() {
     // Name trimming and empty rejection stay the library's job, as does
     // reporting a failed write, so there is nothing to check about the name.
     const view = saveView(viewName)
+
     if (!view) return
 
     setViewName('')
@@ -97,6 +100,7 @@ export default function BasicGrid() {
     (id: string | null) => {
       errorReportedRef.current = false
       loadView(id)
+
       // A storage failure, or an id that no longer exists, already reported
       // through onError. Do not paper over it with a success message.
       if (errorReportedRef.current) return
@@ -114,6 +118,7 @@ export default function BasicGrid() {
     (id: string) => {
       errorReportedRef.current = false
       deleteView(id)
+
       if (errorReportedRef.current) return
 
       showMessage('View deleted', 'info')
@@ -123,6 +128,7 @@ export default function BasicGrid() {
 
   const handleShare = async () => {
     const url = shareUrl()
+
     try {
       await navigator.clipboard.writeText(url)
       showMessage(
@@ -139,7 +145,7 @@ export default function BasicGrid() {
     (scenario: string) => {
       if (!gridApi) return
 
-      let filters: Record<string, any> = {}
+      let filters: FilterModel = {}
 
       switch (scenario) {
         // Text filter scenarios
@@ -378,6 +384,7 @@ export default function BasicGrid() {
   const handleFormatTest = useCallback(() => {
     if (!getFiltersAsFormat || config.mode === 'individual') {
       showMessage('Format testing requires grouped mode', 'error')
+
       return
     }
 
@@ -604,6 +611,7 @@ export default function BasicGrid() {
 
             {views.map(view => {
               const isActive = view.id === activeViewId
+
               return (
                 <span
                   key={view.id}

@@ -36,6 +36,7 @@ const FILTER_TYPES = {
  */
 export function resolveParamPrefix(paramPrefix?: string): string {
   const prefix = paramPrefix || DEFAULT_CONFIG.paramPrefix
+
   return prefix.endsWith('_') ? prefix : `${prefix}_`
 }
 
@@ -51,6 +52,7 @@ function serializeColumnFilter(
   paramPrefix: string
 ): [name: string, value: string] | null {
   const urlOperation = operatorById(filter.type)?.url
+
   if (!urlOperation) return null
 
   const paramName = `${paramPrefix}${columnName}_${urlOperation}`
@@ -74,6 +76,7 @@ function serializeColumnFilter(
     filter.filterType === FILTER_TYPES.DATE
   ) {
     const value = String(filter.filter)
+
     return value ? [paramName, value] : null
   }
 
@@ -110,6 +113,7 @@ export function serializeFilters(
     // Number and date filters are already validated. Text filters are checked
     // against maxValueLength here.
     let checkedFilter: ColumnFilter = filter
+
     if (filter.filterType === FILTER_TYPES.TEXT) {
       try {
         checkedFilter = {
@@ -128,6 +132,7 @@ export function serializeFilters(
       checkedFilter,
       resolveParamPrefix(config.paramPrefix)
     )
+
     if (param) {
       params.append(...param)
     }
@@ -143,6 +148,7 @@ export function serializeFilters(
 function tryParseAsDate(value: string): 'date' | null {
   try {
     validateAndParseDate(value)
+
     return 'date'
   } catch {
     return null
@@ -194,14 +200,21 @@ function detectFilterTypeForSharedOperation(
   return 'text'
 }
 
+/** A filter param name split into its column and its URL operation */
+interface FilterParamName {
+  column: string
+  operation: string
+}
+
 /**
  * Extracts column name and operation from a filter parameter
  */
 function extractColumnAndOperation(
   param: string,
   expectedPrefix?: string
-): { column: string; operation: string } {
+): FilterParamName {
   const prefix = resolveParamPrefix(expectedPrefix)
+
   if (!param.startsWith(prefix)) {
     throw new InvalidFilterError(`Invalid filter prefix in parameter: ${param}`)
   }
@@ -233,6 +246,7 @@ export function parseFilterParam(
   expectedPrefix?: string
 ): ColumnFilter {
   const { operation } = extractColumnAndOperation(param, expectedPrefix)
+
   return parseFilterOperation(operation, value)
 }
 
@@ -242,6 +256,7 @@ export function parseFilterParam(
  */
 function parseFilterOperation(operation: string, value: string): ColumnFilter {
   const filterOp = operatorFromUrl(operation)?.id
+
   if (!filterOp) {
     throw new InvalidFilterError(`Unsupported filter operation: ${operation}`)
   }
@@ -267,6 +282,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
   // Handle number range operations
   if (filterOp === 'inRange') {
     const rangeParts = value.split(',')
+
     if (rangeParts.length !== 2) {
       throw new InvalidFilterError(
         'Range operation requires exactly two values separated by comma'
@@ -277,6 +293,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
     const max = validateAndParseNumber(rangeParts[1] || '')
 
     const rangeValidation = validateNumberRange(min, max)
+
     if (!rangeValidation.valid) {
       throw new InvalidFilterError(
         rangeValidation.error || 'Invalid range values'
@@ -331,6 +348,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
     if (detectedType === 'date') {
       try {
         const dateValue = validateAndParseDate(value)
+
         return {
           filterType: 'date',
           type: filterOp as any,
@@ -343,6 +361,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
     if (detectedType === 'number') {
       const numValue = tryParseNumber(value)
+
       if (numValue !== null) {
         return {
           filterType: 'number',
@@ -389,6 +408,7 @@ export function parseIndividualParams(
         param,
         prefix
       )
+
       const filterParam = parseFilterOperation(operation, value)
 
       // Apply validation based on filter type
@@ -398,6 +418,7 @@ export function parseIndividualParams(
           config,
           filterParam.type
         )
+
         filterState[columnName] = {
           ...filterParam,
           filter: validatedValue

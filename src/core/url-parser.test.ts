@@ -119,6 +119,7 @@ describe('URL Parser', () => {
     it('should parse URL with multiple filters', () => {
       const url =
         'https://example.com?f_name_contains=john&f_age_gte=25&f_created_after=2024-01-01'
+
       const result = parseUrlFilters(url, mockConfig)
 
       expect(result).toEqual({
@@ -141,6 +142,7 @@ describe('URL Parser', () => {
         'https://example.com?page=1&f_name_contains=john&sort=name',
         mockConfig
       )
+
       expect(result).toEqual({
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       })
@@ -273,11 +275,13 @@ describe('URL Parser', () => {
 
       it('should not guess the format', () => {
         const onParseError = vi.fn()
+
         const config = {
           ...mockConfig,
           format: 'json' as const,
           onParseError
         }
+
         // A base64 value under a json config is not decoded as base64
         expect(parseUrlFilters(`?grid_filters=${base64}`, config)).toEqual({})
         expect(onParseError).toHaveBeenCalledOnce()
@@ -328,11 +332,13 @@ describe('URL Parser', () => {
 
       it('should keep the original error as the cause', () => {
         let caught: unknown
+
         try {
           parseUrlFilters('http://', mockConfig)
         } catch (error) {
           caught = error
         }
+
         expect(caught).toBeInstanceOf(InvalidURLError)
         expect((caught as InvalidURLError).cause).toBeInstanceOf(TypeError)
       })
@@ -340,6 +346,7 @@ describe('URL Parser', () => {
 
     it('should handle invalid parameters gracefully', () => {
       const mockConfigWithError = { ...mockConfig, onParseError: vi.fn() }
+
       const url =
         'https://example.com?f_name_contains=valid&f_invalid_param=skip'
 

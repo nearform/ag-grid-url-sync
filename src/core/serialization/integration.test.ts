@@ -24,7 +24,9 @@ const createMockGridApi = () =>
         { field: 'age', filter: 'agNumberColumnFilter' },
         { field: 'created', filter: 'agDateColumnFilter' }
       ]
+
       const colDef = columnDefs.find(def => def.field === columnId)
+
       return colDef
         ? {
             getColDef: () => colDef
@@ -245,7 +247,9 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       const filterModel = {
         name: { filterType: 'text', type: 'contains', filter: '日本 😀' }
       }
+
       mockGridApi.getFilterModel.mockReturnValue(filterModel)
+
       const urlSync = createUrlSync(mockGridApi, {
         serialization: 'grouped',
         format: 'base64'
@@ -281,12 +285,14 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       const individualSync = createUrlSync(mockGridApi, {
         serialization: 'individual'
       })
+
       expect(individualSync.getSerializationMode()).toBe('individual')
 
       const groupedSync = createUrlSync(mockGridApi, {
         serialization: 'grouped',
         format: 'base64'
       })
+
       expect(groupedSync.getSerializationMode()).toBe('grouped')
       expect(groupedSync.getCurrentFormat()).toBe('base64')
     })

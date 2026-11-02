@@ -26,6 +26,7 @@ function toAgGridOperation(operation: string): ISimpleFilterModelType {
 function toIsoDateString(val: string | undefined): string {
   if (!val) return ''
   const match = val.match(/^(\d{4}-\d{2}-\d{2})/)
+
   return match?.[1] ? match[1] : val || ''
 }
 
@@ -38,18 +39,23 @@ export function detectColumnFilterType(
 ): 'text' | 'number' | 'date' {
   try {
     const column = gridApi.getColumn(columnId)
+
     if (!column) return 'text' // Default to text for unknown columns
 
     const colDef = column.getColDef()
 
     // 1. Explicit filter configuration takes priority
     if (colDef.filter === 'agDateColumnFilter') return 'date'
+
     if (colDef.filter === 'agNumberColumnFilter') return 'number'
+
     if (colDef.filter === 'agTextColumnFilter') return 'text'
 
     // 2. Cell data type configuration
     if (colDef.cellDataType === 'date') return 'date'
+
     if (colDef.cellDataType === 'number') return 'number'
+
     if (colDef.cellDataType === 'text') return 'text'
 
     // 3. Default to text for backward compatibility
@@ -87,6 +93,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
       if (filterType === 'text') {
         // The lookup key is the filter type and the AG Grid name
         const operator = operatorFromAgGrid('text', type)
+
         if (operator) {
           filterState[column] = {
             filterType: 'text',
@@ -113,6 +120,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
               )
             )
           }
+
           continue
         }
 
@@ -167,6 +175,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
     if (config.onParseError) {
       config.onParseError(error as Error)
     }
+
     return {}
   }
 }
@@ -231,6 +240,7 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
 
   // Text filter handling
   const agGridOperation = toAgGridOperation(filter.type)
+
   return {
     filterType: 'text',
     type: agGridOperation,
@@ -271,6 +281,7 @@ export function applyFilterModel(
 
       // Convert to AG Grid filter model
       const agGridFilter = convertToAGGridFilter(filter)
+
       if (agGridFilter) {
         model[column] = agGridFilter
       }

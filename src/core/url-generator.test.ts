@@ -22,6 +22,7 @@ describe('URL Generator', () => {
   describe('serializeFilters', () => {
     it('skips a text value over maxValueLength and reports it', () => {
       const config = { ...mockConfig, maxValueLength: 5 }
+
       const filterState: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: 'john smith' },
         age: { filterType: 'number', type: 'greaterThan', filter: 25 }
@@ -40,6 +41,7 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect(result.get('f_name_contains')).toBe('john')
     })
@@ -48,6 +50,7 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         age: { filterType: 'number', type: 'eq', filter: 25 }
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect(result.get('f_age_eq')).toBe('25')
     })
@@ -56,6 +59,7 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         created: { filterType: 'date', type: 'eq', filter: '2024-01-15' }
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect(result.get('f_created_eq')).toBe('2024-01-15')
     })
@@ -75,6 +79,7 @@ describe('URL Generator', () => {
           filterTo: '2024-12-31'
         } as any
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect(result.get('f_age_range')).toBe('25,65')
       expect(result.get('f_period_daterange')).toBe('2024-01-01,2024-12-31')
@@ -85,6 +90,7 @@ describe('URL Generator', () => {
         optional: { filterType: 'text', type: 'blank', filter: '' },
         required: { filterType: 'text', type: 'notBlank', filter: '' }
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect(result.get('f_optional_blank')).toBe('true')
       expect(result.get('f_required_notBlank')).toBe('true')
@@ -100,6 +106,7 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         [column]: { filterType: 'text', type: 'contains', filter: 'q' }
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect([...result.entries()]).toEqual([[`f_${column}_contains`, 'q']])
     })
@@ -109,10 +116,12 @@ describe('URL Generator', () => {
       ['text', { filterType: 'text', type: 'contains', filter: '' } as const]
     ])('should skip a %s filter with an empty value', (_label, filter) => {
       const errors = vi.fn()
+
       const result = serializeFilters(
         { col: filter },
         { ...mockConfig, onParseError: errors }
       )
+
       expect([...result.entries()]).toEqual([])
       expect(errors).not.toHaveBeenCalled()
     })
@@ -121,6 +130,7 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         qty: { filterType: 'number', type: 'eq', filter: 0 }
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect(result.get('f_qty_eq')).toBe('0')
     })
@@ -129,6 +139,7 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         expr: { filterType: 'text', type: 'contains', filter: 'a=b' }
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect(result.get('f_expr_contains')).toBe('a=b')
     })
@@ -137,6 +148,7 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         query: { filterType: 'text', type: 'contains', filter: 'test & more' }
       }
+
       const result = serializeFilters(filterState, mockConfig)
       expect(result.get('f_query_contains')).toBe('test & more')
     })
@@ -147,6 +159,7 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
+
       const result = generateUrl('https://example.com', filterState, mockConfig)
       expect(result).toBe('https://example.com/?f_name_contains=john')
     })
@@ -160,11 +173,13 @@ describe('URL Generator', () => {
       const filterState: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
+
       const result = generateUrl(
         'https://example.com?page=1',
         filterState,
         mockConfig
       )
+
       expect(result).toContain('page=1')
       expect(result).toContain('f_name_contains=john')
     })
@@ -175,6 +190,7 @@ describe('URL Generator', () => {
         'x&y': { filterType: 'number', type: 'greaterThan', filter: 2 },
         '100%': { filterType: 'date', type: 'dateAfter', filter: '2024-01-15' }
       }
+
       const url = generateUrl('https://example.com', filterState, mockConfig)
       expect(parseUrlFilters(url, mockConfig)).toEqual(filterState)
     })
@@ -195,6 +211,7 @@ describe('URL Generator', () => {
             config
           )
         )
+
         expect(result.searchParams.getAll('tag')).toEqual(['a', 'b'])
         expect(result.searchParams.get('page')).toBe('1')
       })
@@ -210,6 +227,7 @@ describe('URL Generator', () => {
             {},
             config
           )
+
           expect(result).toBe('https://example.com/?tag=a&tag=b')
         }
       )
@@ -264,11 +282,13 @@ describe('URL Generator', () => {
 
       it('should remove stale filter params when the prefix is empty', () => {
         const config = { ...mockConfig, paramPrefix: '' }
+
         const url = generateUrl(
           'https://example.com/?f_old_contains=x&page=2',
           state,
           config
         )
+
         expect(url).toBe('https://example.com/?f_name_contains=john&page=2')
       })
     })
@@ -284,6 +304,7 @@ describe('URL Generator', () => {
           newState,
           mockConfig
         )
+
         expect(new URL(url).searchParams.has('grid_filters')).toBe(false)
         expect(new URL(url).searchParams.get('page')).toBe('1')
         expect(parseUrlFilters(url, mockConfig)).toEqual(newState)
@@ -295,26 +316,31 @@ describe('URL Generator', () => {
           {},
           mockConfig
         )
+
         expect(url).toBe('https://example.com/?page=1')
       })
 
       it('should remove a custom grouped param in individual mode', () => {
         const config = { ...mockConfig, groupedParam: 'gf' }
+
         const url = generateUrl(
           'https://example.com/?gf=f_a_contains%3Dold',
           newState,
           config
         )
+
         expect(new URL(url).searchParams.has('gf')).toBe(false)
       })
 
       it('should remove prefixed params in grouped mode', () => {
         const config = { ...mockConfig, serialization: 'grouped' as const }
+
         const url = generateUrl(
           'https://example.com/?f_a_contains=old&page=1',
           newState,
           config
         )
+
         const params = new URL(url).searchParams
         expect(params.has('f_a_contains')).toBe(false)
         expect(params.get('page')).toBe('1')

@@ -428,6 +428,16 @@ export interface RawAGGridFilter {
 }
 
 /**
+ * The URL with the current filter state, and whether the grid has filters
+ */
+export interface UrlState {
+  /** The URL with the current filter state and the page's own params */
+  url: string
+  /** Whether the grid has filters that the library supports */
+  hasFilters: boolean
+}
+
+/**
  * Grouped serialization result
  */
 export interface GroupedSerializationResult {

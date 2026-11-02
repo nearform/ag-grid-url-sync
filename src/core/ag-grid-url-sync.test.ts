@@ -41,10 +41,12 @@ describe('AGGridUrlSync', () => {
     it('should decode a grouped URL when format and groupedParam are undefined', () => {
       const setFilterModel = vi.fn()
       const onParseError = vi.fn()
+
       const gridApi = {
         getFilterModel: vi.fn().mockReturnValue({}),
         setFilterModel
       } as unknown as GridApi
+
       const urlSync = new AGGridUrlSync(gridApi, {
         ...undefinedConfig,
         onParseError
@@ -97,6 +99,7 @@ describe('AGGridUrlSync', () => {
         getFilterModel: vi.fn().mockReturnValue({}),
         setFilterModel: vi.fn()
       } as unknown as GridApi
+
       const urlSync = new AGGridUrlSync(api)
       expect(urlSync.getUrlState('https://example.com/?tab=1')).toEqual({
         url: 'https://example.com/?tab=1',
@@ -129,6 +132,7 @@ describe('AGGridUrlSync', () => {
   describe('applyFilters', () => {
     it('should apply filter state to grid', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
+
       const filterState: FilterState = {
         name: {
           filterType: 'text',
@@ -136,6 +140,7 @@ describe('AGGridUrlSync', () => {
           filter: 'test'
         }
       }
+
       urlSync.applyFilters(filterState)
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
         name: {

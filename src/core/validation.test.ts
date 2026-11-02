@@ -153,6 +153,7 @@ describe('Validation Functions', () => {
     it('should reject invalid dates for date operations', () => {
       const result = validateDateFilter('invalid-date', 'eq')
       expect(result.valid).toBe(false)
+
       if (!result.valid) {
         expect(result.error).toContain('Invalid date format')
       }
@@ -172,6 +173,7 @@ describe('Validation Functions', () => {
     it('should reject ranges where start > end', () => {
       const result = validateDateRange('2024-12-31', '2024-01-01')
       expect(result.valid).toBe(false)
+
       if (!result.valid) {
         expect(result.error).toContain('start date')
       }
@@ -185,6 +187,7 @@ describe('Validation Functions', () => {
         type: 'contains',
         filter: 'test'
       }
+
       expect(isValidColumnFilter(validTextFilter)).toBe(true)
 
       const invalidTextFilter = {
@@ -192,6 +195,7 @@ describe('Validation Functions', () => {
         type: 'contains',
         filter: 123 // Should be string
       }
+
       expect(isValidColumnFilter(invalidTextFilter)).toBe(false)
     })
 
@@ -201,6 +205,7 @@ describe('Validation Functions', () => {
         type: 'eq',
         filter: 42
       }
+
       expect(isValidColumnFilter(validNumberFilter)).toBe(true)
 
       const validNumberRangeFilter = {
@@ -209,6 +214,7 @@ describe('Validation Functions', () => {
         filter: 10,
         filterTo: 20
       }
+
       expect(isValidColumnFilter(validNumberRangeFilter)).toBe(true)
 
       const invalidNumberFilter = {
@@ -216,6 +222,7 @@ describe('Validation Functions', () => {
         type: 'eq',
         filter: 'not-a-number'
       }
+
       expect(isValidColumnFilter(invalidNumberFilter)).toBe(false)
     })
 
@@ -225,6 +232,7 @@ describe('Validation Functions', () => {
         type: 'eq',
         filter: '2024-01-15'
       }
+
       expect(isValidColumnFilter(validDateFilter)).toBe(true)
 
       const validDateRangeFilter = {
@@ -233,6 +241,7 @@ describe('Validation Functions', () => {
         filter: '2024-01-15',
         filterTo: '2024-01-20'
       }
+
       expect(isValidColumnFilter(validDateRangeFilter)).toBe(true)
 
       const invalidDateFilter = {
@@ -240,6 +249,7 @@ describe('Validation Functions', () => {
         type: 'eq',
         filter: 42 // Should be string
       }
+
       expect(isValidColumnFilter(invalidDateFilter)).toBe(false)
     })
 
@@ -254,6 +264,7 @@ describe('Validation Functions', () => {
         filterType: 'text'
         // Missing type and filter
       }
+
       expect(isValidColumnFilter(missingProperties)).toBe(false)
 
       const invalidFilterType = {
@@ -261,6 +272,7 @@ describe('Validation Functions', () => {
         type: 'eq',
         filter: 'test'
       }
+
       expect(isValidColumnFilter(invalidFilterType)).toBe(false)
     })
   })

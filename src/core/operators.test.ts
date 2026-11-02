@@ -19,6 +19,7 @@ describe('operator table (#217)', () => {
     const keys = OPERATORS.flatMap(op =>
       op.types.map(type => `${type}:${op.agGrid}`)
     )
+
     expect(unique(keys)).toBe(true)
   })
 
@@ -27,6 +28,7 @@ describe('operator table (#217)', () => {
     (_id, op) => {
       expect(operatorById(op.id)).toBe(op)
       expect(operatorFromUrl(op.url)).toBe(op)
+
       for (const type of op.types) {
         expect(operatorFromAgGrid(type, op.agGrid)).toBe(op)
       }
@@ -233,6 +235,7 @@ describe('public operation constants (#217)', () => {
         ...publicApi.DATE_FILTER_OPERATIONS
       ])
     ]
+
     const guards = {
       isTextFilterOperation: publicApi.isTextFilterOperation,
       isNumberFilterOperation: publicApi.isNumberFilterOperation,
@@ -240,6 +243,7 @@ describe('public operation constants (#217)', () => {
       isRangeOperation: publicApi.isRangeOperation,
       isBlankOperation: publicApi.isBlankOperation
     }
+
     expect(
       Object.fromEntries(
         Object.entries(guards).map(([name, guard]) => [

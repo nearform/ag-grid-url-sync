@@ -52,6 +52,7 @@ export const OPERATORS = [
 }[]
 
 export type Operator = (typeof OPERATORS)[number]
+
 export type OperatorId = Operator['id']
 
 /**
@@ -108,15 +109,15 @@ const supports = (op: Operator, type: OperatorFilterType): boolean =>
 export function operationsOnlyFor<T extends OperatorFilterType>(
   type: T
 ): OperationsOnlyForTuple<T> {
-  return OPERATORS.filter(op => !isShared(op) && supports(op, type)).map(
-    op => op.id
+  return OPERATORS.flatMap(op =>
+    !isShared(op) && supports(op, type) ? [op.id] : []
   ) as unknown as OperationsOnlyForTuple<T>
 }
 
 /** The operations that every filter type supports, in table order */
 export function sharedOperations(): SharedOperationsTuple {
-  return OPERATORS.filter(isShared).map(
-    op => op.id
+  return OPERATORS.flatMap(op =>
+    isShared(op) ? [op.id] : []
   ) as unknown as SharedOperationsTuple
 }
 
@@ -128,6 +129,7 @@ export function operationsFor<T extends OperatorFilterType>(
   type: T
 ): OperationsForTuple<T> {
   const own = operationsOnlyFor(type) as unknown as readonly string[]
+
   return [...own, ...sharedOperations()] as unknown as OperationsForTuple<T>
 }
 
@@ -166,17 +168,20 @@ export function isOperationOnlyFor(
   type: OperatorFilterType
 ): boolean {
   const op = operatorById(id)
+
   return op !== undefined && !isShared(op) && supports(op, type)
 }
 
 /** Whether `id` is an operation that every filter type supports */
 export function isSharedOperation(id: string): boolean {
   const op = operatorById(id)
+
   return op !== undefined && isShared(op)
 }
 
 /** Whether `id` is an operation that `type` supports */
 export function isOperationFor(id: string, type: OperatorFilterType): boolean {
   const op = operatorById(id)
+
   return op !== undefined && supports(op, type)
 }

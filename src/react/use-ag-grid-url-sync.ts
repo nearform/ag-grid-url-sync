@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import type { FilterChangedEvent, GridApi } from 'ag-grid-community'
+import type {
+  FilterChangedEvent,
+  FilterModel,
+  GridApi
+} from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { resolveParamPrefix } from '../core/individual-params.js'
@@ -34,11 +38,9 @@ function sameViews(a: GridView[], b: GridView[]): boolean {
  * as filters are edited. Any doubt resolves to "different", which errs towards
  * leaving the user's filters alone.
  */
-function sameFilterModel(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>
-): boolean {
+function sameFilterModel(a: FilterModel, b: FilterModel): boolean {
   const keys = Object.keys(a)
+
   return (
     keys.length === Object.keys(b).length &&
     keys.every(key => JSON.stringify(a[key]) === JSON.stringify(b[key]))
@@ -49,11 +51,9 @@ function sameFilterModel(
  * The part of a model the grid can take: AG Grid drops entries for columns it
  * does not have or that do not allow filtering.
  */
-function applicableModel(
-  gridApi: GridApi,
-  model: Record<string, unknown>
-): Record<string, unknown> {
+function applicableModel(gridApi: GridApi, model: FilterModel): FilterModel {
   if (typeof gridApi.getColumn !== 'function') return model
+
   return Object.fromEntries(
     Object.entries(model).filter(
       ([colId]) => gridApi.getColumn(colId)?.isFilterAllowed() ?? false
@@ -71,9 +71,9 @@ function applicableModel(
  * allowed too. Any other column means some other write, whatever its source.
  */
 function couldBeLanding(
-  live: Record<string, unknown>,
-  expected: Record<string, unknown>,
-  before: Record<string, unknown> | null
+  live: FilterModel,
+  expected: FilterModel,
+  before: FilterModel | null
 ): boolean {
   return Object.keys(live).every(
     colId =>
@@ -114,6 +114,7 @@ export function useAGGridUrlSync(
     () => (storageKey ? createViewStore(storageKey) : null),
     [storageKey]
   )
+
   // `views` mirrors the store. `activeViewId` deliberately does not: the store's
   // activeId is a persistence pointer recording which view the user last loaded,
   // whereas this reports which view is applied to *this* grid right now. Mirroring
@@ -133,7 +134,8 @@ export function useAGGridUrlSync(
   // The active view as the grid reported it once applied, which is what
   // reconciliation compares against: a grid that normalises the stored model
   // would otherwise read as the user filtering away.
-  const appliedModelRef = useRef<Record<string, unknown> | null>(null)
+  const appliedModelRef = useRef<FilterModel | null>(null)
+
   // Set while a view write may not have reached the grid. AG Grid can defer
   // setFilterModel (until column types are inferred, or filter components
   // resolve), so the model can land after the call returns. Holds the model the
@@ -141,16 +143,19 @@ export function useAGGridUrlSync(
   // filterChanged can tell the view landing from the user editing instead of
   // assuming the former.
   const pendingWriteRef = useRef<{
-    before: Record<string, unknown> | null
-    expected: Record<string, unknown>
+    before: FilterModel | null
+    expected: FilterModel
   } | null>(null)
+
   // True only inside applyModelToGrid's own setFilterModel call. AG Grid fires
   // filterChanged synchronously when it can apply straight away, and an event
   // raised from inside the write is the write landing, whatever form it took.
   const writingRef = useRef(false)
+
   const commitActiveViewId = useCallback((id: string | null): void => {
     activeViewIdRef.current = id
     setActiveViewId(id)
+
     if (id === null) {
       appliedModelRef.current = null
       pendingWriteRef.current = null
@@ -159,18 +164,21 @@ export function useAGGridUrlSync(
 
   /** Writes a view's model to the grid and records what the grid made of it. */
   const applyModelToGrid = useCallback(
-    (api: GridApi, model: Record<string, unknown>): void => {
-      let before: Record<string, unknown> | null = null
+    (api: GridApi, model: FilterModel): void => {
+      let before: FilterModel | null = null
+
       try {
         before = api.getFilterModel() ?? {}
       } catch {
         // Unknown pre-write state: the first event is taken as the landing.
       }
+
       pendingWriteRef.current = {
         before,
         expected: applicableModel(api, model)
       }
       writingRef.current = true
+
       try {
         api.setFilterModel(model)
       } catch (error) {
@@ -179,15 +187,18 @@ export function useAGGridUrlSync(
       } finally {
         writingRef.current = false
       }
+
       // Already settled if the grid announced the change synchronously.
       if (!pendingWriteRef.current) return
 
-      let live: Record<string, unknown> | null = null
+      let live: FilterModel | null = null
+
       try {
         live = api.getFilterModel() ?? {}
       } catch {
         // Leave it to filterChanged.
       }
+
       // Anything other than the pre-write model means the write has landed,
       // possibly in a different form (AG Grid ignores entries it no longer
       // accepts). Only an unchanged model can still be a deferred write.
@@ -219,14 +230,17 @@ export function useAGGridUrlSync(
   const writeOverPendingView = useCallback(
     (write: () => void): void => {
       const pending = pendingWriteRef.current
+
       if (!pending || !gridApi) {
         write()
+
         return
       }
 
       const applied = appliedModelRef.current
       const activeId = activeViewIdRef.current
-      let before: Record<string, unknown> | null = null
+      let before: FilterModel | null = null
+
       try {
         before = gridApi.getFilterModel() ?? {}
       } catch {
@@ -242,6 +256,7 @@ export function useAGGridUrlSync(
         if (pendingWriteRef.current || activeViewIdRef.current !== activeId) {
           return
         }
+
         pendingWriteRef.current = pending
         appliedModelRef.current = applied
       }
@@ -254,8 +269,10 @@ export function useAGGridUrlSync(
       }
 
       if (!before) return
+
       try {
         const live = gridApi.getFilterModel() ?? {}
+
         if (sameFilterModel(live, before)) reinstate()
       } catch {
         // Leave it superseded; the next event reconciles.
@@ -310,6 +327,7 @@ export function useAGGridUrlSync(
     // oxlint-disable-next-line react/set-state-in-effect -- syncs from the view store (localStorage); #222 moves this to useSyncExternalStore
     syncViewsFromStore()
     commitActiveViewId(null)
+
     if (viewStore) {
       autoAppliedRef.current = false
     }
@@ -317,8 +335,10 @@ export function useAGGridUrlSync(
 
   // Helper function to handle errors consistently
   const handleError = useCallback(
-    (error: unknown, context: string) => {
-      const errorObj = error instanceof Error ? error : new Error(String(error))
+    // `cause` is the caught value, which can be anything a callee threw
+    (cause: unknown, context: string) => {
+      const errorObj = cause instanceof Error ? cause : new Error(String(cause))
+
       if (onError) {
         onError(errorObj, context)
       } else if (process.env.NODE_ENV === 'development') {
@@ -366,6 +386,7 @@ export function useAGGridUrlSync(
         // urlSyncRef so a first render with a null gridApi touches nothing.
         commitActiveViewId(null)
       }
+
       setIsReady(false)
       lastGridApiRef.current = null
     }
@@ -393,6 +414,7 @@ export function useAGGridUrlSync(
     const search = window.location.search
     const params = new URLSearchParams(search)
     let hasFilterParam = false
+
     for (const key of params.keys()) {
       if (key.startsWith(prefix) || key === groupedParam) {
         hasFilterParam = true
@@ -475,6 +497,7 @@ export function useAGGridUrlSync(
           (!urlAppliedRef.current && urlHasFilterParams())
         ) {
           urlSyncRef.current.applyFromUrl()
+
           if (viewStore && gridApi) {
             urlAppliedRef.current = true
           }
@@ -484,6 +507,7 @@ export function useAGGridUrlSync(
           // here. State first, same as loadView.
           // oxlint-disable-next-line react/set-state-in-effect -- the URL won over the saved view, so the active marker clears; #222 moves this to useSyncExternalStore
           commitActiveViewId(null)
+
           try {
             // No-ops in the store when the pointer is already null, so a
             // blocked-storage user is not told a write failed that never needed
@@ -494,12 +518,14 @@ export function useAGGridUrlSync(
             // succeeded, so this must not reach onParseError below.
             handleError(error, 'auto-apply-filters')
           }
+
           return
         }
 
         // Views are enabled and the URL makes no claim, or already won on this
         // grid, so restore the stored active view instead of clearing.
         const storedId = viewStore.getActiveViewId()
+
         const stored = storedId
           ? viewStore.listViews().find(view => view.id === storedId)
           : undefined
@@ -550,6 +576,7 @@ export function useAGGridUrlSync(
     if (!isReady || !urlSyncRef.current || !gridApi) {
       setCurrentUrl('')
       setHasFilters(false)
+
       return
     }
 
@@ -568,11 +595,13 @@ export function useAGGridUrlSync(
     ) => {
       const activeId = activeViewIdRef.current
       let applied = appliedModelRef.current
+
       if (!pendingWriteRef.current && (!activeId || !applied || !viewStore)) {
         return
       }
 
-      let live: Record<string, unknown>
+      let live: FilterModel
+
       try {
         // Throws on a destroyed grid, and can return null despite its type.
         live = gridApi.getFilterModel() ?? {}
@@ -584,9 +613,11 @@ export function useAGGridUrlSync(
       // A view write is in flight. The next filterChanged is it landing; until
       // then the grid may still show its previous model.
       const pending = pendingWriteRef.current
+
       if (pending) {
         if (!fromEvent) return
         const inWrite = writingRef.current
+
         // Outside the write, an event still showing the pre-write model is not
         // the landing; keep waiting.
         if (
@@ -596,7 +627,9 @@ export function useAGGridUrlSync(
         ) {
           return
         }
+
         pendingWriteRef.current = null
+
         // The landing, in whatever form the grid accepted: raised from inside
         // the write, replayed by the grid as an API change once a deferred
         // write goes through, or simply matching the view. An API change is
@@ -609,8 +642,10 @@ export function useAGGridUrlSync(
           sameFilterModel(live, pending.expected)
         ) {
           appliedModelRef.current = live
+
           return
         }
+
         // Anything else is the user editing over a view the grid never
         // applied: reconcile against what the view should have produced, so
         // it unloads like any other edit.
@@ -618,9 +653,11 @@ export function useAGGridUrlSync(
       }
 
       if (!activeId || !applied || !viewStore) return
+
       if (sameFilterModel(live, applied)) return
 
       commitActiveViewId(null)
+
       try {
         // The pointer too, or autoApplyOnMount would reapply the view the user
         // just filtered away. Only while it names this view: another tab may
@@ -654,6 +691,7 @@ export function useAGGridUrlSync(
     // Attach event listener for filter changes
     const onFilterChanged = (event?: FilterChangedEvent) =>
       updateState(true, event?.source)
+
     gridApi.addEventListener('filterChanged', onFilterChanged)
 
     // Initial state update
@@ -683,10 +721,12 @@ export function useAGGridUrlSync(
           baseUrl ?? (typeof window !== 'undefined' ? window.location.href : '')
         )
       }
+
       try {
         return urlSyncRef.current.generateUrl(baseUrl)
       } catch (error) {
         handleError(error, 'generate-share-url')
+
         return (
           baseUrl ?? (typeof window !== 'undefined' ? window.location.href : '')
         )
@@ -699,10 +739,12 @@ export function useAGGridUrlSync(
     if (!urlSyncRef.current) {
       return ''
     }
+
     try {
       return urlSyncRef.current.getQueryParams()
     } catch (error) {
       handleError(error, 'get-query-params')
+
       return ''
     }
   }, [handleError])
@@ -712,10 +754,13 @@ export function useAGGridUrlSync(
       if (!urlSyncRef.current) {
         const warningMessage =
           'applyUrlFilters called while the hook is not ready.'
+
         console.warn(warningMessage)
         coreOptions.onParseError?.(new Error(warningMessage))
+
         return
       }
+
       try {
         const sync = urlSyncRef.current
         writeOverPendingView(() => sync.applyFromUrl(url))
@@ -732,8 +777,10 @@ export function useAGGridUrlSync(
       const warningMessage = 'clearFilters called while the hook is not ready.'
       console.warn(warningMessage)
       coreOptions.onParseError?.(new Error(warningMessage))
+
       return
     }
+
     try {
       const sync = urlSyncRef.current
       writeOverPendingView(() => sync.clearFilters())
@@ -747,6 +794,7 @@ export function useAGGridUrlSync(
       if (!gridApi) {
         return {} // Silently return empty state if grid API not available
       }
+
       try {
         const config = {
           gridApi,
@@ -759,10 +807,12 @@ export function useAGGridUrlSync(
           groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
           format: coreOptions.format ?? DEFAULT_CONFIG.format
         }
+
         return parseFilters(url, config)
       } catch (error) {
         handleError(error, 'parse-url-filters')
         coreOptions.onParseError?.(error as Error)
+
         return {}
       }
     },
@@ -774,10 +824,13 @@ export function useAGGridUrlSync(
       if (!urlSyncRef.current) {
         const warningMessage =
           'applyFilters called while the hook is not ready.'
+
         console.warn(warningMessage)
         coreOptions.onParseError?.(new Error(warningMessage))
+
         return
       }
+
       try {
         const sync = urlSyncRef.current
         writeOverPendingView(() => sync.applyFilters(filters))
@@ -793,10 +846,12 @@ export function useAGGridUrlSync(
       if (!urlSyncRef.current) {
         return ''
       }
+
       try {
         return urlSyncRef.current.getFiltersAsFormat(format)
       } catch (error) {
         handleError(error, 'get-filters-as-format')
+
         return ''
       }
     },
@@ -807,10 +862,12 @@ export function useAGGridUrlSync(
     if (!urlSyncRef.current) {
       return DEFAULT_CONFIG.serialization
     }
+
     try {
       return urlSyncRef.current.getSerializationMode()
     } catch (error) {
       handleError(error, 'get-current-format')
+
       return DEFAULT_CONFIG.serialization
     }
   }, [handleError])
@@ -842,8 +899,10 @@ export function useAGGridUrlSync(
       if (!viewStore || !enabledWhenReady) {
         return null
       }
+
       if (!urlSyncRef.current || !gridApi) {
         reportNotReady('saveView', 'save-view')
+
         return null
       }
 
@@ -855,9 +914,11 @@ export function useAGGridUrlSync(
         commitActiveViewId(view.id)
         appliedModelRef.current = view.filterModel
         pendingWriteRef.current = null
+
         return view
       } catch (error) {
         handleError(error, 'save-view')
+
         return null
       }
     },
@@ -881,8 +942,10 @@ export function useAGGridUrlSync(
       if (!viewStore || !enabledWhenReady) {
         return
       }
+
       if (!urlSyncRef.current || !gridApi) {
         reportNotReady('loadView', 'load-view')
+
         return
       }
 
@@ -898,6 +961,7 @@ export function useAGGridUrlSync(
         // write that throws rolls the marker back, since the grid never took it.
         const previous = activeViewIdRef.current
         const previousApplied = appliedModelRef.current
+
         const rollBack = (): void => {
           commitActiveViewId(previous)
           appliedModelRef.current = previousApplied
@@ -905,13 +969,16 @@ export function useAGGridUrlSync(
 
         if (id == null) {
           commitActiveViewId(null)
+
           try {
             applyModelToGrid(gridApi, {})
           } catch (error) {
             rollBack()
             throw error
           }
+
           viewStore.persistActiveViewId(null)
+
           return
         }
 
@@ -925,10 +992,12 @@ export function useAGGridUrlSync(
           // screen and every click reports the same miss.
           syncViewsFromStore()
           handleError(new Error(`No saved view with id "${id}"`), 'load-view')
+
           return
         }
 
         commitActiveViewId(view.id)
+
         try {
           applyModelToGrid(gridApi, view.filterModel)
         } catch (error) {
@@ -937,6 +1006,7 @@ export function useAGGridUrlSync(
           rollBack()
           throw error
         }
+
         // Only while the marker still names it: a pointer to a view the marker
         // has already dropped would restore on the next mount a view the UI
         // never showed as loaded.
@@ -1000,6 +1070,7 @@ export function useAGGridUrlSync(
         if (wasActive && applied !== undefined && gridApi !== null) {
           try {
             const current = gridApi.getFilterModel()
+
             if (current && sameFilterModel(current, applied)) {
               gridApi.setFilterModel({})
             }

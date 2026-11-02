@@ -60,13 +60,16 @@ function toUrl(input: string): URL {
     if (HAS_SCHEME.test(input)) {
       return new URL(input)
     }
+
     if (/^[/?#]/.test(input)) {
       return new URL(input, PARSE_BASE)
     }
+
     // The search setter keeps `?` and `#` in names and values; parsing
     // `?${input}` would read a `#` as the start of a fragment.
     const url = new URL(PARSE_BASE)
     url.search = input
+
     return url
   } catch (error) {
     throw new InvalidURLError(
@@ -106,6 +109,7 @@ export function parseUrlFilters(url: string, config: ParseConfig): FilterState {
   // own param (for example `filters`) is never taken for grouped filters, and
   // the format is not guessed.
   const groupedValue = urlObj.searchParams.get(config.groupedParam)
+
   if (groupedValue) {
     return deserializeGrouped(groupedValue, config.format, config)
   }

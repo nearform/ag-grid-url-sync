@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { AGGridUrlSync, createUrlSync } from './ag-grid-url-sync.js'
 import type { GridApi } from 'ag-grid-community'
-import type { FilterState } from './types.js'
+import type { AGGridUrlSyncConfig, FilterState } from './types.js'
 
 describe('AGGridUrlSync', () => {
   // Mock GridApi
@@ -17,6 +17,49 @@ describe('AGGridUrlSync', () => {
     getFilterModel: vi.fn().mockReturnValue(mockFilterModel),
     setFilterModel: vi.fn()
   } as unknown as GridApi
+
+  describe('config defaults', () => {
+    // A caller can forward an optional prop, for example
+    // `format: props.format`, so a key can be present with the value undefined.
+    const undefinedConfig = {
+      paramPrefix: undefined,
+      maxValueLength: undefined,
+      serialization: undefined,
+      groupedParam: undefined,
+      format: undefined
+    } as unknown as AGGridUrlSyncConfig
+
+    it('should use the defaults for keys set to undefined', () => {
+      const urlSync = new AGGridUrlSync(mockGridApi, undefinedConfig)
+      expect(urlSync.getSerializationMode()).toBe('individual')
+      expect(urlSync.getCurrentFormat()).toBe('querystring')
+      expect(urlSync.generateUrl('https://example.com')).toBe(
+        'https://example.com/?f_name_contains=john'
+      )
+    })
+
+    it('should decode a grouped URL when format and groupedParam are undefined', () => {
+      const setFilterModel = vi.fn()
+      const onParseError = vi.fn()
+      const gridApi = {
+        getFilterModel: vi.fn().mockReturnValue({}),
+        setFilterModel
+      } as unknown as GridApi
+      const urlSync = new AGGridUrlSync(gridApi, {
+        ...undefinedConfig,
+        onParseError
+      })
+
+      urlSync.applyFromUrl(
+        'https://example.com/?grid_filters=f_name_contains%3Dbob'
+      )
+
+      expect(setFilterModel).toHaveBeenCalledWith({
+        name: { filterType: 'text', type: 'contains', filter: 'bob' }
+      })
+      expect(onParseError).not.toHaveBeenCalled()
+    })
+  })
 
   describe('generateUrl', () => {
     it('should generate URL with current filter state', () => {

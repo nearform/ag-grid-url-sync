@@ -102,7 +102,7 @@
     "build": "npm run clean && npm run compile && npm run validate",
     "validate": "npm run size-check && npm run type-check",
     "size-check": "size-limit",
-    "type-check": "tsc --noEmit --strict",
+    "type-check": "tsc --noEmit --strict && tsc -p tsconfig.typecheck.json",
     "ci": "npm run build && npm run check-exports && npm run lint && npm run test",
     "check-exports": "attw --pack . --ignore-rules=cjs-resolves-to-esm",
     "prepare": "husky"

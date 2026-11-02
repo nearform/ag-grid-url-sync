@@ -3,7 +3,7 @@ import type {
   SerializationFormat,
   FormatSerializer,
   GroupedSerializationResult,
-  InternalConfig
+  ParseConfig
 } from '../types.js'
 import { InvalidSerializationError } from '../types.js'
 import {
@@ -12,27 +12,39 @@ import {
   Base64Serializer
 } from './formats.js'
 
+type SerializerRegistry = Record<SerializationFormat, FormatSerializer>
+
+let formatSerializers: SerializerRegistry | undefined
+
 /**
  * Registry of available format serializers
+ *
+ * Built on first use, not at module load. formats.ts imports url-generator.ts
+ * and url-parser.ts, which import this module. When formats.ts loads first
+ * (e.g. through the `ag-grid-url-sync/serialization/formats` subpath), its
+ * classes are not initialised yet while this module evaluates.
  */
-const FORMAT_SERIALIZERS: Record<SerializationFormat, FormatSerializer> = {
-  querystring: new QueryStringSerializer(),
-  json: new JsonSerializer(),
-  base64: new Base64Serializer()
+function getFormatSerializers(): SerializerRegistry {
+  formatSerializers ??= {
+    querystring: new QueryStringSerializer(),
+    json: new JsonSerializer(),
+    base64: new Base64Serializer()
+  }
+  return formatSerializers
 }
 
 /**
  * Serialize filter state using grouped serialization
  * @param filterState - The filter state to serialize
- * @param config - Internal configuration
+ * @param config - Parse configuration (does not need a grid)
  * @returns Grouped serialization result with parameter name and value
  */
 export function serializeGrouped(
   filterState: FilterState,
-  config: InternalConfig
+  config: ParseConfig
 ): GroupedSerializationResult {
   try {
-    const serializer = FORMAT_SERIALIZERS[config.format]
+    const serializer = getFormatSerializers()[config.format]
     if (!serializer) {
       throw new Error(`Unknown serialization format: ${config.format}`)
     }
@@ -62,16 +74,16 @@ export function serializeGrouped(
  * Deserialize grouped filter state from URL parameter value
  * @param value - The serialized value from URL parameter
  * @param format - The serialization format to use
- * @param config - Internal configuration for error handling
+ * @param config - Parse configuration for error handling (does not need a grid)
  * @returns Deserialized filter state
  */
 export function deserializeGrouped(
   value: string,
   format: SerializationFormat,
-  config: InternalConfig
+  config: ParseConfig
 ): FilterState {
   try {
-    const serializer = FORMAT_SERIALIZERS[format]
+    const serializer = getFormatSerializers()[format]
     if (!serializer) {
       throw new Error(`Unknown serialization format: ${format}`)
     }
@@ -186,7 +198,7 @@ function isJsonFormat(value: string): boolean {
  * Get all available serialization formats
  */
 export function getAvailableFormats(): SerializationFormat[] {
-  return Object.keys(FORMAT_SERIALIZERS) as SerializationFormat[]
+  return Object.keys(getFormatSerializers()) as SerializationFormat[]
 }
 
 /**
@@ -195,5 +207,5 @@ export function getAvailableFormats(): SerializationFormat[] {
 export function getFormatSerializer(
   format: SerializationFormat
 ): FormatSerializer | null {
-  return FORMAT_SERIALIZERS[format] || null
+  return getFormatSerializers()[format] || null
 }

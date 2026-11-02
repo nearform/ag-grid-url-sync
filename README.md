@@ -196,12 +196,11 @@ import type {
 ```typescript
 import { parseUrlFilters } from 'ag-grid-url-sync/url-parser'
 import { DEFAULT_CONFIG } from 'ag-grid-url-sync/validation'
-import type { FilterState } from 'ag-grid-url-sync/types'
+import type { FilterState, ParseConfig } from 'ag-grid-url-sync/types'
 
 function getFiltersFromUrl(url: string): FilterState {
-  const config = {
-    gridApi: null, // Not needed for parsing
-    ...DEFAULT_CONFIG,
+  const config: ParseConfig = {
+    ...DEFAULT_CONFIG, // gridApi is not needed for parsing
     onParseError: error => console.error('Parse error:', error)
   }
 
@@ -212,15 +211,14 @@ function getFiltersFromUrl(url: string): FilterState {
 #### Example: Custom URL Generator
 
 ```typescript
-import { generateUrl, serializeFilters } from 'ag-grid-url-sync/url-generator'
-import type { FilterState } from 'ag-grid-url-sync/types'
+import { generateUrl } from 'ag-grid-url-sync/url-generator'
+import { DEFAULT_CONFIG } from 'ag-grid-url-sync/validation'
+import type { FilterState, ParseConfig } from 'ag-grid-url-sync/types'
 
 function createShareableUrl(filters: FilterState, baseUrl: string): string {
-  const config = {
-    gridApi: null, // Not needed for generation
-    paramPrefix: 'f_',
-    maxValueLength: 200,
-    onParseError: () => {}
+  const config: ParseConfig = {
+    ...DEFAULT_CONFIG, // gridApi is not needed for generation
+    maxValueLength: 500
   }
 
   return generateUrl(baseUrl, filters, config)

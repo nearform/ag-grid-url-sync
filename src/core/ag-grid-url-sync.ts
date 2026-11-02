@@ -44,9 +44,25 @@ export class AGGridUrlSync {
    * @returns URL string with filter parameters
    */
   generateUrl(baseUrl?: string): string {
+    return this.getUrlState(baseUrl).url
+  }
+
+  /**
+   * Generates a URL with the current filter state, and tells if the grid has
+   * filters that the library supports.
+   *
+   * Reads the grid filter model one time, so an error in it is reported one
+   * time. `hasFilters` comes from the filter state, not from the URL: the URL
+   * also keeps the page's own params (#215).
+   * @param baseUrl - Optional base URL (defaults to current URL)
+   */
+  getUrlState(baseUrl?: string): { url: string; hasFilters: boolean } {
     const filterState = getFilterModel(this.config)
     const url = baseUrl ?? window.location.href
-    return generateUrl(url, filterState, this.config)
+    return {
+      url: generateUrl(url, filterState, this.config),
+      hasFilters: Object.keys(filterState).length > 0
+    }
   }
 
   /**

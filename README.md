@@ -623,7 +623,7 @@ interface UseAGGridUrlSyncOptions {
 | `clearFilters`       | `() => void`                     | Clear all text filters                          |
 | `isReady`            | `boolean`                        | Whether grid API is available and hook is ready |
 | `currentUrl`         | `string`                         | Current URL with filters applied                |
-| `hasFilters`         | `boolean`                        | Whether grid has any active text filters        |
+| `hasFilters`         | `boolean`                        | Whether the grid has supported filters          |
 | `parseUrlFilters`    | `(url: string) => FilterState`   | Parse filters from URL without applying         |
 | `applyFilters`       | `(filters: FilterState) => void` | Apply filter state object to grid               |
 | `getFiltersAsFormat` | `(format: 'querystring'          | 'json'                                          | 'base64') => string`                                       | Serialize filters to any supported format (for sharing/export) |
@@ -916,6 +916,15 @@ Generates a URL with the current filter state.
 ```typescript
 const url = urlSync.generateUrl('https://app.com/page')
 // https://app.com/page?f_name_contains=john
+```
+
+##### `getUrlState(baseUrl?: string): { url: string; hasFilters: boolean }`
+
+Generates the same URL as `generateUrl`, and tells if the grid has filters that the library supports. It reads the grid one time for both values. `hasFilters` comes from the filter state, not from the URL, because the URL also keeps the page's own params.
+
+```typescript
+const { url, hasFilters } = urlSync.getUrlState('https://app.com/page?tab=1')
+// url: https://app.com/page?tab=1 (no filters), hasFilters: false
 ```
 
 ##### `getQueryParams(): string`

@@ -15,6 +15,10 @@ import { waitForEffects } from '../test-helpers.js'
 const mockInstance = vi.hoisted(() => ({
   generateUrl: vi.fn(() => 'http://example.com?f_name_contains=test'),
   getQueryParams: vi.fn(() => '?f_name_contains=test'),
+  getUrlState: vi.fn(() => ({
+    url: 'http://example.com?f_name_contains=test',
+    hasFilters: true
+  })),
   applyFromUrl: vi.fn(),
   clearFilters: vi.fn(),
   applyFilters: vi.fn(),
@@ -152,6 +156,10 @@ describe('useAGGridUrlSync', () => {
     mockInstance.getQueryParams.mockImplementation(
       () => '?f_name_contains=test'
     )
+    mockInstance.getUrlState.mockImplementation(() => ({
+      url: 'http://example.com?f_name_contains=test',
+      hasFilters: true
+    }))
   })
 
   afterEach(() => {
@@ -612,8 +620,11 @@ describe('useAGGridUrlSync', () => {
       expect(typeof result.current.hasFilters).toBe('boolean')
     })
 
-    test('handles empty query params correctly', async () => {
-      mockInstance.getQueryParams.mockReturnValue('')
+    test('sets hasFilters to false when the grid has no filters', async () => {
+      mockInstance.getUrlState.mockReturnValue({
+        url: 'http://example.com?tab=1',
+        hasFilters: false
+      })
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi)

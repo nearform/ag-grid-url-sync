@@ -198,6 +198,8 @@ describe('URL Parser', () => {
         ['a host', 'example.com?f_name_eq=bob'],
         ['a host and a path', 'example.com/users?f_name_eq=bob'],
         ['a host and a port', 'www.example.com:8080?f_name_eq=bob'],
+        ['a host with non-ASCII letters', 'münich.com?f_name_eq=bob'],
+        ['a non-Latin host and a port', '例え.jp:8080/users?f_name_eq=bob'],
         ['a host alone', 'example.com'],
         ['a single-label host and a port', 'localhost:3000?f_name_eq=bob'],
         [

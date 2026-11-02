@@ -20,7 +20,8 @@ const HAS_SCHEME = /^[a-z][a-z\d+.-]*:/i
 /**
  * A host with no scheme: a dotted host with an optional port (`example.com`,
  * `www.example.com:8080/users?...`), or any host with a port
- * (`localhost:3000?...`). Without this check, `localhost:3000` would match
+ * (`localhost:3000?...`). Host labels can contain any Unicode letter or digit
+ * (`münich.com`), the same as internationalized domain names. Without this check, `localhost:3000` would match
  * HAS_SCHEME as the scheme `localhost:`.
  *
  * A raw query string cannot match: its first key is followed by `=`, `&` or
@@ -29,7 +30,7 @@ const HAS_SCHEME = /^[a-z][a-z\d+.-]*:/i
  * query key, so it is read as a raw query string.
  */
 const SCHEMELESS_HOST =
-  /^[a-z\d-]+(?:(?:\.[a-z\d-]+)+(?::\d+)?|:\d+)(?=[/?#]|$)/i
+  /^[\p{L}\p{N}-]+(?:(?:\.[\p{L}\p{N}-]+)+(?::\d+)?|:\d+)(?=[/?#]|$)/u
 
 /**
  * Converts the accepted input forms to a URL. Each rule is checked in order:

@@ -124,8 +124,8 @@ describe('URL Parser', () => {
         ['an absolute URL', 'https://example.com/users?f_name_contains=bob'],
         ['a relative path', '/users?f_name_contains=bob'],
         [
-          'a relative path without a leading slash',
-          'users?f_name_contains=bob'
+          'a relative path with = and & before the ?',
+          '/users/id=1&x=2?f_name_contains=bob'
         ],
         ['a protocol-relative URL', '//example.com/users?f_name_contains=bob'],
         ['a query string', '?f_name_contains=bob'],
@@ -165,6 +165,20 @@ describe('URL Parser', () => {
         })
       })
 
+      it('should keep a ? in a param name of a raw query string', () => {
+        expect(
+          parseUrlFilters('f_first?name_contains=bob', mockConfig)
+        ).toEqual({ 'first?name': name })
+      })
+
+      it('should read text with no scheme and no leading / as a raw query', () => {
+        // A relative path must start with '/'. Without it, `users?...` is a
+        // raw query whose first key is `users?f_name_contains`.
+        expect(
+          parseUrlFilters('users?f_name_contains=bob', mockConfig)
+        ).toEqual({})
+      })
+
       it('should return no filters for text with no filter params', () => {
         expect(parseUrlFilters('not-a-url', mockConfig)).toEqual({})
       })
@@ -178,6 +192,18 @@ describe('URL Parser', () => {
       ])('should throw InvalidURLError for %s', (_label, url) => {
         expect(() => parseUrlFilters(url, mockConfig)).toThrow(InvalidURLError)
       })
+
+      it.each([
+        ['a host', 'example.com?f_name_eq=bob'],
+        ['a host and a path', 'example.com/users?f_name_eq=bob'],
+        ['a host and a port', 'www.example.com:8080?f_name_eq=bob'],
+        ['a host alone', 'example.com']
+      ])(
+        'should throw InvalidURLError for %s with no scheme',
+        (_label, url) => {
+          expect(() => parseUrlFilters(url, mockConfig)).toThrow(/no scheme/)
+        }
+      )
 
       it('should keep the original error as the cause', () => {
         let caught: unknown

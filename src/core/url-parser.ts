@@ -17,39 +17,50 @@ const PARSE_BASE = 'http://localhost'
 /** An absolute URL starts with a scheme, for example `https:`. */
 const HAS_SCHEME = /^[a-z][a-z\d+.-]*:/i
 
-/** `users?f_name_eq=bob` is a path; `f_name_eq=what?ever` is a raw query. */
-function isRelativePath(input: string): boolean {
-  const queryStart = input.indexOf('?')
-  return queryStart !== -1 && !/[=&]/.test(input.slice(0, queryStart))
-}
+/**
+ * A host with no scheme, such as `example.com`, `example.com/users?...` or
+ * `www.example.com:8080?...`. A raw query string cannot match: its first key
+ * is followed by `=`, `&` or the end, and a dotted key followed by `/`, `?` or
+ * `#` is not a useful filter param.
+ */
+const SCHEMELESS_HOST = /^[a-z\d-]+(\.[a-z\d-]+)+(:\d+)?(?=[/?#]|$)/i
 
 /**
- * Converts the accepted input forms to a URL:
- * - an absolute URL: `https://example.com/users?f_name_contains=bob`
- * - a relative path: `/users?...`, `users?...` or `//example.com/users?...`
- * - a query string: `?f_name_contains=bob`
- * - a raw query string: `f_name_contains=bob`
+ * Converts the accepted input forms to a URL. Each rule is checked in order:
  *
- * Input with a scheme is parsed as is, so a URL that is not valid fails here.
- * Other input that starts with `/`, `?` or `#` is relative to a fixed base.
+ * 1. A host with no scheme (`example.com?...`) throws, because the input is
+ *    probably a pasted URL with its scheme left out.
+ * 2. An absolute URL (`https://example.com/users?...`) is parsed as is, so a
+ *    URL that is not valid throws.
+ * 3. Input that starts with `/`, `?` or `#` is relative to a fixed base:
+ *    `/users?...`, `//example.com/users?...`, `?f_name_contains=bob`.
+ * 4. All other input is a raw query string: `f_name_contains=bob`. A `?` or
+ *    `#` in it is part of a param name or value.
  *
- * For the remaining input, the text before the first `?` decides. A relative
- * path such as `users?...` has no `=` or `&` there. A raw query string has at
- * least one, because it starts with a param. This keeps a `?` in a raw query
- * value (`f_name_contains=what?ever`) as part of the value.
+ * A relative path must start with `/`. Without it, `users?...` is a raw query
+ * string. A guess based on the text before the first `?` cannot tell paths
+ * and raw queries apart in all cases, so the rules do not guess.
  *
- * @throws InvalidURLError if the URL constructor rejects the input
+ * @throws InvalidURLError if the input is a host with no scheme, or if the URL
+ *   constructor rejects it
  */
 function toUrl(input: string): URL {
+  if (SCHEMELESS_HOST.test(input)) {
+    throw new InvalidURLError(
+      `Failed to parse URL: "${input}" has a host but no scheme. ` +
+        'Add a scheme (https://...) or start a relative path with "/".'
+    )
+  }
+
   try {
     if (HAS_SCHEME.test(input)) {
       return new URL(input)
     }
-    if (/^[/?#]/.test(input) || isRelativePath(input)) {
+    if (/^[/?#]/.test(input)) {
       return new URL(input, PARSE_BASE)
     }
-    // The search setter keeps `?` and `#` in values; parsing `?${input}`
-    // would read a `#` as the start of a fragment.
+    // The search setter keeps `?` and `#` in names and values; parsing
+    // `?${input}` would read a `#` as the start of a fragment.
     const url = new URL(PARSE_BASE)
     url.search = input
     return url
@@ -70,7 +81,8 @@ function toUrl(input: string): URL {
  * string (see {@link toUrl}). A param that is not valid is skipped and reported
  * through `onParseError`.
  *
- * @throws InvalidURLError if the input is an absolute URL that is not valid
+ * @throws InvalidURLError if the input is an absolute URL that is not valid,
+ *   or a host with no scheme
  */
 export function parseUrlFilters(url: string, config: ParseConfig): FilterState {
   // Handle empty or whitespace-only URLs gracefully

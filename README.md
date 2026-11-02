@@ -217,7 +217,9 @@ function getFiltersFromUrl(url: string): FilterState {
 | Query string     | `?f_name_eq=bob`                          |
 | Raw query string | `f_name_eq=bob`                           |
 
-A param that is not valid is skipped and sent to `onParseError`. Only an absolute URL that is not valid (for example `http://`) throws `InvalidURLError`.
+A relative path must start with `/`. Input with no scheme and no leading `/` or `?` is a raw query string, so `users?f_name_eq=bob` gives no filters.
+
+A param that is not valid is skipped and sent to `onParseError`. `InvalidURLError` is thrown only for an absolute URL that is not valid (for example `http://`), or for a host with no scheme (for example `example.com?f_name_eq=bob`).
 
 #### Example: Custom URL Generator
 

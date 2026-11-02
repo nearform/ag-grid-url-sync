@@ -36,7 +36,7 @@ function getFormatSerializers(): SerializerRegistry {
 /**
  * Serialize filter state using grouped serialization
  * @param filterState - The filter state to serialize
- * @param config - Internal configuration
+ * @param config - Parse configuration (does not need a grid)
  * @returns Grouped serialization result with parameter name and value
  */
 export function serializeGrouped(
@@ -74,7 +74,7 @@ export function serializeGrouped(
  * Deserialize grouped filter state from URL parameter value
  * @param value - The serialized value from URL parameter
  * @param format - The serialization format to use
- * @param config - Internal configuration for error handling
+ * @param config - Parse configuration for error handling (does not need a grid)
  * @returns Deserialized filter state
  */
 export function deserializeGrouped(

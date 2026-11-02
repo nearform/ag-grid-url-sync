@@ -104,6 +104,27 @@ describe('URL Generator', () => {
       expect([...result.entries()]).toEqual([[`f_${column}_contains`, 'q']])
     })
 
+    it.each([
+      ['date', { filterType: 'date', type: 'dateAfter', filter: '' } as const],
+      ['text', { filterType: 'text', type: 'contains', filter: '' } as const]
+    ])('should skip a %s filter with an empty value', (_label, filter) => {
+      const errors = vi.fn()
+      const result = serializeFilters(
+        { col: filter },
+        { ...mockConfig, onParseError: errors }
+      )
+      expect([...result.entries()]).toEqual([])
+      expect(errors).not.toHaveBeenCalled()
+    })
+
+    it('should keep a number filter with the value 0', () => {
+      const filterState: FilterState = {
+        qty: { filterType: 'number', type: 'eq', filter: 0 }
+      }
+      const result = serializeFilters(filterState, mockConfig)
+      expect(result.get('f_qty_eq')).toBe('0')
+    })
+
     it('should keep a text value that contains =', () => {
       const filterState: FilterState = {
         expr: { filterType: 'text', type: 'contains', filter: 'a=b' }

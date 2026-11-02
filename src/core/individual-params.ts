@@ -58,12 +58,14 @@ function serializeColumnFilter(
     return [paramName, 'true']
   }
 
-  // Number and date (ISO format) filters
+  // Number and date (ISO format) filters. An incomplete date filter in the
+  // grid has an empty value, which writes nothing.
   if (
     filter.filterType === FILTER_TYPES.NUMBER ||
     filter.filterType === FILTER_TYPES.DATE
   ) {
-    return [paramName, String(filter.filter)]
+    const value = String(filter.filter)
+    return value ? [paramName, value] : null
   }
 
   // Text filters: an empty value writes nothing

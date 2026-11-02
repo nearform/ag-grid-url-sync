@@ -35,9 +35,7 @@ describe('Edge Cases', () => {
 
   describe('URL Parsing', () => {
     it('should handle malformed URLs', () => {
-      expect(() => parseUrlFilters('not-a-url', config)).toThrow(
-        InvalidURLError
-      )
+      expect(() => parseUrlFilters('http://', config)).toThrow(InvalidURLError)
     })
 
     it('should handle mixed valid and invalid parameters', () => {

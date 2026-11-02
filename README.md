@@ -208,6 +208,21 @@ function getFiltersFromUrl(url: string): FilterState {
 }
 ```
 
+`parseUrlFilters` reads the input with these rules, in this order:
+
+| #   | Input                       | Result                   | Example                                   |
+| --- | --------------------------- | ------------------------ | ----------------------------------------- |
+| 1   | A host with no scheme       | Throws `InvalidURLError` | `example.com?…`, `localhost:3000?…`       |
+| 2   | Starts with a scheme        | Absolute URL             | `https://example.com/users?f_name_eq=bob` |
+| 3   | Starts with `/`, `?` or `#` | Relative URL             | `/users?f_name_eq=bob`, `?f_name_eq=bob`  |
+| 4   | Anything else               | Raw query string         | `f_name_eq=bob`                           |
+
+- A relative path must start with `/`. `users?f_name_eq=bob` matches rule 4, so it gives no filters.
+- A bare `localhost?…` with no port cannot be told apart from a raw query, so it matches rule 4.
+- In a raw query string, a `?` or `#` is part of a param name or value.
+
+`InvalidURLError` is thrown for rule 1, and for any input that the `URL` constructor rejects under rules 2 and 3 (for example `http://` or `//[`). A param that is not valid is skipped and sent to `onParseError`.
+
 #### Example: Custom URL Generator
 
 ```typescript

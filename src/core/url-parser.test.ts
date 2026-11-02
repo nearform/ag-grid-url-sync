@@ -116,10 +116,113 @@ describe('URL Parser', () => {
       expect(result.query?.filter).toBe('hello world')
     })
 
-    it('should handle malformed URLs', () => {
-      expect(() => parseUrlFilters('not-a-url', mockConfig)).toThrow(
-        InvalidURLError
+    describe('input forms', () => {
+      const name = { filterType: 'text', type: 'contains', filter: 'bob' }
+      const price = { filterType: 'number', type: 'greaterThan', filter: 1.5 }
+
+      it.each([
+        ['an absolute URL', 'https://example.com/users?f_name_contains=bob'],
+        ['a relative path', '/users?f_name_contains=bob'],
+        [
+          'a relative path with = and & before the ?',
+          '/users/id=1&x=2?f_name_contains=bob'
+        ],
+        ['a protocol-relative URL', '//example.com/users?f_name_contains=bob'],
+        ['a query string', '?f_name_contains=bob'],
+        ['a raw query string', 'f_name_contains=bob'],
+        ['a raw query string with other params', 'page=2&f_name_contains=bob']
+      ])('should parse %s', (_label, url) => {
+        expect(parseUrlFilters(url, mockConfig)).toEqual({ name })
+      })
+
+      it('should parse a raw query string that contains a dot', () => {
+        expect(parseUrlFilters('f_price_gt=1.5', mockConfig)).toEqual({
+          price
+        })
+      })
+
+      it('should parse a relative path with a dot in its value', () => {
+        expect(parseUrlFilters('/products?f_price_gt=1.5', mockConfig)).toEqual(
+          { price }
+        )
+      })
+
+      it.each([
+        ['a raw query string', 'f_name_contains=what?ever'],
+        [
+          'a raw query string with other params',
+          'page=2&f_name_contains=what?ever'
+        ]
+      ])('should keep a ? in a value of %s', (_label, url) => {
+        expect(parseUrlFilters(url, mockConfig)).toEqual({
+          name: { filterType: 'text', type: 'contains', filter: 'what?ever' }
+        })
+      })
+
+      it('should keep a # in a value of a raw query string', () => {
+        expect(parseUrlFilters('f_name_contains=a#b', mockConfig)).toEqual({
+          name: { filterType: 'text', type: 'contains', filter: 'a#b' }
+        })
+      })
+
+      it('should keep a ? in a param name of a raw query string', () => {
+        expect(
+          parseUrlFilters('f_first?name_contains=bob', mockConfig)
+        ).toEqual({ 'first?name': name })
+      })
+
+      it('should read text with no scheme and no leading / as a raw query', () => {
+        // A relative path must start with '/'. Without it, `users?...` is a
+        // raw query whose first key is `users?f_name_contains`.
+        expect(
+          parseUrlFilters('users?f_name_contains=bob', mockConfig)
+        ).toEqual({})
+      })
+
+      it('should return no filters for text with no filter params', () => {
+        expect(parseUrlFilters('not-a-url', mockConfig)).toEqual({})
+      })
+    })
+
+    describe('malformed URLs', () => {
+      it.each([
+        ['an empty host', 'http://'],
+        ['a host with a space', 'https://exa mple.com?f_name_contains=bob'],
+        ['an unclosed IPv6 host', 'http://[::1?f_name_contains=bob'],
+        ['a protocol-relative URL with a bad host', '//[']
+      ])('should throw InvalidURLError for %s', (_label, url) => {
+        expect(() => parseUrlFilters(url, mockConfig)).toThrow(InvalidURLError)
+      })
+
+      it.each([
+        ['a host', 'example.com?f_name_eq=bob'],
+        ['a host and a path', 'example.com/users?f_name_eq=bob'],
+        ['a host and a port', 'www.example.com:8080?f_name_eq=bob'],
+        ['a host with non-ASCII letters', 'münich.com?f_name_eq=bob'],
+        ['a non-Latin host and a port', '例え.jp:8080/users?f_name_eq=bob'],
+        ['a host alone', 'example.com'],
+        ['a single-label host and a port', 'localhost:3000?f_name_eq=bob'],
+        [
+          'a single-label host, a port and a path',
+          'localhost:3000/users?f_name_eq=bob'
+        ]
+      ])(
+        'should throw InvalidURLError for %s with no scheme',
+        (_label, url) => {
+          expect(() => parseUrlFilters(url, mockConfig)).toThrow(/no scheme/)
+        }
       )
+
+      it('should keep the original error as the cause', () => {
+        let caught: unknown
+        try {
+          parseUrlFilters('http://', mockConfig)
+        } catch (error) {
+          caught = error
+        }
+        expect(caught).toBeInstanceOf(InvalidURLError)
+        expect((caught as InvalidURLError).cause).toBeInstanceOf(TypeError)
+      })
     })
 
     it('should handle invalid parameters gracefully', () => {

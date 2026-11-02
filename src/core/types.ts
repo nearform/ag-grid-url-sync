@@ -79,14 +79,6 @@ export interface AGGridUrlSyncConfig {
 }
 
 /**
- * Internal configuration with all required fields and runtime dependencies
- */
-export interface InternalConfig extends Required<AGGridUrlSyncConfig> {
-  /** AG Grid API instance for filter operations */
-  gridApi: AGGridApi
-}
-
-/**
  * Configuration for URL parsing and serialization operations that don't require GridApi.
  * Use this type when you only need to parse filters from URLs or serialize filters to URLs
  * without actually applying them to a grid.
@@ -104,6 +96,14 @@ export interface InternalConfig extends Required<AGGridUrlSyncConfig> {
 export interface ParseConfig extends Required<AGGridUrlSyncConfig> {
   /** AG Grid API instance - not read by parsing/serialization operations */
   gridApi?: AGGridApi | null
+}
+
+/**
+ * Internal configuration with all required fields and runtime dependencies
+ */
+export interface InternalConfig extends ParseConfig {
+  /** AG Grid API instance for filter operations */
+  gridApi: AGGridApi
 }
 
 // ============================================================================

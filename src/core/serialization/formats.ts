@@ -102,15 +102,46 @@ export class Base64Serializer implements FormatSerializer {
 
   serialize(filterState: FilterState): string {
     const jsonString = this.jsonSerializer.serialize(filterState)
-    return btoa(jsonString)
+    return encodeBase64(jsonString)
   }
 
   deserialize(value: string): FilterState {
     try {
-      const decoded = atob(value)
+      const decoded = decodeBase64(value)
       return this.jsonSerializer.deserialize(decoded)
     } catch (error) {
       throw new Error(`Base64 decoding failed: ${(error as Error).message}`)
     }
+  }
+}
+
+/**
+ * Base64-encode the UTF-8 bytes of a string.
+ *
+ * `btoa` accepts Latin-1 characters only, so CJK text or emoji made it throw
+ * (#212). ASCII text gives the same output as `btoa`.
+ */
+function encodeBase64(text: string): string {
+  let binary = ''
+  for (const byte of new TextEncoder().encode(text)) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
+/**
+ * Decode a base64 value to a string. Reads the bytes as UTF-8.
+ *
+ * Links made before #212 encoded Latin-1 characters (such as `é`) as one byte
+ * each. Those bytes are not valid UTF-8, so the decoder falls back to Latin-1
+ * and old links still decode.
+ */
+function decodeBase64(value: string): string {
+  const binary = atob(value)
+  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return binary
   }
 }

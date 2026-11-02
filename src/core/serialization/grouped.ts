@@ -12,13 +12,25 @@ import {
   Base64Serializer
 } from './formats.js'
 
+type SerializerRegistry = Record<SerializationFormat, FormatSerializer>
+
+let formatSerializers: SerializerRegistry | undefined
+
 /**
  * Registry of available format serializers
+ *
+ * Built on first use, not at module load. formats.ts imports url-generator.ts
+ * and url-parser.ts, which import this module. When formats.ts loads first
+ * (e.g. through the `ag-grid-url-sync/serialization/formats` subpath), its
+ * classes are not initialised yet while this module evaluates.
  */
-const FORMAT_SERIALIZERS: Record<SerializationFormat, FormatSerializer> = {
-  querystring: new QueryStringSerializer(),
-  json: new JsonSerializer(),
-  base64: new Base64Serializer()
+function getFormatSerializers(): SerializerRegistry {
+  formatSerializers ??= {
+    querystring: new QueryStringSerializer(),
+    json: new JsonSerializer(),
+    base64: new Base64Serializer()
+  }
+  return formatSerializers
 }
 
 /**
@@ -32,7 +44,7 @@ export function serializeGrouped(
   config: ParseConfig
 ): GroupedSerializationResult {
   try {
-    const serializer = FORMAT_SERIALIZERS[config.format]
+    const serializer = getFormatSerializers()[config.format]
     if (!serializer) {
       throw new Error(`Unknown serialization format: ${config.format}`)
     }
@@ -71,7 +83,7 @@ export function deserializeGrouped(
   config: ParseConfig
 ): FilterState {
   try {
-    const serializer = FORMAT_SERIALIZERS[format]
+    const serializer = getFormatSerializers()[format]
     if (!serializer) {
       throw new Error(`Unknown serialization format: ${format}`)
     }
@@ -186,7 +198,7 @@ function isJsonFormat(value: string): boolean {
  * Get all available serialization formats
  */
 export function getAvailableFormats(): SerializationFormat[] {
-  return Object.keys(FORMAT_SERIALIZERS) as SerializationFormat[]
+  return Object.keys(getFormatSerializers()) as SerializationFormat[]
 }
 
 /**
@@ -195,5 +207,5 @@ export function getAvailableFormats(): SerializationFormat[] {
 export function getFormatSerializer(
   format: SerializationFormat
 ): FormatSerializer | null {
-  return FORMAT_SERIALIZERS[format] || null
+  return getFormatSerializers()[format] || null
 }

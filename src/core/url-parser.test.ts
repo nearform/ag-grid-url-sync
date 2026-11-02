@@ -147,6 +147,24 @@ describe('URL Parser', () => {
         )
       })
 
+      it.each([
+        ['a raw query string', 'f_name_contains=what?ever'],
+        [
+          'a raw query string with other params',
+          'page=2&f_name_contains=what?ever'
+        ]
+      ])('should keep a ? in a value of %s', (_label, url) => {
+        expect(parseUrlFilters(url, mockConfig)).toEqual({
+          name: { filterType: 'text', type: 'contains', filter: 'what?ever' }
+        })
+      })
+
+      it('should keep a # in a value of a raw query string', () => {
+        expect(parseUrlFilters('f_name_contains=a#b', mockConfig)).toEqual({
+          name: { filterType: 'text', type: 'contains', filter: 'a#b' }
+        })
+      })
+
       it('should return no filters for text with no filter params', () => {
         expect(parseUrlFilters('not-a-url', mockConfig)).toEqual({})
       })

@@ -184,6 +184,67 @@ describe('URL Parser', () => {
       })
     })
 
+    describe('grouped param', () => {
+      const name = { filterType: 'text', type: 'contains', filter: 'bob' }
+      const json = encodeURIComponent(JSON.stringify({ name }))
+      const base64 = encodeURIComponent(btoa(JSON.stringify({ name })))
+
+      it('should ignore a host param called filters', () => {
+        expect(
+          parseUrlFilters('?filters=active&f_name_contains=bob', mockConfig)
+        ).toEqual({ name })
+      })
+
+      it('should ignore grid_filters when groupedParam is different', () => {
+        const config = { ...mockConfig, groupedParam: 'gf' }
+        expect(
+          parseUrlFilters(
+            '?grid_filters=f_age_gt%3D1&f_name_contains=bob',
+            config
+          )
+        ).toEqual({ name })
+      })
+
+      it('should read the configured groupedParam', () => {
+        const config = { ...mockConfig, groupedParam: 'gf' }
+        expect(
+          parseUrlFilters('?gf=f_name_contains%3Dbob&f_age_gt=1', config)
+        ).toEqual({ name })
+      })
+
+      it('should decode with the configured format', () => {
+        const config = { ...mockConfig, format: 'json' as const }
+        expect(parseUrlFilters(`?grid_filters=${json}`, config)).toEqual({
+          name
+        })
+      })
+
+      it('should not guess the format', () => {
+        const onParseError = vi.fn()
+        const config = {
+          ...mockConfig,
+          format: 'json' as const,
+          onParseError
+        }
+        // A base64 value under a json config is not decoded as base64
+        expect(parseUrlFilters(`?grid_filters=${base64}`, config)).toEqual({})
+        expect(onParseError).toHaveBeenCalledOnce()
+      })
+
+      it('should read a grouped link in individual mode', () => {
+        // serialization: 'individual', format: 'querystring' (the defaults)
+        expect(
+          parseUrlFilters('?grid_filters=f_name_contains%3Dbob', mockConfig)
+        ).toEqual({ name })
+      })
+
+      it('should read prefixed params when the grouped param is empty', () => {
+        expect(
+          parseUrlFilters('?grid_filters=&f_name_contains=bob', mockConfig)
+        ).toEqual({ name })
+      })
+    })
+
     describe('malformed URLs', () => {
       it.each([
         ['an empty host', 'http://'],

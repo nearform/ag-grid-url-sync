@@ -62,12 +62,13 @@ vi.mock('../core/url-parser.js', () => ({
       }
     }
     // A grouped param carries filters only if its value decodes. The real
-    // parser hands back {} for one it cannot read - ?filters=recent and
-    // ?filters=chips-abc both do - so the mock has to model that rather than
-    // fall through to the default below. urlHasFilterParams decodes to tell a
-    // real payload from a host app's own param of the same name, and against a
-    // mock that always yielded filters the distinction would be untestable.
-    const grouped = /[?&](?:filters|grid_filters)=([^&]*)/.exec(url)
+    // parser reads only the configured name (grid_filters by default) and
+    // hands back {} for a value it cannot read, such as ?grid_filters=recent,
+    // so the mock has to model that rather than fall through to the default
+    // below. urlHasFilterParams decodes to tell a real payload from a host
+    // app's own param of the same name, and against a mock that always
+    // yielded filters the distinction would be untestable.
+    const grouped = /[?&]grid_filters=([^&]*)/.exec(url)
     if (grouped) {
       return grouped[1].includes('f_')
         ? { name: { filterType: 'text', type: 'contains', filter: 'grouped' } }
@@ -2292,10 +2293,10 @@ describe('useAGGridUrlSync', () => {
       })
       seed.unmount()
 
-      // 'filters' is one of the names checked for a grouped payload, but it is
-      // just as plausible a name for a host app's own quick-filter chips. This
-      // value decodes to nothing, so it says nothing about this grid.
-      setSearch('?filters=recent')
+      // The configured grouped param name, but the host app wrote its own
+      // value under it. This value decodes to nothing, so it says nothing
+      // about this grid.
+      setSearch('?grid_filters=recent')
       vi.mocked(mockGridApi.setFilterModel).mockClear()
       mockInstance.applyFromUrl.mockClear()
 
@@ -2318,6 +2319,38 @@ describe('useAGGridUrlSync', () => {
       expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
     })
 
+    test('a param that is not the configured grouped param is not a filter claim', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
+      const seed = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
+      )
+      let id = ''
+      act(() => {
+        id = seed.result.current.saveView('Engineering')!.id
+      })
+      seed.unmount()
+
+      // A payload that would decode, but under 'filters', which is not the
+      // configured groupedParam. The parser does not read it (#210), so it is
+      // the host app's own param and says nothing about this grid.
+      setSearch('?filters=f_name_contains%3Dfromurl')
+      vi.mocked(mockGridApi.setFilterModel).mockClear()
+      mockInstance.applyFromUrl.mockClear()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(mockGridApi as GridApi, {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true
+        })
+      )
+      await waitForEffects()
+
+      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
+      expect(result.current.activeViewId).toBe(id)
+    })
+
     test('a grouped param the parser can decode still wins over the stored view', async () => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
 
@@ -2331,7 +2364,7 @@ describe('useAGGridUrlSync', () => {
 
       // The same param name, this time carrying a payload that decodes. The
       // decodability check must not have cost grouped URLs their precedence.
-      setSearch('?filters=f_name_contains%3Dfromurl')
+      setSearch('?grid_filters=f_name_contains%3Dfromurl')
       vi.mocked(mockGridApi.setFilterModel).mockClear()
       mockInstance.applyFromUrl.mockClear()
 

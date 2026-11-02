@@ -313,6 +313,10 @@ interface AGGridUrlSyncConfig {
 }
 ```
 
+When the library reads a URL, it reads only the `groupedParam` name and decodes it with the configured `format`. It does not guess the format. This works in both modes, so a grouped link opens in an app in individual mode when the name and format match. If the param is present and not empty, the prefixed params are not read.
+
+> **Note:** A URL written with a different `groupedParam` or `format` does not decode. If you change either option, links that were shared before the change stop working.
+
 ### Format Options
 
 #### QueryString Format (Default)

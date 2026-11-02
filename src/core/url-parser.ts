@@ -10,8 +10,8 @@ export { parseFilterParam }
 
 /**
  * Converts URL search params into a filter state object.
- * This function does not require a GridApi instance - you can omit `gridApi` (or
- * pass `null`) when you only need to parse filters without applying them to a grid.
+ * This function does not require a GridApi instance: leave `config.gridApi` out
+ * (or set it to `null`) when you only need to parse filters without a grid.
  */
 export function parseUrlFilters(url: string, config: ParseConfig): FilterState {
   try {

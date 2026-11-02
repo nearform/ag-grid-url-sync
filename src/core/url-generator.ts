@@ -27,8 +27,8 @@ function getPreservedParams(
 
 /**
  * Generates a URL with the current filter state.
- * This function does not require a GridApi instance - you can omit `gridApi` (or
- * pass `null`) when you only need to generate URLs without a grid.
+ * This function does not require a GridApi instance: leave `config.gridApi` out
+ * (or set it to `null`) when you only need to generate URLs without a grid.
  */
 export function generateUrl(
   baseUrl: string,

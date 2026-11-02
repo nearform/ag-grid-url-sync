@@ -109,8 +109,8 @@ function appendSerializedParam(
 
 /**
  * Converts a filter state object into URL search parameters.
- * This function does not require a GridApi instance - you can omit `gridApi` (or
- * pass `null`) when you only need to serialize filters without a grid.
+ * This function does not require a GridApi instance: leave `config.gridApi` out
+ * (or set it to `null`) when you only need to serialize filters without a grid.
  * A text value over `config.maxValueLength` is reported through
  * `config.onParseError` and skipped. The other filters are kept.
  */

@@ -52,20 +52,31 @@ describe('URL Parser', () => {
       ['eq', 'eq'],
       ['neq', 'notEqual']
     ])('shared operation %s with a guessed type', (op, type) => {
-      it.each(['3M', '1e', '12abc', '0x10', '1e400', '1.2.3'])(
-        'should keep %s as text',
-        value => {
-          expect(parseFilterParam(`f_name_${op}`, value, 'f_')).toEqual({
-            filterType: 'text',
-            type,
-            filter: value
-          })
-        }
-      )
+      it.each([
+        '3M',
+        '1e',
+        '12abc',
+        '0x10',
+        '1e400',
+        '1.2.3',
+        // #238: digit strings above the safe integer range would lose digits
+        '9007199254740993',
+        '12345678901234567890',
+        '-12345678901234567891'
+      ])('should keep %s as text', value => {
+        expect(parseFilterParam(`f_name_${op}`, value, 'f_')).toEqual({
+          filterType: 'text',
+          type,
+          filter: value
+        })
+      })
 
       it.each([
         ['42', 42],
         ['-1.5', -1.5],
+        // #238: written the way String(n) writes it, so no digits are lost
+        ['9007199254740992', 2 ** 53],
+        ['1e+21', 1e21],
         ['.5', 0.5],
         ['2e3', 2000]
       ])('should parse %s as a number', (value, expected) => {

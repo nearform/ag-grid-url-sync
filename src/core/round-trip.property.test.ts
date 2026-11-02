@@ -288,13 +288,19 @@ describe('URL round-trip properties (#216)', () => {
     // number round-trips (#238)
     it('round-trips numbers outside the safe integer range (#238)', () => {
       fc.assert(
-        fc.property(columnId, unsafeNumberValue, baseUrl, (id, n, base) => {
-          const state: FilterState = {
-            [id]: { filterType: 'number', type: 'greaterThan', filter: n }
-          }
+        fc.property(
+          columnId,
+          fc.constantFrom('greaterThan', 'eq', 'notEqual'),
+          unsafeNumberValue,
+          baseUrl,
+          (id, type, n, base) => {
+            const state: FilterState = {
+              [id]: { filterType: 'number', type, filter: n }
+            }
 
-          expect(roundTrip(state, base.url, config)).toEqual(state)
-        })
+            expect(roundTrip(state, base.url, config)).toEqual(state)
+          }
+        )
       )
     })
 

@@ -5,8 +5,10 @@ import {
   serializeGrouped,
   deserializeGrouped
 } from './serialization/grouped.js'
+import { QueryStringSerializer } from './serialization/formats.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import type { FilterState, ParseConfig, SerializationFormat } from './types.js'
+import { InvalidFilterError, InvalidSerializationError } from './types.js'
 
 // The parse/serialize path must work without a grid (issue #109). These tests
 // call it with no gridApi, with gridApi: null, and with a gridApi that throws
@@ -64,10 +66,6 @@ describe.each(gridApiVariants)('ParseConfig with %s', (_, applyVariant) => {
     })
   })
 
-  // TODO(#201): QueryStringSerializer uses DEFAULT_CONFIG, not the caller's
-  // config. For 'querystring', the gridApi variant and the onParseError mock
-  // only reach grouped.ts, not the inner generate/parse calls, so these cases
-  // cannot fail there.
   describe.each(groupedFormats)('grouped %s serialization', format => {
     it('generateUrl and parseUrlFilters round-trip the filter state', () => {
       const config = createConfig({ serialization: 'grouped', format })
@@ -92,6 +90,102 @@ describe.each(gridApiVariants)('ParseConfig with %s', (_, applyVariant) => {
   })
 })
 
-describe('grouped querystring serialization with caller config', () => {
-  it.todo("uses the caller's maxValueLength and onParseError (#201)")
+describe('grouped querystring serialization with caller config (#201)', () => {
+  const createGroupedConfig = (
+    overrides: Partial<ParseConfig> = {}
+  ): ParseConfig => ({
+    ...DEFAULT_CONFIG,
+    serialization: 'grouped',
+    format: 'querystring',
+    onParseError: vi.fn(),
+    ...overrides
+  })
+
+  const textFilter = (filter: string): FilterState => ({
+    name: { filterType: 'text', type: 'contains', filter }
+  })
+
+  it("round-trips a text filter within the caller's maxValueLength", () => {
+    const config = createGroupedConfig({ maxValueLength: 500 })
+    const filterState = textFilter('a'.repeat(300))
+
+    const url = generateUrl(BASE_URL, filterState, config)
+
+    expect(parseUrlFilters(url, config)).toEqual(filterState)
+    expect(config.onParseError).not.toHaveBeenCalled()
+  })
+
+  it("reports a value over the caller's maxValueLength when generating", () => {
+    const config = createGroupedConfig({ maxValueLength: 5 })
+
+    const url = generateUrl(BASE_URL, textFilter('john smith'), config)
+
+    expect(new URL(url).searchParams.has(config.groupedParam)).toBe(false)
+    expect(config.onParseError).toHaveBeenCalledOnce()
+  })
+
+  it("keeps the other filters when one is over the caller's maxValueLength", () => {
+    const config = createGroupedConfig({ maxValueLength: 5 })
+    const age: FilterState = {
+      age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+    }
+
+    const url = generateUrl(
+      BASE_URL,
+      { ...textFilter('john smith'), ...age },
+      config
+    )
+
+    expect(parseUrlFilters(url, config)).toEqual(age)
+    expect(config.onParseError).toHaveBeenCalledOnce()
+  })
+
+  it("reports a value over the caller's maxValueLength when parsing", () => {
+    const config = createGroupedConfig({ maxValueLength: 5 })
+    const grouped = new URLSearchParams({
+      grid_filters: 'f_name_contains=john+smith&f_age_gt=25'
+    })
+
+    const filters = parseUrlFilters(`${BASE_URL}?${grouped}`, config)
+
+    expect(filters).toEqual({
+      age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+    })
+    expect(config.onParseError).toHaveBeenCalledOnce()
+  })
+
+  it('wraps errors inside the grouped value in InvalidSerializationError', () => {
+    const config = createGroupedConfig()
+    const grouped = new URLSearchParams({ grid_filters: 'f_age_gt=abc' })
+
+    parseUrlFilters(`${BASE_URL}?${grouped}`, config)
+
+    const error = vi.mocked(config.onParseError).mock.calls[0]?.[0]
+    expect(error).toBeInstanceOf(InvalidSerializationError)
+    expect(error?.cause).toBeInstanceOf(InvalidFilterError)
+  })
+
+  it('keeps the default maxValueLength when the caller leaves it out', () => {
+    // A JS caller, or a partial config cast to ParseConfig
+    const onParseError = vi.fn()
+    const config = { onParseError } as unknown as ParseConfig
+    const value = `f_name_contains=${'a'.repeat(201)}`
+
+    const filters = new QueryStringSerializer().deserialize(value, config)
+
+    expect(filters).toEqual({})
+    expect(onParseError).toHaveBeenCalledOnce()
+  })
+
+  it('reports an invalid parameter in the grouped value to onParseError', () => {
+    const config = createGroupedConfig()
+    const grouped = new URLSearchParams({
+      grid_filters: 'f_name_contains=john&f_age_gt=abc'
+    })
+
+    const filters = parseUrlFilters(`${BASE_URL}?${grouped}`, config)
+
+    expect(filters).toEqual(textFilter('john'))
+    expect(config.onParseError).toHaveBeenCalledOnce()
+  })
 })

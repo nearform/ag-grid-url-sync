@@ -223,6 +223,14 @@
       ]
     },
     {
+      "path": "./dist/core/individual-params.js",
+      "limit": "3 KiB",
+      "gzip": true,
+      "disablePlugins": [
+        "@size-limit/esbuild"
+      ]
+    },
+    {
       "path": "./dist/core/grid-integration.js",
       "limit": "3 KiB",
       "gzip": true,

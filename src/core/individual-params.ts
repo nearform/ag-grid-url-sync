@@ -27,6 +27,17 @@ const FILTER_TYPES = {
 } as const
 
 /**
+ * The prefix that filter param names start with. An empty prefix means the
+ * default (`f_`), and a prefix without a trailing `_` gets one, so 'filter'
+ * gives `filter_name_contains`. The writer, the parser and the URL checks all
+ * use this, so a URL that the library writes parses back (#228).
+ */
+export function resolveParamPrefix(paramPrefix?: string): string {
+  const prefix = paramPrefix || DEFAULT_CONFIG.paramPrefix
+  return prefix.endsWith('_') ? prefix : `${prefix}_`
+}
+
+/**
  * Serializes a single column filter to a `[name, value]` URL param pair, or
  * null when the filter has nothing to write. The pair is appended to
  * URLSearchParams as is, so any character in the column id or the value is
@@ -116,7 +127,7 @@ export function serializeFilters(
     const param = serializeColumnFilter(
       column,
       checkedFilter,
-      config.paramPrefix
+      resolveParamPrefix(config.paramPrefix)
     )
     if (param) {
       params.append(...param)
@@ -224,20 +235,13 @@ function extractColumnAndOperation(
   param: string,
   expectedPrefix?: string
 ): { column: string; operation: string } {
-  const ensureTrailingUnderscore = (prefix: string): string =>
-    prefix.endsWith('_') ? prefix : prefix + '_'
-
-  const sanitizedPrefix = expectedPrefix
-    ? ensureTrailingUnderscore(expectedPrefix)
-    : ensureTrailingUnderscore(DEFAULT_CONFIG.paramPrefix)
-
-  const prefixToCheck = sanitizedPrefix.slice(0, -1)
-  if (!param.startsWith(prefixToCheck + '_')) {
+  const prefix = resolveParamPrefix(expectedPrefix)
+  if (!param.startsWith(prefix)) {
     throw new InvalidFilterError(`Invalid filter prefix in parameter: ${param}`)
   }
 
   // Remove prefix and find the last underscore to separate column from operation
-  const withoutPrefix = param.substring(prefixToCheck.length + 1)
+  const withoutPrefix = param.substring(prefix.length)
   const lastUnderscoreIndex = withoutPrefix.lastIndexOf('_')
 
   if (lastUnderscoreIndex === -1) {
@@ -408,15 +412,16 @@ export function parseIndividualParams(
   config: ParseConfig
 ): FilterState {
   const filterState: FilterState = {}
+  const prefix = resolveParamPrefix(config.paramPrefix)
 
   for (const [param, value] of searchParams.entries()) {
-    if (!param.startsWith(config.paramPrefix)) continue
+    if (!param.startsWith(prefix)) continue
 
     try {
       // Extract column name and parse the filter parameter
       const { column: columnName, operation } = extractColumnAndOperation(
         param,
-        config.paramPrefix
+        prefix
       )
       const filterParam = parseFilterOperation(operation, value)
 

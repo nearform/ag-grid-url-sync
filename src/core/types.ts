@@ -41,7 +41,9 @@ export type SerializationFormat = 'querystring' | 'json' | 'base64'
  */
 export interface AGGridUrlSyncConfig {
   /**
-   * Prefix for URL parameters (only used in individual mode)
+   * Prefix for URL parameters (only used in individual mode).
+   * A prefix without a trailing `_` gets one, so 'filter' and 'filter_' both
+   * give `?filter_name_contains=john`. An empty prefix means the default.
    * @default 'f_'
    * @example 'filter_' results in URLs like '?filter_name_contains=john'
    */

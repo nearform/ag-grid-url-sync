@@ -457,6 +457,8 @@ const urlSync = createUrlSync(gridApi, {
 })
 ```
 
+In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onParseError`, both when the URL is generated and when it is parsed.
+
 In grouped mode, an error that comes from the grouped URL value is an `InvalidSerializationError`. This includes an error for one bad parameter inside a grouped querystring value, such as a value over `maxValueLength`. The original error is in `error.cause`. In individual mode, the same failure arrives as the original error, with no wrapper. To handle a specific error in both modes, check the error and its cause:
 
 ```typescript

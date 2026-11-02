@@ -638,13 +638,11 @@ export function useAGGridUrlSync(
       syncActiveViewToGrid(fromEvent, source)
 
       try {
-        const newUrl = urlSyncRef.current!.generateUrl()
-        setCurrentUrl(newUrl)
-
-        // Check if there are active filters by comparing query params
-        const queryParams = urlSyncRef.current!.getQueryParams()
-        const searchParams = new URLSearchParams(queryParams)
-        setHasFilters([...searchParams.entries()].length > 0)
+        // One read of the grid gives both values. hasFilters comes from the
+        // filter state: the URL also keeps the page's own params (#215).
+        const { url, hasFilters } = urlSyncRef.current!.getUrlState()
+        setCurrentUrl(url)
+        setHasFilters(hasFilters)
       } catch (error) {
         handleError(error, 'update-state')
       }

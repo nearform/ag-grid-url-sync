@@ -83,6 +83,29 @@ describe('AGGridUrlSync', () => {
     })
   })
 
+  describe('getUrlState', () => {
+    it('should give the URL and hasFilters true when the grid has filters', () => {
+      const urlSync = new AGGridUrlSync(mockGridApi)
+      expect(urlSync.getUrlState('https://example.com/?tab=1')).toEqual({
+        url: 'https://example.com/?f_name_contains=john&tab=1',
+        hasFilters: true
+      })
+    })
+
+    it('should give hasFilters false when only the page has params (#215)', () => {
+      const api = {
+        getFilterModel: vi.fn().mockReturnValue({}),
+        setFilterModel: vi.fn()
+      } as unknown as GridApi
+      const urlSync = new AGGridUrlSync(api)
+      expect(urlSync.getUrlState('https://example.com/?tab=1')).toEqual({
+        url: 'https://example.com/?tab=1',
+        hasFilters: false
+      })
+      expect(api.getFilterModel).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('applyFromUrl', () => {
     it('should apply filters from URL', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)

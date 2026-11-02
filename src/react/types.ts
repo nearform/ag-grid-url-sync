@@ -94,7 +94,13 @@ export interface UseAGGridUrlSyncReturn {
   currentUrl: string
 
   /**
-   * Whether the grid has any active text filters
+   * Whether the grid has filters that the library supports.
+   *
+   * Comes from the grid's filter state, not from the URL, because the URL also
+   * keeps the page's own params. A filter that the URL cannot carry (for
+   * example a text value over `maxValueLength`) still counts, so a "clear
+   * filters" button stays enabled. The URL leaves that filter out and reports
+   * it through `onParseError`.
    */
   hasFilters: boolean
 

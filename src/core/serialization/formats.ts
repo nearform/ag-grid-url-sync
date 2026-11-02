@@ -1,39 +1,54 @@
 import type {
   FilterState,
   SerializationFormat,
-  FormatSerializer
+  FormatSerializer,
+  ParseConfig
 } from '../types.js'
-import { generateUrl } from '../url-generator.js'
-import { parseUrlFilters } from '../url-parser.js'
+import { InvalidSerializationError } from '../types.js'
+import {
+  parseIndividualParams,
+  serializeFilters
+} from '../individual-params.js'
 import { DEFAULT_CONFIG, isValidColumnFilter } from '../validation.js'
 
 /**
  * QueryString format serializer
- * Reuses existing URL generation logic but groups into single parameter
+ * Writes the individual filter parameters as one query string value
  */
 export class QueryStringSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'querystring'
 
-  serialize(filterState: FilterState): string {
-    // Generate URL with individual parameters. This uses DEFAULT_CONFIG, not
-    // the caller's config (see #201).
-    const tempUrl = generateUrl(
-      'http://example.com',
-      filterState,
-      DEFAULT_CONFIG
-    )
-    const urlObj = new URL(tempUrl)
-
-    // Extract just the search params (without the ?)
-    return urlObj.search.slice(1)
+  serialize(filterState: FilterState, config?: ParseConfig): string {
+    return serializeFilters(filterState, innerConfig(config)).toString()
   }
 
-  deserialize(value: string): FilterState {
-    // Create a temporary URL with the query string
-    const tempUrl = `http://example.com?${value}`
+  deserialize(value: string, config?: ParseConfig): FilterState {
+    return parseIndividualParams(
+      new URLSearchParams(value),
+      innerConfig(config)
+    )
+  }
+}
 
-    // Parse with DEFAULT_CONFIG, not the caller's config (see #201)
-    return parseUrlFilters(tempUrl, DEFAULT_CONFIG)
+/**
+ * Config for the parameters inside a grouped querystring value.
+ *
+ * Takes the caller's validation and error handling. Keeps the default
+ * parameter prefix, so grouped URLs do not change when the caller's prefix
+ * changes, and URLs that already exist still parse.
+ */
+function innerConfig(config?: ParseConfig): ParseConfig {
+  if (!config) return DEFAULT_CONFIG
+  // `??` keeps the defaults when a JS caller or a partial config leaves a
+  // field out
+  const onParseError = config.onParseError ?? DEFAULT_CONFIG.onParseError
+  return {
+    ...DEFAULT_CONFIG,
+    maxValueLength: config.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
+    // Errors for parameters inside the grouped value are wrapped like the
+    // other grouped serialization errors. The original error is the cause.
+    onParseError: error =>
+      onParseError(new InvalidSerializationError('querystring', error))
   }
 }
 

@@ -12,25 +12,13 @@ import {
   Base64Serializer
 } from './formats.js'
 
-type SerializerRegistry = Record<SerializationFormat, FormatSerializer>
-
-let formatSerializers: SerializerRegistry | undefined
-
 /**
  * Registry of available format serializers
- *
- * Built on first use, not at module load. formats.ts imports url-generator.ts
- * and url-parser.ts, which import this module. When formats.ts loads first
- * (e.g. through the `ag-grid-url-sync/serialization/formats` subpath), its
- * classes are not initialised yet while this module evaluates.
  */
-function getFormatSerializers(): SerializerRegistry {
-  formatSerializers ??= {
-    querystring: new QueryStringSerializer(),
-    json: new JsonSerializer(),
-    base64: new Base64Serializer()
-  }
-  return formatSerializers
+const FORMAT_SERIALIZERS: Record<SerializationFormat, FormatSerializer> = {
+  querystring: new QueryStringSerializer(),
+  json: new JsonSerializer(),
+  base64: new Base64Serializer()
 }
 
 /**
@@ -44,12 +32,12 @@ export function serializeGrouped(
   config: ParseConfig
 ): GroupedSerializationResult {
   try {
-    const serializer = getFormatSerializers()[config.format]
+    const serializer = FORMAT_SERIALIZERS[config.format]
     if (!serializer) {
       throw new Error(`Unknown serialization format: ${config.format}`)
     }
 
-    const value = serializer.serialize(filterState)
+    const value = serializer.serialize(filterState, config)
 
     return {
       paramName: config.groupedParam,
@@ -60,7 +48,7 @@ export function serializeGrouped(
       config.format,
       error as Error
     )
-    config.onParseError(serializationError)
+    config.onParseError?.(serializationError)
 
     // Return empty state on error
     return {
@@ -83,18 +71,18 @@ export function deserializeGrouped(
   config: ParseConfig
 ): FilterState {
   try {
-    const serializer = getFormatSerializers()[format]
+    const serializer = FORMAT_SERIALIZERS[format]
     if (!serializer) {
       throw new Error(`Unknown serialization format: ${format}`)
     }
 
-    return serializer.deserialize(value)
+    return serializer.deserialize(value, config)
   } catch (error) {
     const serializationError = new InvalidSerializationError(
       format,
       error as Error
     )
-    config.onParseError(serializationError)
+    config.onParseError?.(serializationError)
 
     // Return empty state on error
     return {}
@@ -198,7 +186,7 @@ function isJsonFormat(value: string): boolean {
  * Get all available serialization formats
  */
 export function getAvailableFormats(): SerializationFormat[] {
-  return Object.keys(getFormatSerializers()) as SerializationFormat[]
+  return Object.keys(FORMAT_SERIALIZERS) as SerializationFormat[]
 }
 
 /**
@@ -207,5 +195,5 @@ export function getAvailableFormats(): SerializationFormat[] {
 export function getFormatSerializer(
   format: SerializationFormat
 ): FormatSerializer | null {
-  return getFormatSerializers()[format] || null
+  return FORMAT_SERIALIZERS[format] || null
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { serializeFilters, generateUrl } from './url-generator.js'
 import type { FilterState, InternalConfig } from './types.js'
+import { InvalidFilterError } from './types.js'
 
 describe('URL Generator', () => {
   const mockConfig: InternalConfig = {
@@ -18,6 +19,22 @@ describe('URL Generator', () => {
   })
 
   describe('serializeFilters', () => {
+    it('skips a text value over maxValueLength and reports it', () => {
+      const config = { ...mockConfig, maxValueLength: 5 }
+      const filterState: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'john smith' },
+        age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+      }
+
+      const result = serializeFilters(filterState, config)
+
+      expect([...result.entries()]).toEqual([['f_age_gt', '25']])
+      expect(config.onParseError).toHaveBeenCalledOnce()
+      expect(vi.mocked(config.onParseError).mock.calls[0]?.[0]).toBeInstanceOf(
+        InvalidFilterError
+      )
+    })
+
     it('should serialize basic text filter', () => {
       const filterState: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }

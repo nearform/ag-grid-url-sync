@@ -56,6 +56,10 @@ export interface AGGridUrlSyncConfig {
   /**
    * Optional error handler for parsing errors.
    * Allows graceful error handling without breaking the application.
+   *
+   * In grouped mode, an error that comes from the grouped URL value is an
+   * `InvalidSerializationError`, and the original error is in `error.cause`.
+   * In individual mode, the same failure arrives with no wrapper.
    */
   onParseError?: (error: Error) => void
 
@@ -460,10 +464,20 @@ export interface GroupedSerializationResult {
  * Format-specific serializer interface
  */
 export interface FormatSerializer {
-  /** Serialize filter state to string */
-  serialize(filterState: FilterState): string
-  /** Deserialize string to filter state */
-  deserialize(value: string): FilterState
+  /**
+   * Serialize filter state to string
+   * @param config - Caller's configuration. Only the querystring serializer
+   * uses it (maxValueLength and onParseError). The JSON and Base64
+   * serializers ignore it (see #207).
+   */
+  serialize(filterState: FilterState, config?: ParseConfig): string
+  /**
+   * Deserialize string to filter state
+   * @param config - Caller's configuration. Only the querystring serializer
+   * uses it (maxValueLength and onParseError). The JSON and Base64
+   * serializers ignore it (see #207).
+   */
+  deserialize(value: string, config?: ParseConfig): FilterState
   /** Format identifier */
   format: SerializationFormat
 }

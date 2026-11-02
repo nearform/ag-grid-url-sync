@@ -159,6 +159,28 @@ describe('Grouped Serialization', () => {
     })
   })
 
+  // A JS caller, or `{ onParseError: undefined }` spread over the defaults,
+  // can leave the handler out. The fallback must still be returned.
+  describe('without onParseError', () => {
+    const configWithoutHandler = () =>
+      createTestConfig({ onParseError: undefined as any })
+
+    it('serializeGrouped returns the empty fallback', () => {
+      const config = { ...configWithoutHandler(), format: 'unknown' as any }
+
+      expect(serializeGrouped(sampleFilterState, config)).toEqual({
+        paramName: 'grid_filters',
+        value: ''
+      })
+    })
+
+    it('deserializeGrouped returns an empty state', () => {
+      expect(
+        deserializeGrouped('invalid-json', 'json', configWithoutHandler())
+      ).toEqual({})
+    })
+  })
+
   describe('detectGroupedSerialization', () => {
     it('should detect querystring format', () => {
       const url =

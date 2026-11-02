@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 
-// formats.ts -> url-generator.ts / url-parser.ts -> grouped.ts -> formats.ts is
-// a cycle. This file has no static imports from the library, so formats.js is
-// the first module of the cycle to load, as with the public
-// `ag-grid-url-sync/serialization/formats` subpath. grouped.ts must not use
-// the serializer classes while it evaluates.
+// This file has no static imports from the library, so formats.js is the
+// first library module to load, as with the public
+// `ag-grid-url-sync/serialization/formats` subpath. If formats.ts imports a
+// module that imports grouped.ts again (#202), grouped.ts creates the
+// serializers before their classes exist and this test fails.
 describe('serialization module load order', () => {
   it('loads formats.js first and round-trips through querystring', async () => {
     vi.resetModules()

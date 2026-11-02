@@ -299,7 +299,14 @@ export function parseFilterParam(
   expectedPrefix?: string
 ): ColumnFilter {
   const { operation } = extractColumnAndOperation(param, expectedPrefix)
+  return parseFilterOperation(operation, value)
+}
 
+/**
+ * Parses a filter value for an operation that is already split from its
+ * parameter name
+ */
+function parseFilterOperation(operation: string, value: string): ColumnFilter {
   const filterOp = OPERATION_MAP[operation as keyof typeof OPERATION_MAP]
   if (!filterOp) {
     throw new InvalidFilterError(`Unsupported filter operation: ${operation}`)
@@ -450,11 +457,11 @@ export function parseIndividualParams(
 
     try {
       // Extract column name and parse the filter parameter
-      const { column: columnName } = extractColumnAndOperation(
+      const { column: columnName, operation } = extractColumnAndOperation(
         param,
         config.paramPrefix
       )
-      const filterParam = parseFilterParam(param, value, config.paramPrefix)
+      const filterParam = parseFilterOperation(operation, value)
 
       // Apply validation based on filter type
       if (filterParam.filterType === 'text') {

@@ -6,7 +6,7 @@ import { createViewStore, type GridView } from '../core/view-storage.js'
 import { DEFAULT_CONFIG } from '../core/validation.js'
 import type {
   FilterState,
-  InternalConfig,
+  ParseConfig,
   SerializationFormat,
   SerializationMode
 } from '../core/types.js'
@@ -418,10 +418,9 @@ export function useAGGridUrlSync(
     // Counting any of those as a claim takes the URL-wins branch below, writes
     // an empty model over the user's filters, and clears the stored pointer for
     // good. Only the decode separates a claim from a coincidence.
-    const probeConfig: InternalConfig = {
-      // Unread on the parsing path, and this must stay callable before the grid
-      // resolves.
-      gridApi: null as unknown as InternalConfig['gridApi'],
+    // ParseConfig leaves gridApi out: it is unread on the parsing path, and this
+    // must stay callable before the grid resolves.
+    const probeConfig: ParseConfig = {
       // Raw rather than normalised, and `??` rather than `||`: AGGridUrlSync
       // merges by spread (ag-grid-url-sync.ts:27-31) and lets an empty prefix
       // through. The probe must decide on the same terms as the real parse.

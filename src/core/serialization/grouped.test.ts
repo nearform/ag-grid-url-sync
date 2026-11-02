@@ -310,5 +310,66 @@ describe('Format Serializers', () => {
     it('should throw on invalid base64', () => {
       expect(() => serializer.deserialize('invalid-base64!')).toThrow()
     })
+
+    // #212: btoa accepts Latin-1 only
+    it.each([
+      ['CJK', '日本語'],
+      ['emoji', 'smile 😀'],
+      ['Latin-1', 'café'],
+      ['mixed', 'Zürich 東京 🚀 ñ']
+    ])('should round-trip %s text', (_label, text) => {
+      const state: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: text }
+      }
+      expect(serializer.deserialize(serializer.serialize(state))).toEqual(state)
+    })
+
+    it('should keep the same output for ASCII text', () => {
+      expect(serializer.serialize(sampleFilterState)).toBe(
+        btoa(JSON.stringify(sampleFilterState))
+      )
+    })
+
+    it('should decode old links that encoded Latin-1 text directly', () => {
+      const state: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'café ñ ©' }
+      }
+      const oldLink = btoa(JSON.stringify(state))
+      expect(serializer.deserialize(oldLink)).toEqual(state)
+    })
+
+    it('should decode old Latin-1 links whose bytes are also valid UTF-8', () => {
+      // 'Ã©' is the bytes C3 A9, which are 'é' in UTF-8
+      const state: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'Ã©' }
+      }
+      const oldLink = btoa(JSON.stringify(state))
+      expect(serializer.deserialize(oldLink)).toEqual(state)
+    })
+
+    it('should give output that atob and JSON.parse can decode', () => {
+      const state: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: '日本 😀 é' }
+      }
+      expect(JSON.parse(atob(serializer.serialize(state)))).toEqual(state)
+    })
+  })
+
+  describe('base64 format with non-Latin-1 text (#212)', () => {
+    const state: FilterState = {
+      n: { filterType: 'text', type: 'contains', filter: '日本' }
+    }
+
+    it('should serialize without an error and round-trip', () => {
+      const onParseError = vi.fn()
+      const config = createTestConfig({ format: 'base64', onParseError })
+
+      const { value } = serializeGrouped(state, config)
+
+      expect(onParseError).not.toHaveBeenCalled()
+      expect(value).not.toBe('')
+      expect(deserializeGrouped(value, 'base64', config)).toEqual(state)
+      expect(onParseError).not.toHaveBeenCalled()
+    })
   })
 })

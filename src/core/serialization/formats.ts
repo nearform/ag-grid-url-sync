@@ -102,7 +102,7 @@ export class Base64Serializer implements FormatSerializer {
 
   serialize(filterState: FilterState): string {
     const jsonString = this.jsonSerializer.serialize(filterState)
-    return btoa(jsonString)
+    return btoa(escapeNonAscii(jsonString))
   }
 
   deserialize(value: string): FilterState {
@@ -113,4 +113,22 @@ export class Base64Serializer implements FormatSerializer {
       throw new Error(`Base64 decoding failed: ${(error as Error).message}`)
     }
   }
+}
+
+/**
+ * Write each non-ASCII character in a JSON string as a `\uXXXX` escape.
+ *
+ * `btoa` accepts Latin-1 characters only, so CJK text or emoji made it throw
+ * (#212). After this step the JSON is ASCII only, and `JSON.parse` gives back
+ * the same text. Characters outside the BMP (such as emoji) are two UTF-16
+ * code units, so they become two escapes, and `JSON.parse` joins them again.
+ *
+ * The decoder does not change: `atob` then `JSON.parse`. So links made before
+ * #212 decode exactly as before, and ASCII text gives the same output.
+ */
+function escapeNonAscii(json: string): string {
+  return json.replace(
+    /[\u0080-\uffff]/g,
+    char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`
+  )
 }

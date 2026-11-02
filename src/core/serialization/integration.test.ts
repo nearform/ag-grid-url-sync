@@ -260,6 +260,23 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       const appliedFilters = mockGridApi.setFilterModel.mock.calls[0][0]
       expect(appliedFilters).toEqual(expectedAgGridFormat)
     })
+
+    it('should round-trip non-Latin-1 text through a URL (#212)', () => {
+      const filterModel = {
+        name: { filterType: 'text', type: 'contains', filter: '日本 😀' }
+      }
+      mockGridApi.getFilterModel.mockReturnValue(filterModel)
+      const urlSync = createUrlSync(mockGridApi, {
+        serialization: 'grouped',
+        format: 'base64'
+      })
+
+      const url = urlSync.generateUrl('http://example.com')
+      expect(new URL(url).searchParams.get('grid_filters')).toBeTruthy()
+
+      urlSync.applyFromUrl(url)
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(filterModel)
+    })
   })
 
   describe('Utility Methods', () => {

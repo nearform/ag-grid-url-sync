@@ -5,30 +5,49 @@ import { serializeGrouped } from './serialization/grouped.js'
 export { serializeFilters }
 
 /**
- * Helper to extract and preserve non-filter parameters from a URL
+ * Whether a param belongs to the library: a prefixed filter param or the
+ * grouped param. Both kinds are removed in both modes, so a URL never keeps
+ * filters from the other mode, which the parser could read instead of the new
+ * ones.
  */
-function getPreservedParams(
-  url: URL,
-  config: ParseConfig,
-  excludeParam?: string
-): URLSearchParams {
-  const params = new URLSearchParams()
-  for (const [key, value] of url.searchParams.entries()) {
-    if (
-      (excludeParam && key === excludeParam) ||
-      (config.paramPrefix && key.startsWith(config.paramPrefix))
-    ) {
-      continue
-    }
-    params.set(key, value)
+function isFilterParam(key: string, config: ParseConfig): boolean {
+  return (
+    key === config.groupedParam ||
+    (Boolean(config.paramPrefix) && key.startsWith(config.paramPrefix))
+  )
+}
+
+/**
+ * The host app's own params, in their original order. Repeated keys
+ * (`?tag=a&tag=b`) are all kept.
+ */
+function getHostParams(url: URL, config: ParseConfig): [string, string][] {
+  return [...url.searchParams].filter(([key]) => !isFilterParam(key, config))
+}
+
+/**
+ * Writes the params to the URL. With no params, returns the URL with no `?`
+ * and, for a root path, no trailing slash.
+ */
+function toUrlString(url: URL, params: URLSearchParams): string {
+  const queryString = params.toString()
+  if (queryString) {
+    url.search = queryString
+    return url.toString()
   }
-  return params
+
+  url.search = ''
+  const result = url.toString()
+  return result === `${url.origin}/` ? result.slice(0, -1) : result
 }
 
 /**
  * Generates a URL with the current filter state.
  * This function does not require a GridApi instance: leave `config.gridApi` out
  * (or set it to `null`) when you only need to generate URLs without a grid.
+ *
+ * The host app's own params are kept, including repeated keys. Filter params
+ * from either mode are replaced.
  */
 export function generateUrl(
   baseUrl: string,
@@ -36,77 +55,22 @@ export function generateUrl(
   config: ParseConfig
 ): string {
   const url = new URL(baseUrl)
+  const hostParams = getHostParams(url, config)
 
-  // Handle grouped serialization
   if (config.serialization === 'grouped') {
-    return generateGroupedUrl(baseUrl, filterState, config)
-  }
-
-  // Handle individual serialization (existing logic)
-  const filterParams = serializeFilters(filterState, config)
-
-  // Use shared helper to preserve non-filter parameters
-  const preservedParams = getPreservedParams(url, config)
-  for (const [key, value] of preservedParams.entries()) {
-    filterParams.append(key, value)
-  }
-
-  const queryString = filterParams.toString()
-
-  // If no filters, return the base URL without query string or trailing slash
-  if (!queryString) {
-    let result = url.toString().replace(/\?$/, '')
-    // Remove trailing slash for root paths when no query parameters
-    if (result.endsWith('/') && result === url.origin + '/') {
-      result = result.slice(0, -1)
+    // Host params first, then the grouped param
+    const params = new URLSearchParams(hostParams)
+    const groupedResult = serializeGrouped(filterState, config)
+    if (groupedResult.value) {
+      params.append(groupedResult.paramName, groupedResult.value)
     }
-    return result
+    return toUrlString(url, params)
   }
 
-  url.search = queryString
-  return url.toString()
-}
-
-/**
- * Generates a URL with grouped serialization
- */
-function generateGroupedUrl(
-  baseUrl: string,
-  filterState: FilterState,
-  config: ParseConfig
-): string {
-  const url = new URL(baseUrl)
-
-  // Serialize filters using grouped format
-  const groupedResult = serializeGrouped(filterState, config)
-
-  // Use shared helper to preserve non-filter parameters (excluding grouped param)
-  const preservedParams = getPreservedParams(url, config, config.groupedParam)
-  url.search = ''
-  for (const [key, value] of preservedParams.entries()) {
-    url.searchParams.set(key, value)
+  // Filter params first, then host params
+  const params = serializeFilters(filterState, config)
+  for (const [key, value] of hostParams) {
+    params.append(key, value)
   }
-
-  // Add the grouped parameter if there are filters
-  if (groupedResult.value) {
-    url.searchParams.set(groupedResult.paramName, groupedResult.value)
-  }
-
-  // If no filters, ensure the grouped param is removed
-  if (!groupedResult.value && url.searchParams.has(config.groupedParam)) {
-    url.searchParams.delete(config.groupedParam)
-  }
-
-  // Clean up empty query string
-  const queryString = url.searchParams.toString()
-  if (!queryString) {
-    let result = url.toString().replace(/\?$/, '')
-    // Remove trailing slash for root paths when no query parameters
-    if (result.endsWith('/') && result === url.origin + '/') {
-      result = result.slice(0, -1)
-    }
-    return result
-  }
-
-  return url.toString()
+  return toUrlString(url, params)
 }

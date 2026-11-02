@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { serializeFilters, generateUrl } from './url-generator.js'
+import { parseUrlFilters } from './url-parser.js'
 import type { FilterState, InternalConfig } from './types.js'
 import { InvalidFilterError } from './types.js'
 
@@ -89,6 +90,49 @@ describe('URL Generator', () => {
       expect(result.get('f_required_notBlank')).toBe('true')
     })
 
+    it.each([
+      ['=', 'a=b'],
+      ['&', 'a&b'],
+      ['%', '100%'],
+      ['+', 'a+b'],
+      ['space', 'first name']
+    ])('should keep a column id that contains %s', (_label, column) => {
+      const filterState: FilterState = {
+        [column]: { filterType: 'text', type: 'contains', filter: 'q' }
+      }
+      const result = serializeFilters(filterState, mockConfig)
+      expect([...result.entries()]).toEqual([[`f_${column}_contains`, 'q']])
+    })
+
+    it.each([
+      ['date', { filterType: 'date', type: 'dateAfter', filter: '' } as const],
+      ['text', { filterType: 'text', type: 'contains', filter: '' } as const]
+    ])('should skip a %s filter with an empty value', (_label, filter) => {
+      const errors = vi.fn()
+      const result = serializeFilters(
+        { col: filter },
+        { ...mockConfig, onParseError: errors }
+      )
+      expect([...result.entries()]).toEqual([])
+      expect(errors).not.toHaveBeenCalled()
+    })
+
+    it('should keep a number filter with the value 0', () => {
+      const filterState: FilterState = {
+        qty: { filterType: 'number', type: 'eq', filter: 0 }
+      }
+      const result = serializeFilters(filterState, mockConfig)
+      expect(result.get('f_qty_eq')).toBe('0')
+    })
+
+    it('should keep a text value that contains =', () => {
+      const filterState: FilterState = {
+        expr: { filterType: 'text', type: 'contains', filter: 'a=b' }
+      }
+      const result = serializeFilters(filterState, mockConfig)
+      expect(result.get('f_expr_contains')).toBe('a=b')
+    })
+
     it('should handle special characters', () => {
       const filterState: FilterState = {
         query: { filterType: 'text', type: 'contains', filter: 'test & more' }
@@ -123,6 +167,127 @@ describe('URL Generator', () => {
       )
       expect(result).toContain('page=1')
       expect(result).toContain('f_name_contains=john')
+    })
+
+    it('should round-trip column ids with special characters', () => {
+      const filterState: FilterState = {
+        'a=b': { filterType: 'text', type: 'contains', filter: 'one' },
+        'x&y': { filterType: 'number', type: 'greaterThan', filter: 2 },
+        '100%': { filterType: 'date', type: 'dateAfter', filter: '2024-01-15' }
+      }
+      const url = generateUrl('https://example.com', filterState, mockConfig)
+      expect(parseUrlFilters(url, mockConfig)).toEqual(filterState)
+    })
+
+    describe('host params', () => {
+      const filterState: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'john' }
+      }
+
+      it.each([
+        ['individual', mockConfig],
+        ['grouped', { ...mockConfig, serialization: 'grouped' as const }]
+      ])('should keep repeated host params in %s mode', (_label, config) => {
+        const result = new URL(
+          generateUrl(
+            'https://example.com/?tag=a&page=1&tag=b',
+            filterState,
+            config
+          )
+        )
+        expect(result.searchParams.getAll('tag')).toEqual(['a', 'b'])
+        expect(result.searchParams.get('page')).toBe('1')
+      })
+
+      it.each([
+        ['individual', mockConfig],
+        ['grouped', { ...mockConfig, serialization: 'grouped' as const }]
+      ])(
+        'should keep repeated host params with no filters in %s mode',
+        (_label, config) => {
+          const result = generateUrl(
+            'https://example.com/?tag=a&tag=b',
+            {},
+            config
+          )
+          expect(result).toBe('https://example.com/?tag=a&tag=b')
+        }
+      )
+    })
+
+    it.each([
+      ['individual', mockConfig],
+      ['grouped', { ...mockConfig, serialization: 'grouped' as const }]
+    ])(
+      'should remove old filter params when filters are cleared in %s mode',
+      (_label, config) => {
+        expect(
+          generateUrl(
+            'https://example.com/?f_a_contains=old&grid_filters=f_b_eq%3D1',
+            {},
+            config
+          )
+        ).toBe('https://example.com')
+      }
+    )
+
+    it('should keep the hash when filters are cleared', () => {
+      expect(
+        generateUrl(
+          'https://example.com/list?f_a_contains=old#top',
+          {},
+          mockConfig
+        )
+      ).toBe('https://example.com/list#top')
+    })
+
+    describe('stale params from the other mode', () => {
+      const newState: FilterState = {
+        b: { filterType: 'text', type: 'contains', filter: 'new' }
+      }
+
+      it('should remove the grouped param in individual mode', () => {
+        const url = generateUrl(
+          'https://example.com/?grid_filters=f_a_contains%3Dold&page=1',
+          newState,
+          mockConfig
+        )
+        expect(new URL(url).searchParams.has('grid_filters')).toBe(false)
+        expect(new URL(url).searchParams.get('page')).toBe('1')
+        expect(parseUrlFilters(url, mockConfig)).toEqual(newState)
+      })
+
+      it('should remove the grouped param in individual mode with no filters', () => {
+        const url = generateUrl(
+          'https://example.com/?grid_filters=f_a_contains%3Dold&page=1',
+          {},
+          mockConfig
+        )
+        expect(url).toBe('https://example.com/?page=1')
+      })
+
+      it('should remove a custom grouped param in individual mode', () => {
+        const config = { ...mockConfig, groupedParam: 'gf' }
+        const url = generateUrl(
+          'https://example.com/?gf=f_a_contains%3Dold',
+          newState,
+          config
+        )
+        expect(new URL(url).searchParams.has('gf')).toBe(false)
+      })
+
+      it('should remove prefixed params in grouped mode', () => {
+        const config = { ...mockConfig, serialization: 'grouped' as const }
+        const url = generateUrl(
+          'https://example.com/?f_a_contains=old&page=1',
+          newState,
+          config
+        )
+        const params = new URL(url).searchParams
+        expect(params.has('f_a_contains')).toBe(false)
+        expect(params.get('page')).toBe('1')
+        expect(parseUrlFilters(url, config)).toEqual(newState)
+      })
     })
   })
 })

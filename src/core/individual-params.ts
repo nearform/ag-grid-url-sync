@@ -28,83 +28,52 @@ const FILTER_TYPES = {
 } as const
 
 /**
- * Serializes a single column filter to URL parameter
+ * Serializes a single column filter to a `[name, value]` URL param pair, or
+ * null when the filter has nothing to write. The pair is appended to
+ * URLSearchParams as is, so any character in the column id or the value is
+ * encoded correctly.
  */
 function serializeColumnFilter(
   columnName: string,
   filter: ColumnFilter,
   paramPrefix: string
-): string {
+): [name: string, value: string] | null {
   const urlOperation =
     INTERNAL_TO_URL_OPERATION_MAP[
       filter.type as keyof typeof INTERNAL_TO_URL_OPERATION_MAP
     ]
-  if (!urlOperation) return ''
+  if (!urlOperation) return null
 
   const paramName = `${paramPrefix}${columnName}_${urlOperation}`
 
-  // Handle date range operations
-  if (filter.type === 'dateRange' && filter.filterType === FILTER_TYPES.DATE) {
-    // Type guard: ensure this is a DateColumnFilter with dateRange operation
-    if ('filterTo' in filter && filter.filterTo !== undefined) {
-      // Don't encode the comma for range values - handle this directly
-      return `${paramName}=${filter.filter},${filter.filterTo}`
-    }
-    return ''
+  // Range operations write both values, separated by a comma
+  if (filter.type === 'dateRange' || filter.type === 'inRange') {
+    return 'filterTo' in filter && filter.filterTo !== undefined
+      ? [paramName, `${filter.filter},${filter.filterTo}`]
+      : null
   }
 
-  // Handle number range operations
-  if (filter.type === 'inRange' && filter.filterType === FILTER_TYPES.NUMBER) {
-    // Type guard: ensure this is a NumberColumnFilter with inRange operation
-    if ('filterTo' in filter && filter.filterTo !== undefined) {
-      // Don't encode the comma for range values - handle this directly
-      return `${paramName}=${filter.filter},${filter.filterTo}`
-    }
-    return ''
-  }
-
-  // Handle blank operations (shared across text, number, and date)
+  // Blank operations (shared across text, number, and date) have no value
   if (filter.type === 'blank' || filter.type === 'notBlank') {
-    return `${paramName}=true`
+    return [paramName, 'true']
   }
 
-  // Handle date operations (ISO date format preservation)
-  if (filter.filterType === FILTER_TYPES.DATE) {
-    return `${paramName}=${filter.filter}` // ISO dates don't need URL encoding
+  // Number and date (ISO format) filters. An incomplete date filter in the
+  // grid has an empty value, which writes nothing.
+  if (
+    filter.filterType === FILTER_TYPES.NUMBER ||
+    filter.filterType === FILTER_TYPES.DATE
+  ) {
+    const value = String(filter.filter)
+    return value ? [paramName, value] : null
   }
 
-  // Handle number operations
-  if (filter.filterType === FILTER_TYPES.NUMBER) {
-    return `${paramName}=${filter.filter}`
-  }
-
-  // Handle text operations (existing logic)
+  // Text filters: an empty value writes nothing
   if (filter.filterType === FILTER_TYPES.TEXT && filter.filter) {
-    // Note: Validation should be done at the serializeFilters level, not here
-    return `${paramName}=${encodeURIComponent(filter.filter.toString())}`
+    return [paramName, filter.filter]
   }
 
-  return ''
-}
-
-/**
- * Helper function to append a serialized parameter to URLSearchParams
- */
-function appendSerializedParam(
-  serialized: string,
-  params: URLSearchParams,
-  isRangeOperation = false
-): void {
-  const [paramName, paramValue] = serialized.split('=')
-  if (paramName && paramValue) {
-    if (isRangeOperation) {
-      // For range operations (which contain commas), don't decode
-      params.append(paramName, paramValue)
-    } else {
-      // For regular operations, decode special characters for text filters
-      params.append(paramName, decodeURIComponent(paramValue))
-    }
-  }
+  return null
 }
 
 /**
@@ -129,38 +98,29 @@ export function serializeFilters(
     )
       continue
 
-    // Apply validation for text filters before serialization
+    // Number and date filters are already validated. Text filters are checked
+    // against maxValueLength here.
+    let checkedFilter: ColumnFilter = filter
     if (filter.filterType === FILTER_TYPES.TEXT) {
-      let validatedValue: string
       try {
-        validatedValue = validateFilterValue(filter.filter, config, filter.type)
+        checkedFilter = {
+          ...filter,
+          filter: validateFilterValue(filter.filter, config, filter.type)
+        }
       } catch (error) {
         // Skip this filter and keep the others, the same as parsing does
         config.onParseError?.(error as Error)
         continue
       }
-      const updatedFilter = { ...filter, filter: validatedValue }
-      const serialized = serializeColumnFilter(
-        column,
-        updatedFilter,
-        config.paramPrefix
-      )
-      if (serialized) {
-        appendSerializedParam(serialized, params, false) // Text filters are not range operations
-      }
-    } else {
-      // Number and date filters don't need additional validation as they're already validated
-      const serialized = serializeColumnFilter(
-        column,
-        filter,
-        config.paramPrefix
-      )
-      if (serialized) {
-        // Check if this is a range operation
-        const isRangeOp =
-          filter.type === 'inRange' || filter.type === 'dateRange'
-        appendSerializedParam(serialized, params, isRangeOp)
-      }
+    }
+
+    const param = serializeColumnFilter(
+      column,
+      checkedFilter,
+      config.paramPrefix
+    )
+    if (param) {
+      params.append(...param)
     }
   }
 

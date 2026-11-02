@@ -385,17 +385,14 @@ export function useAGGridUrlSync(
     const rawPrefix = coreOptions.paramPrefix || DEFAULT_CONFIG.paramPrefix
     const prefix = rawPrefix.endsWith('_') ? rawPrefix : `${rawPrefix}_`
 
-    const groupedParams = new Set([
-      coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
-      'grid_filters',
-      'filters'
-    ])
+    // Only the configured name, the same one the parser reads.
+    const groupedParam = coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam
 
     const search = window.location.search
     const params = new URLSearchParams(search)
     let hasFilterParam = false
     for (const key of params.keys()) {
-      if (key.startsWith(prefix) || groupedParams.has(key)) {
+      if (key.startsWith(prefix) || key === groupedParam) {
         hasFilterParam = true
         break
       }
@@ -405,11 +402,9 @@ export function useAGGridUrlSync(
 
     // Presence is not a claim, for either kind.
     //
-    // Grouped: 'filters' and 'grid_filters' are guesses at what a payload might
-    // be called, so a host app's own param answers to one; a value under an
-    // older format also stops decoding. detectGroupedSerialization cannot tell
-    // these from a payload, because detectFormat falls back to 'querystring' for
-    // anything unrecognised (serialization/grouped.ts:139-151).
+    // Grouped: a value that does not decode with the configured format (an
+    // older format, or a value the host app wrote under the same name) gives
+    // no filters.
     //
     // Prefixed: the parser wraps each param in a try and continues past any that
     // throws (url-parser.ts:374-381), so ?f_name_regex=abc (no such operation)

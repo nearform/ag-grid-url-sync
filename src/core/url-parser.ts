@@ -1,10 +1,7 @@
 import type { FilterState, ParseConfig } from './types.js'
 import { InvalidURLError } from './types.js'
 import { parseFilterParam, parseIndividualParams } from './individual-params.js'
-import {
-  detectGroupedSerialization,
-  deserializeGrouped
-} from './serialization/grouped.js'
+import { deserializeGrouped } from './serialization/grouped.js'
 
 export { parseFilterParam }
 
@@ -88,6 +85,11 @@ function toUrl(input: string): URL {
  * string (see {@link toUrl}). A param that is not valid is skipped and reported
  * through `onParseError`.
  *
+ * If the URL has a non-empty `config.groupedParam`, it is decoded with
+ * `config.format` and the prefixed params are not read. This works in both
+ * serialization modes, so a grouped link opens in an app in individual mode
+ * when the param name and format match.
+ *
  * @throws InvalidURLError if the input is an absolute URL that is not valid,
  *   or a host with no scheme
  */
@@ -99,24 +101,13 @@ export function parseUrlFilters(url: string, config: ParseConfig): FilterState {
 
   const urlObj = toUrl(url.trim())
 
-  // First, try to detect grouped serialization
-  const DEFAULT_GROUPED_PARAMS = ['grid_filters', 'filters']
-  const groupedDetection = detectGroupedSerialization(
-    urlObj.href,
-    [config.groupedParam, ...DEFAULT_GROUPED_PARAMS] // Common parameter names to check
-  )
-
-  if (
-    groupedDetection.isGrouped &&
-    groupedDetection.value &&
-    groupedDetection.format
-  ) {
-    // Handle grouped serialization
-    return deserializeGrouped(
-      groupedDetection.value,
-      groupedDetection.format,
-      config
-    )
+  // A non-empty grouped param wins over prefixed params. Only the configured
+  // name is read, and it is decoded with the configured format: a host app's
+  // own param (for example `filters`) is never taken for grouped filters, and
+  // the format is not guessed.
+  const groupedValue = urlObj.searchParams.get(config.groupedParam)
+  if (groupedValue) {
+    return deserializeGrouped(groupedValue, config.format, config)
   }
 
   // Handle individual serialization

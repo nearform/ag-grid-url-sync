@@ -24,10 +24,17 @@ export class AGGridUrlSync {
    * @param config - Optional configuration options
    */
   constructor(gridApi: GridApi, config: AGGridUrlSyncConfig = {}) {
+    // Keys set to undefined (for example `format: props.format` when the prop
+    // is not set) keep their default. A plain spread would replace the
+    // default with undefined.
+    const definedConfig = Object.fromEntries(
+      Object.entries(config).filter(([, value]) => value !== undefined)
+    ) as AGGridUrlSyncConfig
+
     this.config = {
       gridApi,
       ...DEFAULT_CONFIG,
-      ...config
+      ...definedConfig
     }
   }
 

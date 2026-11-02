@@ -36,6 +36,7 @@
     ".github",
     "**/*.test.ts",
     "**/*.test.tsx",
+    "**/*.test-d.ts",
     "**/*.test.js",
     "**/test-setup.ts",
     "**/test-helpers.ts"

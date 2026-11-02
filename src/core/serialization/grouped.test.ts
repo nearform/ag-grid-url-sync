@@ -12,6 +12,7 @@ import {
   Base64Serializer
 } from './formats.js'
 import type { FilterState, InternalConfig } from '../types.js'
+import { InvalidSerializationError, InvalidFilterError } from '../types.js'
 
 // Mock AG Grid API
 const mockGridApi = {
@@ -372,4 +373,79 @@ describe('Format Serializers', () => {
       expect(onParseError).not.toHaveBeenCalled()
     })
   })
+})
+
+describe('maxValueLength in json and base64 formats (#213)', () => {
+  const long = 'x'.repeat(300)
+  const state: FilterState = {
+    big: { filterType: 'text', type: 'contains', filter: long },
+    ok: { filterType: 'text', type: 'contains', filter: 'short' },
+    blank: { filterType: 'text', type: 'blank', filter: '' },
+    age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+  }
+  const decodeRaw = (format: 'json' | 'base64', v: string) =>
+    JSON.parse(format === 'base64' ? atob(v) : v)
+
+  for (const format of ['json', 'base64'] as const) {
+    describe(format, () => {
+      it('drops and reports over-length values on generate', () => {
+        const onParseError = vi.fn()
+        const config = createTestConfig({ format, onParseError })
+        const { value } = serializeGrouped(state, config)
+        const raw = decodeRaw(format, value)
+        expect(raw.big).toBeUndefined()
+        expect(Object.keys(raw)).toEqual(['ok', 'blank', 'age'])
+        expect(onParseError).toHaveBeenCalledTimes(1)
+        const err = onParseError.mock.calls[0][0]
+        expect(err).toBeInstanceOf(InvalidSerializationError)
+        expect(err.cause).toBeInstanceOf(InvalidFilterError)
+      })
+
+      it('drops and reports over-length values on parse', () => {
+        const onParseError = vi.fn()
+        const serializer = getFormatSerializer(format)
+        const value = serializer.serialize(
+          { big: state.big },
+          createTestConfig({ maxValueLength: 500 })
+        )
+        const result = deserializeGrouped(
+          value,
+          format,
+          createTestConfig({ format, onParseError })
+        )
+        expect(result).toEqual({})
+        expect(onParseError).toHaveBeenCalledTimes(1)
+        expect(onParseError.mock.calls[0][0]).toBeInstanceOf(
+          InvalidSerializationError
+        )
+      })
+
+      it('round-trips in-range values without errors', () => {
+        const onParseError = vi.fn()
+        const config = createTestConfig({ format, onParseError })
+        const { ok, blank, age } = state
+        const { value } = serializeGrouped({ ok, blank, age }, config)
+        expect(deserializeGrouped(value, format, config)).toEqual({
+          ok,
+          blank,
+          age
+        })
+        expect(onParseError).not.toHaveBeenCalled()
+      })
+
+      it('keeps long values when maxValueLength is higher', () => {
+        const onParseError = vi.fn()
+        const config = createTestConfig({
+          format,
+          maxValueLength: 500,
+          onParseError
+        })
+        const { value } = serializeGrouped({ big: state.big }, config)
+        expect(deserializeGrouped(value, format, config)).toEqual({
+          big: state.big
+        })
+        expect(onParseError).not.toHaveBeenCalled()
+      })
+    })
+  }
 })

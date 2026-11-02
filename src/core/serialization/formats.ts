@@ -9,7 +9,64 @@ import {
   parseIndividualParams,
   serializeFilters
 } from '../individual-params.js'
-import { DEFAULT_CONFIG, isValidColumnFilter } from '../validation.js'
+import {
+  DEFAULT_CONFIG,
+  isValidColumnFilter,
+  validateFilterValue
+} from '../validation.js'
+
+/**
+ * Returns a copy of the filter state with every text value over
+ * `maxValueLength` removed. Each dropped filter is reported through
+ * `config.onParseError`, wrapped in `InvalidSerializationError(format, cause)`
+ * like the grouped querystring format (#213, #207). Non-text filters and
+ * in-range values are untouched.
+ */
+function dropOverLengthTextValues(
+  filterState: FilterState,
+  config: ParseConfig | undefined,
+  format: SerializationFormat
+): FilterState {
+  const cfg = config ?? DEFAULT_CONFIG
+  const result: FilterState = {}
+  for (const [column, filter] of Object.entries(filterState)) {
+    if (filter.filterType === 'text') {
+      try {
+        validateFilterValue(filter.filter, cfg, filter.type)
+      } catch (error) {
+        cfg.onParseError?.(
+          new InvalidSerializationError(format, error as Error)
+        )
+        continue
+      }
+    }
+    result[column] = filter
+  }
+  return result
+}
+
+/** Parse JSON and validate its structure. Does no length filtering. */
+function parseAndValidateJson(value: string): FilterState {
+  try {
+    const parsed = JSON.parse(value)
+
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error('Invalid JSON: must be an object')
+    }
+
+    for (const [columnId, filter] of Object.entries(parsed)) {
+      if (!isValidColumnFilter(filter)) {
+        throw new Error(
+          `Invalid JSON: filter for column ${columnId} is not a valid filter object`
+        )
+      }
+    }
+
+    return parsed as FilterState
+  } catch (error) {
+    throw new Error(`JSON parsing failed: ${(error as Error).message}`)
+  }
+}
 
 /**
  * QueryString format serializer
@@ -59,36 +116,12 @@ function innerConfig(config?: ParseConfig): ParseConfig {
 export class JsonSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'json'
 
-  serialize(filterState: FilterState): string {
-    return JSON.stringify(filterState)
+  serialize(filterState: FilterState, config?: ParseConfig): string {
+    return JSON.stringify(dropOverLengthTextValues(filterState, config, 'json'))
   }
 
-  deserialize(value: string): FilterState {
-    try {
-      const parsed = JSON.parse(value)
-
-      // Validate that it's a proper FilterState object
-      if (typeof parsed !== 'object' || parsed === null) {
-        throw new Error('Invalid JSON: must be an object')
-      }
-
-      // Basic validation of the structure
-      for (const [columnId, filter] of Object.entries(parsed)) {
-        if (typeof columnId !== 'string') {
-          throw new Error('Invalid JSON: column IDs must be strings')
-        }
-
-        if (!isValidColumnFilter(filter)) {
-          throw new Error(
-            `Invalid JSON: filter for column ${columnId} is not a valid filter object`
-          )
-        }
-      }
-
-      return parsed as FilterState
-    } catch (error) {
-      throw new Error(`JSON parsing failed: ${(error as Error).message}`)
-    }
+  deserialize(value: string, config?: ParseConfig): FilterState {
+    return dropOverLengthTextValues(parseAndValidateJson(value), config, 'json')
   }
 }
 
@@ -98,17 +131,20 @@ export class JsonSerializer implements FormatSerializer {
  */
 export class Base64Serializer implements FormatSerializer {
   readonly format: SerializationFormat = 'base64'
-  private jsonSerializer = new JsonSerializer()
 
-  serialize(filterState: FilterState): string {
-    const jsonString = this.jsonSerializer.serialize(filterState)
-    return btoa(escapeNonAscii(jsonString))
+  serialize(filterState: FilterState, config?: ParseConfig): string {
+    const filtered = dropOverLengthTextValues(filterState, config, 'base64')
+    return btoa(escapeNonAscii(JSON.stringify(filtered)))
   }
 
-  deserialize(value: string): FilterState {
+  deserialize(value: string, config?: ParseConfig): FilterState {
     try {
       const decoded = atob(value)
-      return this.jsonSerializer.deserialize(decoded)
+      return dropOverLengthTextValues(
+        parseAndValidateJson(decoded),
+        config,
+        'base64'
+      )
     } catch (error) {
       throw new Error(`Base64 decoding failed: ${(error as Error).message}`)
     }

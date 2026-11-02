@@ -3,37 +3,27 @@ import type {
   SerializationFormat,
   FormatSerializer
 } from '../types.js'
-import { generateUrl } from '../url-generator.js'
-import { parseUrlFilters } from '../url-parser.js'
+import {
+  parseIndividualParams,
+  serializeFilters
+} from '../individual-params.js'
 import { DEFAULT_CONFIG, isValidColumnFilter } from '../validation.js'
 
 /**
  * QueryString format serializer
- * Reuses existing URL generation logic but groups into single parameter
+ * Writes the individual filter parameters as one query string value
  */
 export class QueryStringSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'querystring'
 
   serialize(filterState: FilterState): string {
-    // Generate URL with individual parameters. This uses DEFAULT_CONFIG, not
-    // the caller's config (see #201).
-    const tempUrl = generateUrl(
-      'http://example.com',
-      filterState,
-      DEFAULT_CONFIG
-    )
-    const urlObj = new URL(tempUrl)
-
-    // Extract just the search params (without the ?)
-    return urlObj.search.slice(1)
+    // This uses DEFAULT_CONFIG, not the caller's config (see #201)
+    return serializeFilters(filterState, DEFAULT_CONFIG).toString()
   }
 
   deserialize(value: string): FilterState {
-    // Create a temporary URL with the query string
-    const tempUrl = `http://example.com?${value}`
-
-    // Parse with DEFAULT_CONFIG, not the caller's config (see #201)
-    return parseUrlFilters(tempUrl, DEFAULT_CONFIG)
+    // This uses DEFAULT_CONFIG, not the caller's config (see #201)
+    return parseIndividualParams(new URLSearchParams(value), DEFAULT_CONFIG)
   }
 }
 

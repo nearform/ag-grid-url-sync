@@ -208,6 +208,17 @@ function getFiltersFromUrl(url: string): FilterState {
 }
 ```
 
+`parseUrlFilters` accepts these input forms:
+
+| Input form       | Example                                   |
+| ---------------- | ----------------------------------------- |
+| Absolute URL     | `https://example.com/users?f_name_eq=bob` |
+| Relative path    | `/users?f_name_eq=bob`                    |
+| Query string     | `?f_name_eq=bob`                          |
+| Raw query string | `f_name_eq=bob`                           |
+
+A param that is not valid is skipped and sent to `onParseError`. Only an absolute URL that is not valid (for example `http://`) throws `InvalidURLError`.
+
 #### Example: Custom URL Generator
 
 ```typescript

@@ -251,7 +251,9 @@ export interface DateColumnFilter extends BaseColumnFilter<DateFilterOperation> 
  * Union type for all possible column filters
  */
 export type ColumnFilter =
-  TextColumnFilter | NumberColumnFilter | DateColumnFilter
+  | TextColumnFilter
+  | NumberColumnFilter
+  | DateColumnFilter
 
 /**
  * Complete filter state mapping column IDs to their filters

@@ -26,7 +26,7 @@ export default function BasicGrid() {
   const [viewName, setViewName] = useState<string>('')
 
   const showMessage = useCallback(
-    (msg: string, type: 'success' | 'info' | 'error' = 'info') => {
+    (msg: string, _type: 'success' | 'info' | 'error' = 'info') => {
       setMessage(msg)
       setTimeout(() => setMessage(''), 3000)
     },
@@ -68,7 +68,6 @@ export default function BasicGrid() {
     isReady,
     currentUrl,
     getFiltersAsFormat,
-    getCurrentFormat,
     applyFilters,
     views,
     activeViewId,
@@ -394,7 +393,7 @@ export default function BasicGrid() {
       ]
 
       showMessage(`Format comparison: ${results.join(', ')}`, 'info')
-    } catch (error) {
+    } catch {
       showMessage('Format test failed', 'error')
     }
   }, [getFiltersAsFormat, config.mode, showMessage])

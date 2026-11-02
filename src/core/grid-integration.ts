@@ -100,7 +100,8 @@ export function getFilterModel(config: InternalConfig): FilterState {
         // AG Grid uses the same names for number and date operations, so the
         // lookup key is the filter type and the AG Grid name
         const internalOperation = operatorFromAgGrid('number', type)?.id as
-          NumberFilterOperation | undefined
+          | NumberFilterOperation
+          | undefined
 
         // If the operation type is not recognized, report the error
         if (!internalOperation) {
@@ -141,7 +142,8 @@ export function getFilterModel(config: InternalConfig): FilterState {
         // AG Grid uses generic names for date operations (`lessThan` is
         // `dateBefore`), so the lookup key is the filter type and the name
         const mappedOperation = operatorFromAgGrid('date', type)?.id as
-          DateFilterOperation | undefined
+          | DateFilterOperation
+          | undefined
 
         if (mappedOperation) {
           const dateFilter: ColumnFilter = {

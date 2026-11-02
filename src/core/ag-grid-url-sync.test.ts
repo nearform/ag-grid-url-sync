@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { AGGridUrlSync, createUrlSync } from './ag-grid-url-sync.js'
+import { AGGridUrlSync } from './ag-grid-url-sync.js'
 import type { GridApi } from 'ag-grid-community'
 import type { AGGridUrlSyncConfig, FilterState } from './types.js'
 

@@ -314,37 +314,31 @@ describe('URL round-trip properties (#216)', () => {
     // Known failure: generateUrl writes a number outside the safe integer
     // range, and the parser rejects it, so generate and parse disagree.
     // Fixed by #238.
-    it.fails(
-      'round-trips numbers outside the safe integer range (#238)',
-      () => {
-        fc.assert(
-          fc.property(columnId, unsafeNumberValue, baseUrl, (id, n, base) => {
-            const state: FilterState = {
-              [id]: { filterType: 'number', type: 'greaterThan', filter: n }
-            }
-            expect(roundTrip(state, base.url, config)).toEqual(state)
-          })
-        )
-      }
-    )
+    it.fails('round-trips numbers outside the safe integer range (#238)', () => {
+      fc.assert(
+        fc.property(columnId, unsafeNumberValue, baseUrl, (id, n, base) => {
+          const state: FilterState = {
+            [id]: { filterType: 'number', type: 'greaterThan', filter: n }
+          }
+          expect(roundTrip(state, base.url, config)).toEqual(state)
+        })
+      )
+    })
 
     // Known failure: the prefixed format does not record the filter type, so
     // the parser guesses it from the value. Fixed by #224.
-    it.fails(
-      'round-trips every filter type, also for shared operations (#224)',
-      () => {
-        fc.assert(
-          fc.property(
-            filterState(typeLosingFilter).filter(
-              state => Object.keys(state).length > 0
-            ),
-            baseUrl,
-            (state, base) => {
-              expect(roundTrip(state, base.url, config)).toEqual(state)
-            }
-          )
+    it.fails('round-trips every filter type, also for shared operations (#224)', () => {
+      fc.assert(
+        fc.property(
+          filterState(typeLosingFilter).filter(
+            state => Object.keys(state).length > 0
+          ),
+          baseUrl,
+          (state, base) => {
+            expect(roundTrip(state, base.url, config)).toEqual(state)
+          }
         )
-      }
-    )
+      )
+    })
   })
 })

@@ -307,6 +307,7 @@ export function useAGGridUrlSync(
   // applyFromUrl() against a filterless URL clears the grid. A store that has
   // gone away has no namespace left to apply.
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- syncs from the view store (localStorage); #222 moves this to useSyncExternalStore
     syncViewsFromStore()
     commitActiveViewId(null)
     if (viewStore) {
@@ -346,6 +347,7 @@ export function useAGGridUrlSync(
       if (!urlSyncRef.current) {
         try {
           urlSyncRef.current = new AGGridUrlSync(gridApi, coreOptions)
+          // oxlint-disable-next-line react/set-state-in-effect -- marks the hook ready once the grid API exists; #222 moves this to useSyncExternalStore
           setIsReady(true)
           lastGridApiRef.current = gridApi
         } catch (error) {
@@ -480,6 +482,7 @@ export function useAGGridUrlSync(
           // The URL won, so no saved view is active. Clear the stored pointer
           // too, or the next mount would restore a view the user never chose
           // here. State first, same as loadView.
+          // oxlint-disable-next-line react/set-state-in-effect -- the URL won over the saved view, so the active marker clears; #222 moves this to useSyncExternalStore
           commitActiveViewId(null)
           try {
             // No-ops in the store when the pointer is already null, so a

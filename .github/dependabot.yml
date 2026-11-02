@@ -12,7 +12,7 @@ updates:
       vitest:
         patterns:
           - vitest
-          - "@vitest/*"
+          - '@vitest/*'
   - package-ecosystem: github-actions
     directory: /
     schedule:

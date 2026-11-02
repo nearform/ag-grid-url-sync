@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { AGGridUrlSync, createUrlSync } from '../ag-grid-url-sync.js'
+import { createUrlSync } from '../ag-grid-url-sync.js'
 import type { FilterState } from '../types.js'
 
 // Mock AG Grid API with multi-type filters to test the fix
@@ -54,26 +54,6 @@ const sampleFilterState: FilterState = {
 
 // Expected AG Grid format when filters are applied
 const expectedAgGridFormat = {
-  name: {
-    filterType: 'text',
-    type: 'contains',
-    filter: 'john'
-  },
-  age: {
-    filterType: 'number',
-    type: 'greaterThan',
-    filter: 25
-  },
-  created: {
-    filterType: 'date',
-    type: 'greaterThan', // AG Grid format
-    dateFrom: '2024-01-01',
-    dateTo: null
-  }
-}
-
-// Expected AG Grid format after conversion from our internal format
-const expectedAGGridFilterState = {
   name: {
     filterType: 'text',
     type: 'contains',

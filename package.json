@@ -92,8 +92,10 @@
     }
   },
   "scripts": {
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -103,7 +105,7 @@
     "validate": "npm run size-check && npm run type-check",
     "size-check": "size-limit",
     "type-check": "tsc --noEmit --strict && tsc -p tsconfig.typecheck.json",
-    "ci": "npm run build && npm run check-exports && npm run lint && npm run test",
+    "ci": "npm run build && npm run check-exports && npm run lint && npm run format:check && npm run test",
     "check-exports": "attw --pack . --ignore-rules=cjs-resolves-to-esm",
     "prepare": "husky"
   },
@@ -134,7 +136,6 @@
     "@arethetypeswrong/cli": "^0.18.2",
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
-    "@eslint/js": "^10.0.1",
     "@size-limit/esbuild": "^14.0.0",
     "@size-limit/file": "^14.0.0",
     "@testing-library/react": "^16.3.0",
@@ -143,15 +144,12 @@
     "@types/react": "^19.2.1",
     "@vitest/coverage-v8": "^5.0.1",
     "ag-grid-community": "^36.1.0",
-    "eslint": "^10.9.0",
-    "eslint-config-prettier": "^10.1.5",
-    "eslint-plugin-prettier": "^5.5.0",
     "fast-check": "^4.10.2",
-    "globals": "^17.11.0",
     "husky": "^9.1.7",
     "jsdom": "^30.0.1",
     "lint-staged": "^17.4.1",
-    "prettier": "^3.6.0",
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "rimraf": "^6.0.1",
@@ -173,7 +171,11 @@
     }
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx}": "eslint --cache --fix"
+    "*.{js,jsx,ts,tsx,mjs,cjs}": [
+      "oxlint --fix",
+      "oxfmt --no-error-on-unmatched-pattern"
+    ],
+    "*.{json,jsonc,md,yml,yaml}": "oxfmt --no-error-on-unmatched-pattern"
   },
   "size-limit": [
     {

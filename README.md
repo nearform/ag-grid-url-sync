@@ -615,19 +615,19 @@ interface UseAGGridUrlSyncOptions {
 
 #### Hook Return Values
 
-| Property             | Type                             | Description                                     |
-| -------------------- | -------------------------------- | ----------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------- |
-| `shareUrl`           | `(baseUrl?: string) => string`   | Generate shareable URL with current filters     |
-| `getQueryParams`     | `() => string`                   | Get filter state as query parameters            |
-| `applyUrlFilters`    | `(url?: string) => void`         | Apply filters from URL to grid                  |
-| `clearFilters`       | `() => void`                     | Clear all text filters                          |
-| `isReady`            | `boolean`                        | Whether grid API is available and hook is ready |
-| `currentUrl`         | `string`                         | Current URL with filters applied                |
-| `hasFilters`         | `boolean`                        | Whether the grid has supported filters          |
-| `parseUrlFilters`    | `(url: string) => FilterState`   | Parse filters from URL without applying         |
-| `applyFilters`       | `(filters: FilterState) => void` | Apply filter state object to grid               |
-| `getFiltersAsFormat` | `(format: 'querystring'          | 'json'                                          | 'base64') => string`                                       | Serialize filters to any supported format (for sharing/export) |
-| `getCurrentFormat`   | `() => 'individual'              | 'grouped'`                                      | Get the current serialization mode (individual or grouped) |
+| Property             | Type                                                      | Description                                                    |
+| -------------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
+| `shareUrl`           | `(baseUrl?: string) => string`                            | Generate shareable URL with current filters                    |
+| `getQueryParams`     | `() => string`                                            | Get filter state as query parameters                           |
+| `applyUrlFilters`    | `(url?: string) => void`                                  | Apply filters from URL to grid                                 |
+| `clearFilters`       | `() => void`                                              | Clear all text filters                                         |
+| `isReady`            | `boolean`                                                 | Whether grid API is available and hook is ready                |
+| `currentUrl`         | `string`                                                  | Current URL with filters applied                               |
+| `hasFilters`         | `boolean`                                                 | Whether the grid has supported filters                         |
+| `parseUrlFilters`    | `(url: string) => FilterState`                            | Parse filters from URL without applying                        |
+| `applyFilters`       | `(filters: FilterState) => void`                          | Apply filter state object to grid                              |
+| `getFiltersAsFormat` | `(format: 'querystring' \| 'json' \| 'base64') => string` | Serialize filters to any supported format (for sharing/export) |
+| `getCurrentFormat`   | `() => 'individual' \| 'grouped'`                         | Get the current serialization mode (individual or grouped)     |
 
 Saved views (inert unless `storageKey` is set):
 

@@ -65,14 +65,10 @@ export function validateFilterValue(
  * @returns Validation result
  */
 export function validateNumberFilter(value: number): ValidationResult {
-  // Basic number validation
+  // Every finite number is valid. There is no safe-integer limit: String(n)
+  // and parseFloat give back the same number, so a URL keeps it exactly (#238)
   if (!Number.isFinite(value)) {
     return { valid: false, error: 'Filter value must be a finite number' }
-  }
-
-  // Range validation for precision
-  if (Math.abs(value) > Number.MAX_SAFE_INTEGER) {
-    return { valid: false, error: 'Number value exceeds safe integer range' }
   }
 
   return { valid: true }

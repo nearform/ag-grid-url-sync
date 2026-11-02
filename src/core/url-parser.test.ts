@@ -147,6 +147,16 @@ describe('URL Parser', () => {
       }
     )
 
+    it('should parse numbers outside the safe integer range (#238)', () => {
+      expect(
+        parseUrlFilters('?f_a_gt=9007199254740992&f_b_eq=1e%2B21', mockConfig)
+      ).toEqual({
+        a: { filterType: 'number', type: 'greaterThan', filter: 2 ** 53 },
+        b: { filterType: 'number', type: 'eq', filter: 1e21 }
+      })
+      expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
     it('should keep a value that only starts with a number as text (#214)', () => {
       expect(parseUrlFilters('?f_name_eq=3M', mockConfig)).toEqual({
         name: { filterType: 'text', type: 'eq', filter: '3M' }

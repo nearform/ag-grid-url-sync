@@ -69,12 +69,18 @@ describe('Validation Functions', () => {
       })
     })
 
-    it('should reject numbers exceeding safe integer range', () => {
-      const tooBig = Number.MAX_SAFE_INTEGER + 1
-      expect(validateNumberFilter(tooBig)).toEqual({
-        valid: false,
-        error: 'Number value exceeds safe integer range'
-      })
+    // #238: the URL keeps every finite number exactly, so there is no
+    // safe-integer limit
+    it('should accept finite numbers outside the safe integer range', () => {
+      for (const n of [
+        Number.MAX_SAFE_INTEGER + 1,
+        -Number.MAX_SAFE_INTEGER - 1,
+        1e21,
+        Number.MAX_VALUE,
+        Number.MIN_VALUE
+      ]) {
+        expect(validateNumberFilter(n)).toEqual({ valid: true })
+      }
     })
   })
 

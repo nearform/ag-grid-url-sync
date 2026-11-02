@@ -89,19 +89,14 @@ const unambiguousTextValue = textValue.filter(
 )
 
 const numberValue = fc
-  .double({
-    // The parser rejects numbers outside the safe integer range
-    min: -Number.MAX_SAFE_INTEGER,
-    max: Number.MAX_SAFE_INTEGER,
-    noNaN: true
-  })
+  .double({ noNaN: true, noDefaultInfinity: true })
   // -0 writes as "0" in a URL, so it cannot come back as -0
   .filter(n => !Object.is(n, -0))
 
-/** Finite numbers outside the safe integer range */
-const unsafeNumberValue = fc
-  .double({ noNaN: true, noDefaultInfinity: true })
-  .filter(n => Math.abs(n) > Number.MAX_SAFE_INTEGER)
+/** Finite numbers outside the safe integer range (#238) */
+const unsafeNumberValue = numberValue.filter(
+  n => Math.abs(n) > Number.MAX_SAFE_INTEGER
+)
 
 const dateValue = fc
   .date({
@@ -289,6 +284,20 @@ describe('URL round-trip properties (#216)', () => {
       )
     })
 
+    // String(n) and parseFloat give back the same double, so every finite
+    // number round-trips (#238)
+    it('round-trips numbers outside the safe integer range (#238)', () => {
+      fc.assert(
+        fc.property(columnId, unsafeNumberValue, baseUrl, (id, n, base) => {
+          const state: FilterState = {
+            [id]: { filterType: 'number', type: 'greaterThan', filter: n }
+          }
+
+          expect(roundTrip(state, base.url, config)).toEqual(state)
+        })
+      )
+    })
+
     it('keeps the host params exactly', () => {
       fc.assert(
         fc.property(filterState(unambiguousFilter), baseUrl, (state, base) => {
@@ -319,21 +328,6 @@ describe('URL round-trip properties (#216)', () => {
   })
 
   describe.each(UNTYPED_MODES)('$name', ({ config }) => {
-    // Known failure: generateUrl writes a number outside the safe integer
-    // range, and the parser rejects it, so generate and parse disagree.
-    // Fixed by #238.
-    it.fails('round-trips numbers outside the safe integer range (#238)', () => {
-      fc.assert(
-        fc.property(columnId, unsafeNumberValue, baseUrl, (id, n, base) => {
-          const state: FilterState = {
-            [id]: { filterType: 'number', type: 'greaterThan', filter: n }
-          }
-
-          expect(roundTrip(state, base.url, config)).toEqual(state)
-        })
-      )
-    })
-
     // Known failure: the prefixed format does not record the filter type, so
     // the parser guesses it from the value. Fixed by #224.
     it.fails('round-trips every filter type, also for shared operations (#224)', () => {

@@ -460,10 +460,16 @@ export interface GroupedSerializationResult {
  * Format-specific serializer interface
  */
 export interface FormatSerializer {
-  /** Serialize filter state to string */
-  serialize(filterState: FilterState): string
-  /** Deserialize string to filter state */
-  deserialize(value: string): FilterState
+  /**
+   * Serialize filter state to string
+   * @param config - Caller's configuration, for validation and error handling
+   */
+  serialize(filterState: FilterState, config?: ParseConfig): string
+  /**
+   * Deserialize string to filter state
+   * @param config - Caller's configuration, for validation and error handling
+   */
+  deserialize(value: string, config?: ParseConfig): FilterState
   /** Format identifier */
   format: SerializationFormat
 }

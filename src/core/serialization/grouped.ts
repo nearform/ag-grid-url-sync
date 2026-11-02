@@ -37,7 +37,7 @@ export function serializeGrouped(
       throw new Error(`Unknown serialization format: ${config.format}`)
     }
 
-    const value = serializer.serialize(filterState)
+    const value = serializer.serialize(filterState, config)
 
     return {
       paramName: config.groupedParam,
@@ -76,7 +76,7 @@ export function deserializeGrouped(
       throw new Error(`Unknown serialization format: ${format}`)
     }
 
-    return serializer.deserialize(value)
+    return serializer.deserialize(value, config)
   } catch (error) {
     const serializationError = new InvalidSerializationError(
       format,

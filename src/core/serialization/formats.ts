@@ -1,7 +1,8 @@
 import type {
   FilterState,
   SerializationFormat,
-  FormatSerializer
+  FormatSerializer,
+  ParseConfig
 } from '../types.js'
 import {
   parseIndividualParams,
@@ -16,14 +17,31 @@ import { DEFAULT_CONFIG, isValidColumnFilter } from '../validation.js'
 export class QueryStringSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'querystring'
 
-  serialize(filterState: FilterState): string {
-    // This uses DEFAULT_CONFIG, not the caller's config (see #201)
-    return serializeFilters(filterState, DEFAULT_CONFIG).toString()
+  serialize(filterState: FilterState, config?: ParseConfig): string {
+    return serializeFilters(filterState, innerConfig(config)).toString()
   }
 
-  deserialize(value: string): FilterState {
-    // This uses DEFAULT_CONFIG, not the caller's config (see #201)
-    return parseIndividualParams(new URLSearchParams(value), DEFAULT_CONFIG)
+  deserialize(value: string, config?: ParseConfig): FilterState {
+    return parseIndividualParams(
+      new URLSearchParams(value),
+      innerConfig(config)
+    )
+  }
+}
+
+/**
+ * Config for the parameters inside a grouped querystring value.
+ *
+ * Takes the caller's validation and error handling. Keeps the default
+ * parameter prefix, so grouped URLs do not change when the caller's prefix
+ * changes, and URLs that already exist still parse.
+ */
+function innerConfig(config?: ParseConfig): ParseConfig {
+  if (!config) return DEFAULT_CONFIG
+  return {
+    ...DEFAULT_CONFIG,
+    maxValueLength: config.maxValueLength,
+    onParseError: config.onParseError
   }
 }
 

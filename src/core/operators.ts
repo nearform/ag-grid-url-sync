@@ -54,27 +54,50 @@ export const OPERATORS = [
 export type Operator = (typeof OPERATORS)[number]
 export type OperatorId = Operator['id']
 
-/** Ids of the operations that a filter type supports, shared ones included */
-export type OperationsFor<T extends OperatorFilterType> =
-  Operator extends infer O
-    ? O extends { id: infer I; types: readonly (infer U)[] }
-      ? T extends U
-        ? I
-        : never
-      : never
+/**
+ * The ids of the rows in `Ops` that match `Match`, in table order, as a tuple
+ * with a literal type at each index
+ */
+type IdsWhere<Ops extends readonly unknown[], Match> = Ops extends readonly [
+  infer Head,
+  ...infer Rest
+]
+  ? Head extends Match
+    ? Head extends { id: infer Id }
+      ? [Id, ...IdsWhere<Rest, Match>]
+      : IdsWhere<Rest, Match>
+    : IdsWhere<Rest, Match>
+  : []
+
+/** Ids of the operations that only one filter type supports, as a tuple */
+export type OperationsOnlyForTuple<T extends OperatorFilterType> = Readonly<
+  IdsWhere<typeof OPERATORS, { types: readonly [T] }>
+>
+
+/** Ids of the operations that every filter type supports, as a tuple */
+export type SharedOperationsTuple = Readonly<
+  IdsWhere<typeof OPERATORS, { types: typeof ALL_TYPES }>
+>
+
+/**
+ * Ids of the operations that a filter type supports, as a tuple: its own
+ * operations first, then the shared ones
+ */
+export type OperationsForTuple<T extends OperatorFilterType> =
+  OperationsOnlyForTuple<T> extends infer Own extends readonly unknown[]
+    ? readonly [...Own, ...SharedOperationsTuple]
     : never
 
+/** Ids of the operations that a filter type supports, shared ones included */
+export type OperationsFor<T extends OperatorFilterType> =
+  OperationsForTuple<T>[number]
+
 /** Ids of the operations that only one filter type supports */
-export type OperationsOnlyFor<T extends OperatorFilterType> = Extract<
-  Operator,
-  { types: readonly [T] }
->['id']
+export type OperationsOnlyFor<T extends OperatorFilterType> =
+  OperationsOnlyForTuple<T>[number]
 
 /** Ids of the operations that every filter type supports */
-export type SharedOperationId = Extract<
-  Operator,
-  { types: typeof ALL_TYPES }
->['id']
+export type SharedOperationId = SharedOperationsTuple[number]
 
 const isShared = (op: Operator): boolean => op.types.length === ALL_TYPES.length
 
@@ -84,15 +107,17 @@ const supports = (op: Operator, type: OperatorFilterType): boolean =>
 /** The operations that only `type` supports, in table order */
 export function operationsOnlyFor<T extends OperatorFilterType>(
   type: T
-): readonly OperationsOnlyFor<T>[] {
+): OperationsOnlyForTuple<T> {
   return OPERATORS.filter(op => !isShared(op) && supports(op, type)).map(
     op => op.id
-  ) as OperationsOnlyFor<T>[]
+  ) as unknown as OperationsOnlyForTuple<T>
 }
 
 /** The operations that every filter type supports, in table order */
-export function sharedOperations(): readonly SharedOperationId[] {
-  return OPERATORS.filter(isShared).map(op => op.id) as SharedOperationId[]
+export function sharedOperations(): SharedOperationsTuple {
+  return OPERATORS.filter(isShared).map(
+    op => op.id
+  ) as unknown as SharedOperationsTuple
 }
 
 /**
@@ -101,11 +126,9 @@ export function sharedOperations(): readonly SharedOperationId[] {
  */
 export function operationsFor<T extends OperatorFilterType>(
   type: T
-): readonly OperationsFor<T>[] {
-  return [
-    ...operationsOnlyFor(type),
-    ...sharedOperations()
-  ] as OperationsFor<T>[]
+): OperationsForTuple<T> {
+  const own = operationsOnlyFor(type) as unknown as readonly string[]
+  return [...own, ...sharedOperations()] as unknown as OperationsForTuple<T>
 }
 
 const BY_ID = new Map<string, Operator>(OPERATORS.map(op => [op.id, op]))

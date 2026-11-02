@@ -12,9 +12,7 @@ import {
   isOperationFor,
   operatorById,
   type Operator,
-  type OperationsFor,
-  type OperationsOnlyFor,
-  type SharedOperationId
+  type OperationsFor
 } from './operators.js'
 
 // ============================================================================
@@ -132,26 +130,22 @@ export interface InternalConfig extends ParseConfig {
 /**
  * Text-only filter operations for string-based filtering
  */
-export const TEXT_ONLY_OPERATIONS: readonly OperationsOnlyFor<'text'>[] =
-  operationsOnlyFor('text')
+export const TEXT_ONLY_OPERATIONS = operationsOnlyFor('text')
 
 /**
  * Number-only filter operations for numeric comparisons
  */
-export const NUMBER_ONLY_OPERATIONS: readonly OperationsOnlyFor<'number'>[] =
-  operationsOnlyFor('number')
+export const NUMBER_ONLY_OPERATIONS = operationsOnlyFor('number')
 
 /**
  * Date-specific filter operations for temporal comparisons
  */
-export const DATE_ONLY_OPERATIONS: readonly OperationsOnlyFor<'date'>[] =
-  operationsOnlyFor('date')
+export const DATE_ONLY_OPERATIONS = operationsOnlyFor('date')
 
 /**
  * Operations shared across multiple filter types
  */
-export const SHARED_OPERATIONS: readonly SharedOperationId[] =
-  sharedOperations()
+export const SHARED_OPERATIONS = sharedOperations()
 
 /**
  * All supported filter operations across text, number, and date filters
@@ -161,20 +155,17 @@ export type FilterOperation = Operator['id']
 /**
  * Complete list of valid text filter operations
  */
-export const TEXT_FILTER_OPERATIONS: readonly OperationsFor<'text'>[] =
-  operationsFor('text')
+export const TEXT_FILTER_OPERATIONS = operationsFor('text')
 
 /**
  * Complete list of valid number filter operations
  */
-export const NUMBER_FILTER_OPERATIONS: readonly OperationsFor<'number'>[] =
-  operationsFor('number')
+export const NUMBER_FILTER_OPERATIONS = operationsFor('number')
 
 /**
  * Valid date filter operations
  */
-export const DATE_FILTER_OPERATIONS: readonly OperationsFor<'date'>[] =
-  operationsFor('date')
+export const DATE_FILTER_OPERATIONS = operationsFor('date')
 
 // ============================================================================
 // OPERATION TYPE DEFINITIONS

@@ -24,9 +24,7 @@
     "lib": ["es2022", "dom", "dom.iterable"],
     "types": ["node"]
   },
-  "include": [
-    "src/**/*"
-  ],
+  "include": ["src/**/*"],
   "exclude": [
     "node_modules",
     "dist",

@@ -1,8 +1,7 @@
 import type {
   FilterState,
   SerializationFormat,
-  FormatSerializer,
-  ParseConfig
+  FormatSerializer
 } from '../types.js'
 import { generateUrl } from '../url-generator.js'
 import { parseUrlFilters } from '../url-parser.js'
@@ -16,11 +15,13 @@ export class QueryStringSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'querystring'
 
   serialize(filterState: FilterState): string {
-    // Create a temporary config for individual parameter generation
-    const tempConfig: ParseConfig = { ...DEFAULT_CONFIG }
-
-    // Generate URL with individual parameters
-    const tempUrl = generateUrl('http://example.com', filterState, tempConfig)
+    // Generate URL with individual parameters. This uses DEFAULT_CONFIG, not
+    // the caller's config (see #201).
+    const tempUrl = generateUrl(
+      'http://example.com',
+      filterState,
+      DEFAULT_CONFIG
+    )
     const urlObj = new URL(tempUrl)
 
     // Extract just the search params (without the ?)
@@ -31,10 +32,8 @@ export class QueryStringSerializer implements FormatSerializer {
     // Create a temporary URL with the query string
     const tempUrl = `http://example.com?${value}`
 
-    // Create a temporary config for parsing
-    const tempConfig: ParseConfig = { ...DEFAULT_CONFIG }
-
-    return parseUrlFilters(tempUrl, tempConfig)
+    // Parse with DEFAULT_CONFIG, not the caller's config (see #201)
+    return parseUrlFilters(tempUrl, DEFAULT_CONFIG)
   }
 }
 

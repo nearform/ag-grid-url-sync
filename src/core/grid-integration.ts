@@ -5,41 +5,17 @@ import type {
   TextFilterOperation,
   NumberFilterOperation,
   DateFilterOperation,
-  FilterOperation,
   AGGridFilter,
   RawAGGridFilter
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
-import {
-  AG_GRID_OPERATION_NAMES,
-  REVERSE_AG_GRID_OPERATION_NAMES,
-  TEXT_FILTER_OPERATIONS,
-  NUMBER_FILTER_OPERATIONS,
-  DATE_FILTER_OPERATIONS
-} from './types.js'
+import { NUMBER_FILTER_OPERATIONS } from './types.js'
+import { operatorById, operatorFromAgGrid } from './operators.js'
 import type { GridApi } from 'ag-grid-community'
 
-// Map AG Grid number operations to our internal number operations
-// Since AG Grid uses generic names, we need to be explicit about number operations
-const AG_GRID_TO_NUMBER_OPERATION_MAP = {
-  lessThan: 'lessThan',
-  lessThanOrEqual: 'lessThanOrEqual',
-  greaterThan: 'greaterThan',
-  greaterThanOrEqual: 'greaterThanOrEqual',
-  inRange: 'inRange',
-  equals: 'eq',
-  notEqual: 'notEqual',
-  blank: 'blank',
-  notBlank: 'notBlank'
-} as const satisfies Record<string, FilterOperation>
-
-/**
- * Type guard to check if a value is a valid number operation key
- */
-function isValidNumberOperation(
-  operation: string | undefined
-): operation is keyof typeof AG_GRID_TO_NUMBER_OPERATION_MAP {
-  return Boolean(operation && operation in AG_GRID_TO_NUMBER_OPERATION_MAP)
+/** The AG Grid name of an internal operation */
+function toAgGridOperation(operation: string): ISimpleFilterModelType {
+  return operatorById(operation)?.agGrid as ISimpleFilterModelType
 }
 
 /**
@@ -51,33 +27,6 @@ function toIsoDateString(val: string | undefined): string {
   if (!val) return ''
   const match = val.match(/^(\d{4}-\d{2}-\d{2})/)
   return match?.[1] ? match[1] : val || ''
-}
-
-/**
- * Type predicate to check if an operation is a valid text filter operation
- */
-function isTextFilterOperation(
-  operation: FilterOperation
-): operation is TextFilterOperation {
-  return TEXT_FILTER_OPERATIONS.includes(operation as TextFilterOperation)
-}
-
-/**
- * Type predicate to check if an operation is a valid number filter operation
- */
-function isNumberFilterOperation(
-  operation: FilterOperation
-): operation is NumberFilterOperation {
-  return NUMBER_FILTER_OPERATIONS.includes(operation as NumberFilterOperation)
-}
-
-/**
- * Type predicate to check if an operation is a valid date filter operation
- */
-function isDateFilterOperation(
-  operation: FilterOperation
-): operation is DateFilterOperation {
-  return DATE_FILTER_OPERATIONS.includes(operation as DateFilterOperation)
 }
 
 /**
@@ -136,29 +85,22 @@ export function getFilterModel(config: InternalConfig): FilterState {
 
       // Handle text filters
       if (filterType === 'text') {
-        // Map AG Grid operations back to our internal operations using centralized mapping
-        const internalOperation =
-          REVERSE_AG_GRID_OPERATION_NAMES[
-            type as keyof typeof REVERSE_AG_GRID_OPERATION_NAMES
-          ]
-
-        // Use type predicate to validate and narrow the type
-        if (internalOperation && isTextFilterOperation(internalOperation)) {
+        // The lookup key is the filter type and the AG Grid name
+        const operator = operatorFromAgGrid('text', type)
+        if (operator) {
           filterState[column] = {
             filterType: 'text',
-            type: internalOperation, // Now properly typed as TextFilterOperation
+            type: operator.id as TextFilterOperation,
             filter: String(value || '')
           }
         }
       }
       // Handle number filters
       else if (filterType === 'number') {
-        // For number filters, we need to handle the mapping carefully since
-        // AG Grid uses the same operation names for numbers and dates
-        // Use the explicit number mapping instead of the reverse AG Grid mapping
-        const internalOperation = isValidNumberOperation(type)
-          ? AG_GRID_TO_NUMBER_OPERATION_MAP[type]
-          : null
+        // AG Grid uses the same names for number and date operations, so the
+        // lookup key is the filter type and the AG Grid name
+        const internalOperation = operatorFromAgGrid('number', type)?.id as
+          NumberFilterOperation | undefined
 
         // If the operation type is not recognized, report the error
         if (!internalOperation) {
@@ -166,67 +108,42 @@ export function getFilterModel(config: InternalConfig): FilterState {
             config.onParseError(
               new Error(
                 `Unknown number filter operation '${type}' for column '${column}'. ` +
-                  `Supported operations: ${Object.keys(AG_GRID_TO_NUMBER_OPERATION_MAP).join(', ')}`
+                  `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`
               )
             )
           }
           continue
         }
 
-        // Use type predicate to validate and narrow the type
-        if (internalOperation && isNumberFilterOperation(internalOperation)) {
-          // Validate that the filter value is actually a number
-          const numericValue = typeof value === 'number' ? value : Number(value)
+        // Validate that the filter value is actually a number
+        const numericValue = typeof value === 'number' ? value : Number(value)
 
-          // Skip invalid number filters
-          if (isNaN(numericValue)) {
-            continue
-          }
-
-          const numberFilter: ColumnFilter = {
-            filterType: 'number',
-            type: internalOperation, // Now properly typed as NumberFilterOperation
-            filter: numericValue
-          }
-
-          // Handle range operations
-          if (internalOperation === 'inRange' && typeof filterTo === 'number') {
-            ;(numberFilter as any).filterTo = filterTo
-          }
-
-          filterState[column] = numberFilter
+        // Skip invalid number filters
+        if (isNaN(numericValue)) {
+          continue
         }
+
+        const numberFilter: ColumnFilter = {
+          filterType: 'number',
+          type: internalOperation,
+          filter: numericValue
+        }
+
+        // Handle range operations
+        if (internalOperation === 'inRange' && typeof filterTo === 'number') {
+          ;(numberFilter as any).filterTo = filterTo
+        }
+
+        filterState[column] = numberFilter
       }
       // Handle date filters
       else if (filterType === 'date') {
-        // Map AG Grid date operations back to our internal operations
-        const internalOperation =
-          REVERSE_AG_GRID_OPERATION_NAMES[
-            type as keyof typeof REVERSE_AG_GRID_OPERATION_NAMES
-          ]
+        // AG Grid uses generic names for date operations (`lessThan` is
+        // `dateBefore`), so the lookup key is the filter type and the name
+        const mappedOperation = operatorFromAgGrid('date', type)?.id as
+          DateFilterOperation | undefined
 
-        // For date operations, we need to handle the special case where AG Grid uses
-        // generic operation names but we have date-specific internal names
-        let mappedOperation = internalOperation
-
-        // Map AG Grid generic date operations to our date-specific operations
-        const AG_GRID_TO_DATE_OPERATION_MAP: Record<
-          string,
-          DateFilterOperation
-        > = {
-          lessThan: 'dateBefore',
-          lessThanOrEqual: 'dateBeforeOrEqual',
-          greaterThan: 'dateAfter',
-          greaterThanOrEqual: 'dateAfterOrEqual',
-          inRange: 'dateRange'
-        } as const
-
-        mappedOperation = type
-          ? AG_GRID_TO_DATE_OPERATION_MAP[type] || internalOperation
-          : internalOperation
-
-        // Use type predicate to validate and narrow the type
-        if (mappedOperation && isDateFilterOperation(mappedOperation)) {
+        if (mappedOperation) {
           const dateFilter: ColumnFilter = {
             filterType: 'date',
             type: mappedOperation,
@@ -277,32 +194,18 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
       }
     }
 
-    // Map date-specific operations to AG Grid generic operations
-    const dateOperationMapping: Record<string, string> = {
-      dateBefore: 'lessThan',
-      dateBeforeOrEqual: 'lessThanOrEqual',
-      dateAfter: 'greaterThan',
-      dateAfterOrEqual: 'greaterThanOrEqual'
-    }
-
-    const agOperation =
-      dateOperationMapping[filter.type] ||
-      (AG_GRID_OPERATION_NAMES[
-        filter.type as keyof typeof AG_GRID_OPERATION_NAMES
-      ] as ISimpleFilterModelType)
-
+    // Date operations use the generic AG Grid names (`dateBefore` is
+    // `lessThan`)
     return {
       filterType: 'date',
-      type: agOperation as ISimpleFilterModelType,
+      type: toAgGridOperation(filter.type),
       dateFrom: filter.filter,
       dateTo: null
     }
   }
 
   if (filter.filterType === 'number') {
-    const agGridOperation = AG_GRID_OPERATION_NAMES[
-      filter.type as keyof typeof AG_GRID_OPERATION_NAMES
-    ] as ISimpleFilterModelType
+    const agGridOperation = toAgGridOperation(filter.type)
 
     if (filter.type === 'inRange') {
       const baseFilter = {
@@ -325,9 +228,7 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
   }
 
   // Text filter handling
-  const agGridOperation = AG_GRID_OPERATION_NAMES[
-    filter.type as keyof typeof AG_GRID_OPERATION_NAMES
-  ] as ISimpleFilterModelType
+  const agGridOperation = toAgGridOperation(filter.type)
   return {
     filterType: 'text',
     type: agGridOperation,

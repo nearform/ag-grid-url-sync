@@ -1,9 +1,11 @@
 import type { FilterState, ColumnFilter, ParseConfig } from './types.js'
+import { InvalidFilterError } from './types.js'
 import {
-  InvalidFilterError,
-  OPERATION_MAP,
-  INTERNAL_TO_URL_OPERATION_MAP
-} from './types.js'
+  operatorById,
+  operatorFromUrl,
+  isOperationOnlyFor,
+  isSharedOperation
+} from './operators.js'
 import {
   validateFilterValue,
   validateAndParseNumber,
@@ -37,10 +39,7 @@ function serializeColumnFilter(
   filter: ColumnFilter,
   paramPrefix: string
 ): [name: string, value: string] | null {
-  const urlOperation =
-    INTERNAL_TO_URL_OPERATION_MAP[
-      filter.type as keyof typeof INTERNAL_TO_URL_OPERATION_MAP
-    ]
+  const urlOperation = operatorById(filter.type)?.url
   if (!urlOperation) return null
 
   const paramName = `${paramPrefix}${columnName}_${urlOperation}`
@@ -124,39 +123,6 @@ export function serializeFilters(
   }
 
   return params
-}
-
-/**
- * Detects if an operation is number-specific
- */
-function isNumberOperation(operation: string): boolean {
-  return [
-    'lessThan',
-    'lessThanOrEqual',
-    'greaterThan',
-    'greaterThanOrEqual',
-    'inRange'
-  ].includes(operation)
-}
-
-/**
- * Detects if an operation is date-specific
- */
-function isDateOperation(operation: string): boolean {
-  return [
-    'dateBefore',
-    'dateBeforeOrEqual',
-    'dateAfter',
-    'dateAfterOrEqual',
-    'dateRange'
-  ].includes(operation)
-}
-
-/**
- * Detects if an operation works across multiple filter types (shared operations)
- */
-function isSharedOperation(operation: string): boolean {
-  return ['eq', 'notEqual', 'blank', 'notBlank'].includes(operation)
 }
 
 /**
@@ -271,7 +237,7 @@ export function parseFilterParam(
  * parameter name
  */
 function parseFilterOperation(operation: string, value: string): ColumnFilter {
-  const filterOp = OPERATION_MAP[operation as keyof typeof OPERATION_MAP]
+  const filterOp = operatorFromUrl(operation)?.id
   if (!filterOp) {
     throw new InvalidFilterError(`Unsupported filter operation: ${operation}`)
   }
@@ -322,7 +288,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
   }
 
   // Handle date-specific operations
-  if (isDateOperation(filterOp)) {
+  if (isOperationOnlyFor(filterOp, 'date')) {
     try {
       const dateValue = validateAndParseDate(value)
       const validation = validateDateFilter(dateValue, filterOp as any)
@@ -344,7 +310,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
   }
 
   // Handle number-specific operations
-  if (isNumberOperation(filterOp)) {
+  if (isOperationOnlyFor(filterOp, 'number')) {
     const numValue = validateAndParseNumber(value)
 
     return {

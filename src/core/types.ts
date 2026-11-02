@@ -4,6 +4,18 @@ import type {
   NumberFilterModel,
   DateFilterModel
 } from 'ag-grid-community'
+import {
+  OPERATORS,
+  operationsFor,
+  operationsOnlyFor,
+  sharedOperations,
+  isOperationFor,
+  operatorById,
+  type Operator,
+  type OperationsFor,
+  type OperationsOnlyFor,
+  type SharedOperationId
+} from './operators.js'
 
 // ============================================================================
 // CONFIGURATION TYPES
@@ -114,80 +126,55 @@ export interface InternalConfig extends ParseConfig {
 // FILTER OPERATION DEFINITIONS
 // ============================================================================
 
+// Every list below is derived from the operator table in `operators.ts`
+// (#217). To add an operation, add a row there.
+
 /**
  * Text-only filter operations for string-based filtering
  */
-export const TEXT_ONLY_OPERATIONS = [
-  'contains',
-  'notContains',
-  'startsWith',
-  'endsWith'
-] as const
+export const TEXT_ONLY_OPERATIONS: readonly OperationsOnlyFor<'text'>[] =
+  operationsOnlyFor('text')
 
 /**
  * Number-only filter operations for numeric comparisons
  */
-export const NUMBER_ONLY_OPERATIONS = [
-  'lessThan',
-  'lessThanOrEqual',
-  'greaterThan',
-  'greaterThanOrEqual',
-  'inRange'
-] as const
+export const NUMBER_ONLY_OPERATIONS: readonly OperationsOnlyFor<'number'>[] =
+  operationsOnlyFor('number')
 
 /**
  * Date-specific filter operations for temporal comparisons
  */
-export const DATE_ONLY_OPERATIONS = [
-  'dateBefore',
-  'dateBeforeOrEqual',
-  'dateAfter',
-  'dateAfterOrEqual',
-  'dateRange'
-] as const
+export const DATE_ONLY_OPERATIONS: readonly OperationsOnlyFor<'date'>[] =
+  operationsOnlyFor('date')
 
 /**
  * Operations shared across multiple filter types
  */
-export const SHARED_OPERATIONS = [
-  'eq',
-  'notEqual',
-  'blank',
-  'notBlank'
-] as const
+export const SHARED_OPERATIONS: readonly SharedOperationId[] =
+  sharedOperations()
 
 /**
  * All supported filter operations across text, number, and date filters
  */
-export type FilterOperation =
-  | (typeof TEXT_ONLY_OPERATIONS)[number]
-  | (typeof NUMBER_ONLY_OPERATIONS)[number]
-  | (typeof DATE_ONLY_OPERATIONS)[number]
-  | (typeof SHARED_OPERATIONS)[number]
+export type FilterOperation = Operator['id']
 
 /**
  * Complete list of valid text filter operations
  */
-export const TEXT_FILTER_OPERATIONS = [
-  ...TEXT_ONLY_OPERATIONS,
-  ...SHARED_OPERATIONS
-] as const
+export const TEXT_FILTER_OPERATIONS: readonly OperationsFor<'text'>[] =
+  operationsFor('text')
 
 /**
  * Complete list of valid number filter operations
  */
-export const NUMBER_FILTER_OPERATIONS = [
-  ...NUMBER_ONLY_OPERATIONS,
-  ...SHARED_OPERATIONS
-] as const
+export const NUMBER_FILTER_OPERATIONS: readonly OperationsFor<'number'>[] =
+  operationsFor('number')
 
 /**
- * Valid date filter operations as const array
+ * Valid date filter operations
  */
-export const DATE_FILTER_OPERATIONS = [
-  ...DATE_ONLY_OPERATIONS,
-  ...SHARED_OPERATIONS
-] as const
+export const DATE_FILTER_OPERATIONS: readonly OperationsFor<'date'>[] =
+  operationsFor('date')
 
 // ============================================================================
 // OPERATION TYPE DEFINITIONS
@@ -196,27 +183,27 @@ export const DATE_FILTER_OPERATIONS = [
 /**
  * Text-specific filter operations
  */
-export type TextFilterOperation = (typeof TEXT_FILTER_OPERATIONS)[number]
+export type TextFilterOperation = OperationsFor<'text'>
 
 /**
  * Number-specific filter operations
  */
-export type NumberFilterOperation = (typeof NUMBER_FILTER_OPERATIONS)[number]
+export type NumberFilterOperation = OperationsFor<'number'>
 
 /**
  * Date-specific filter operations
  */
-export type DateFilterOperation = (typeof DATE_FILTER_OPERATIONS)[number]
+export type DateFilterOperation = OperationsFor<'date'>
 
 /**
  * Range operations that require two values (from/to)
  */
-export type RangeOperation = 'inRange' | 'dateRange'
+export type RangeOperation = Extract<Operator, { arity: 2 }>['id']
 
 /**
  * Operations that don't require a filter value
  */
-export type BlankOperation = 'blank' | 'notBlank'
+export type BlankOperation = Extract<Operator, { arity: 0 }>['id']
 
 /**
  * Supported filter types
@@ -238,8 +225,7 @@ interface BaseColumnFilter<T extends FilterOperation = FilterOperation> {
 /**
  * Text filter configuration for string-based filtering
  */
-export interface TextColumnFilter
-  extends BaseColumnFilter<TextFilterOperation> {
+export interface TextColumnFilter extends BaseColumnFilter<TextFilterOperation> {
   filterType: 'text'
   /** The text value to filter by */
   filter: string
@@ -248,8 +234,7 @@ export interface TextColumnFilter
 /**
  * Number filter configuration for numeric filtering
  */
-export interface NumberColumnFilter
-  extends BaseColumnFilter<NumberFilterOperation> {
+export interface NumberColumnFilter extends BaseColumnFilter<NumberFilterOperation> {
   filterType: 'number'
   /** The numeric value to filter by */
   filter: number
@@ -261,8 +246,7 @@ export interface NumberColumnFilter
  * Date filter configuration for temporal filtering.
  * Uses ISO date format (YYYY-MM-DD) for consistency and parseability.
  */
-export interface DateColumnFilter
-  extends BaseColumnFilter<DateFilterOperation> {
+export interface DateColumnFilter extends BaseColumnFilter<DateFilterOperation> {
   filterType: 'date'
   /** ISO date string (YYYY-MM-DD) */
   filter: string
@@ -274,9 +258,7 @@ export interface DateColumnFilter
  * Union type for all possible column filters
  */
 export type ColumnFilter =
-  | TextColumnFilter
-  | NumberColumnFilter
-  | DateColumnFilter
+  TextColumnFilter | NumberColumnFilter | DateColumnFilter
 
 /**
  * Complete filter state mapping column IDs to their filters
@@ -295,7 +277,7 @@ export interface FilterState {
 export function isTextFilterOperation(
   op: FilterOperation
 ): op is TextFilterOperation {
-  return TEXT_FILTER_OPERATIONS.includes(op as TextFilterOperation)
+  return isOperationFor(op, 'text')
 }
 
 /**
@@ -304,7 +286,7 @@ export function isTextFilterOperation(
 export function isNumberFilterOperation(
   op: FilterOperation
 ): op is NumberFilterOperation {
-  return NUMBER_FILTER_OPERATIONS.includes(op as NumberFilterOperation)
+  return isOperationFor(op, 'number')
 }
 
 /**
@@ -313,21 +295,21 @@ export function isNumberFilterOperation(
 export function isDateFilterOperation(
   op: FilterOperation
 ): op is DateFilterOperation {
-  return DATE_FILTER_OPERATIONS.includes(op as DateFilterOperation)
+  return isOperationFor(op, 'date')
 }
 
 /**
  * Type guard to check if an operation requires a range (two values)
  */
 export function isRangeOperation(op: FilterOperation): op is RangeOperation {
-  return op === 'inRange' || op === 'dateRange'
+  return operatorById(op)?.arity === 2
 }
 
 /**
  * Type guard to check if an operation is a blank operation
  */
 export function isBlankOperation(op: FilterOperation): op is BlankOperation {
-  return op === 'blank' || op === 'notBlank'
+  return operatorById(op)?.arity === 0
 }
 
 /**
@@ -509,113 +491,40 @@ export interface GroupedDetectionResult {
  * 2. Internal Types: Consistent naming for our FilterOperation type
  * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual', 'lessThan')
  *
- * This approach keeps URLs readable while maintaining compatibility with AG Grid.
+ * The operator table in `operators.ts` holds all three names for each
+ * operation (#217). The maps below are derived from it and kept only for
+ * callers that use them.
  */
-
-/**
- * URL shorthand mappings for cleaner URLs.
- * Maps internal operation names to shorter URL parameter names.
- * Operations not listed here use their internal name as URL param.
- */
-const URL_SHORTHAND_MAPPINGS = {
-  // Shared operations
-  notEqual: 'neq',
-  // Number operations
-  lessThan: 'lt',
-  lessThanOrEqual: 'lte',
-  greaterThan: 'gt',
-  greaterThanOrEqual: 'gte',
-  inRange: 'range',
-  // Date operations
-  dateBefore: 'before',
-  dateBeforeOrEqual: 'beforeEq',
-  dateAfter: 'after',
-  dateAfterOrEqual: 'afterEq',
-  dateRange: 'daterange'
-} as const
-
-/**
- * AG Grid operation name mappings.
- * Maps internal operation names to AG Grid API operation names.
- * Operations not listed here use their internal name for AG Grid.
- */
-const AG_GRID_NAME_MAPPINGS = {
-  // Shared operations
-  eq: 'equals',
-  // Date operations (AG Grid uses generic names)
-  dateBefore: 'lessThan',
-  dateBeforeOrEqual: 'lessThanOrEqual',
-  dateAfter: 'greaterThan',
-  dateAfterOrEqual: 'greaterThanOrEqual',
-  dateRange: 'inRange'
-} as const
-
-/**
- * Creates operation mapping tables for URL and AG Grid integration
- */
-function createOperationMaps() {
-  // Get all unique operations across filter types
-  const allOperations = [
-    ...TEXT_FILTER_OPERATIONS,
-    ...NUMBER_FILTER_OPERATIONS,
-    ...DATE_FILTER_OPERATIONS
-  ]
-
-  // Remove duplicates (operations like 'eq', 'blank' appear in multiple arrays)
-  const uniqueOperations = [...new Set(allOperations)]
-
-  // Generate URL mappings (bidirectional)
-  const operationMap: Record<string, FilterOperation> = {}
-  const internalToUrlMap = {} as Record<FilterOperation, string>
-
-  uniqueOperations.forEach(operation => {
-    const urlName =
-      URL_SHORTHAND_MAPPINGS[
-        operation as keyof typeof URL_SHORTHAND_MAPPINGS
-      ] || operation
-    operationMap[urlName] = operation
-    internalToUrlMap[operation] = urlName
-  })
-
-  // Generate AG Grid mappings (bidirectional)
-  const agGridMap: Record<string, string> = {}
-  const reverseAgGridMap: Record<string, FilterOperation> = {}
-
-  uniqueOperations.forEach(operation => {
-    const agGridName =
-      AG_GRID_NAME_MAPPINGS[operation as keyof typeof AG_GRID_NAME_MAPPINGS] ||
-      operation
-    agGridMap[operation] = agGridName
-    reverseAgGridMap[agGridName] = operation
-  })
-
-  return {
-    operationMap,
-    internalToUrlMap,
-    agGridMap,
-    reverseAgGridMap
-  } as const
-}
-
-// Generate all mappings dynamically
-const mappings = createOperationMaps()
 
 /**
  * Maps URL operation names to internal operation types
+ * @deprecated Derived from the operator table. Will be removed in v1.0.
  */
-export const OPERATION_MAP = mappings.operationMap
+export const OPERATION_MAP: Record<string, FilterOperation> =
+  Object.fromEntries(OPERATORS.map(op => [op.url, op.id]))
 
 /**
  * Maps internal operation types to URL operation names
+ * @deprecated Derived from the operator table. Will be removed in v1.0.
  */
-export const INTERNAL_TO_URL_OPERATION_MAP = mappings.internalToUrlMap
+export const INTERNAL_TO_URL_OPERATION_MAP = Object.fromEntries(
+  OPERATORS.map(op => [op.id, op.url])
+) as Record<FilterOperation, string>
 
 /**
  * Maps internal operation types to AG Grid operation names
+ * @deprecated Derived from the operator table. Will be removed in v1.0.
  */
-export const AG_GRID_OPERATION_NAMES = mappings.agGridMap
+export const AG_GRID_OPERATION_NAMES: Record<string, string> =
+  Object.fromEntries(OPERATORS.map(op => [op.id, op.agGrid]))
 
 /**
- * Maps AG Grid operation names to internal operation types
+ * Maps AG Grid operation names to internal operation types.
+ *
+ * AG Grid uses one name for a number and a date operation, so this map is
+ * wrong for one of them: `lessThan` gives `dateBefore`. The last row in the
+ * operator table wins, as before.
+ * @deprecated The key needs the filter type too. Will be removed in v1.0.
  */
-export const REVERSE_AG_GRID_OPERATION_NAMES = mappings.reverseAgGridMap
+export const REVERSE_AG_GRID_OPERATION_NAMES: Record<string, FilterOperation> =
+  Object.fromEntries(OPERATORS.map(op => [op.agGrid, op.id]))

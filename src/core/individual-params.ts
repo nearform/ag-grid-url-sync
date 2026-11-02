@@ -474,18 +474,13 @@ export function parseIndividualParams(
           ...filterParam,
           filter: validatedValue
         }
-      } else if (filterParam.filterType === 'date') {
-        // Date filters are already validated in parseFilterParam
-        filterState[columnName] = filterParam
       } else {
-        // Number filters are already validated in parseFilterParam
+        // Number and date filters are already validated in parseFilterOperation
         filterState[columnName] = filterParam
       }
     } catch (error) {
       // Log parsing errors through the configured error handler
-      if (config.onParseError) {
-        config.onParseError(error as Error)
-      }
+      config.onParseError?.(error as Error)
       // Continue processing other parameters instead of failing completely
       continue
     }

@@ -64,6 +64,10 @@ describe.each(gridApiVariants)('ParseConfig with %s', (_, applyVariant) => {
     })
   })
 
+  // TODO(#201): QueryStringSerializer uses DEFAULT_CONFIG, not the caller's
+  // config. For 'querystring', the gridApi variant and the onParseError mock
+  // only reach grouped.ts, not the inner generate/parse calls, so these cases
+  // cannot fail there.
   describe.each(groupedFormats)('grouped %s serialization', format => {
     it('generateUrl and parseUrlFilters round-trip the filter state', () => {
       const config = createConfig({ serialization: 'grouped', format })
@@ -86,4 +90,8 @@ describe.each(gridApiVariants)('ParseConfig with %s', (_, applyVariant) => {
       expect(config.onParseError).not.toHaveBeenCalled()
     })
   })
+})
+
+describe('grouped querystring serialization with caller config', () => {
+  it.todo("uses the caller's maxValueLength and onParseError (#201)")
 })

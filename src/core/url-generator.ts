@@ -91,8 +91,8 @@ function appendSerializedParam(
 
 /**
  * Converts a filter state object into URL search parameters.
- * This function does not require a GridApi instance - you can pass `gridApi: null`
- * when you only need to serialize filters without a grid.
+ * This function does not require a GridApi instance - you can omit `gridApi` (or
+ * pass `null`) when you only need to serialize filters without a grid.
  */
 export function serializeFilters(
   filterState: FilterState,
@@ -167,8 +167,8 @@ function getPreservedParams(
 
 /**
  * Generates a URL with the current filter state.
- * This function does not require a GridApi instance - you can pass `gridApi: null`
- * when you only need to generate URLs without a grid.
+ * This function does not require a GridApi instance - you can omit `gridApi` (or
+ * pass `null`) when you only need to generate URLs without a grid.
  */
 export function generateUrl(
   baseUrl: string,

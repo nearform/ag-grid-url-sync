@@ -18,10 +18,7 @@ export class QueryStringSerializer implements FormatSerializer {
 
   serialize(filterState: FilterState): string {
     // Create a temporary config for individual parameter generation
-    const tempConfig: ParseConfig = {
-      gridApi: null, // Not needed for URL generation
-      ...DEFAULT_CONFIG
-    }
+    const tempConfig: ParseConfig = { ...DEFAULT_CONFIG }
 
     // Generate URL with individual parameters
     const tempUrl = generateUrl('http://example.com', filterState, tempConfig)
@@ -36,10 +33,7 @@ export class QueryStringSerializer implements FormatSerializer {
     const tempUrl = `http://example.com?${value}`
 
     // Create a temporary config for parsing
-    const tempConfig: ParseConfig = {
-      gridApi: null, // Not needed for URL parsing
-      ...DEFAULT_CONFIG
-    }
+    const tempConfig: ParseConfig = { ...DEFAULT_CONFIG }
 
     return parseUrlFilters(tempUrl, tempConfig)
   }

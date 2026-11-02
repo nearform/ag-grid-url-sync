@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { FilterChangedEvent, GridApi } from 'ag-grid-community'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
+import { resolveParamPrefix } from '../core/individual-params.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
 import { DEFAULT_CONFIG } from '../core/validation.js'
 import type {
@@ -378,12 +379,11 @@ export function useAGGridUrlSync(
   const urlHasFilterParams = useCallback((): boolean => {
     if (typeof window === 'undefined') return false
 
-    // Normalised: an empty string falls back to the default rather than passing
-    // through (startsWith('') matches everything), and a trailing underscore is
-    // added so 'filter' cannot match 'filterMode'. Without it a stray ?page=2
-    // reads as a claim and clears the user's stored view.
-    const rawPrefix = coreOptions.paramPrefix || DEFAULT_CONFIG.paramPrefix
-    const prefix = rawPrefix.endsWith('_') ? rawPrefix : `${rawPrefix}_`
+    // The same prefix the writer and the parser use: an empty string means
+    // the default rather than matching everything, and a trailing underscore
+    // is added so 'filter' cannot match 'filterMode'. Without it a stray
+    // ?page=2 reads as a claim and clears the user's stored view.
+    const prefix = resolveParamPrefix(coreOptions.paramPrefix)
 
     // Only the configured name, the same one the parser reads.
     const groupedParam = coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam

@@ -152,6 +152,22 @@ describe('URL Parser', () => {
       expect(result.query?.filter).toBe('hello world')
     })
 
+    // #228: hand-written URLs with a `_` after the prefix keep working
+    it.each([
+      ['filter', '?filter_name_contains=john&page=2'],
+      ['', '?f_name_contains=john&page=2']
+    ])(
+      'should read prefix %j and ignore the page params (#228)',
+      (prefix, url) => {
+        expect(
+          parseUrlFilters(url, { ...mockConfig, paramPrefix: prefix })
+        ).toEqual({
+          name: { filterType: 'text', type: 'contains', filter: 'john' }
+        })
+        expect(mockConfig.onParseError).not.toHaveBeenCalled()
+      }
+    )
+
     describe('input forms', () => {
       const name = { filterType: 'text', type: 'contains', filter: 'bob' }
       const price = { filterType: 'number', type: 'greaterThan', filter: 1.5 }

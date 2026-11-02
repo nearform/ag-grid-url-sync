@@ -241,6 +241,38 @@ describe('URL Generator', () => {
       ).toBe('https://example.com/list#top')
     })
 
+    // #228: the writer and the parser must read paramPrefix the same way. A
+    // prefix without a trailing `_` gets one, and '' means the default `f_`.
+    describe('paramPrefix', () => {
+      const state: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'john' }
+      }
+
+      it.each([
+        ['filter', 'filter_name_contains'],
+        ['filter_', 'filter_name_contains'],
+        ['x-', 'x-_name_contains'],
+        ['', 'f_name_contains']
+      ])('should write prefix %j as %s and parse it back', (prefix, key) => {
+        const config = { ...mockConfig, paramPrefix: prefix }
+        const url = generateUrl('https://example.com/?page=2', state, config)
+
+        expect([...new URL(url).searchParams.keys()]).toEqual([key, 'page'])
+        expect(parseUrlFilters(url, config)).toEqual(state)
+        expect(mockConfig.onParseError).not.toHaveBeenCalled()
+      })
+
+      it('should remove stale filter params when the prefix is empty', () => {
+        const config = { ...mockConfig, paramPrefix: '' }
+        const url = generateUrl(
+          'https://example.com/?f_old_contains=x&page=2',
+          state,
+          config
+        )
+        expect(url).toBe('https://example.com/?f_name_contains=john&page=2')
+      })
+    })
+
     describe('stale params from the other mode', () => {
       const newState: FilterState = {
         b: { filterType: 'text', type: 'contains', filter: 'new' }

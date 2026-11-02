@@ -992,8 +992,10 @@ interface AGGridUrlSyncConfig {
   // Parameter name for grouped mode (default: 'grid_filters')
   groupedParam?: string
 
-  // Prefix for URL parameters (default: 'f_')
-  // In grouped mode, this affects individual parameter names within the group
+  // Prefix for URL parameters in individual mode (default: 'f_')
+  // A prefix without a trailing '_' gets one ('filter' -> 'filter_name_contains').
+  // An empty prefix means the default. Grouped mode always uses 'f_' inside the
+  // grouped value, so grouped URLs do not change with this option.
   paramPrefix?: string
 
   // Maximum length for filter values (default: 200)

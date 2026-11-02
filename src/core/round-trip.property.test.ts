@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import { generateUrl } from './url-generator.js'
 import { parseUrlFilters } from './url-parser.js'
+import { resolveParamPrefix } from './individual-params.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import type {
   ColumnFilter,
@@ -240,6 +241,12 @@ const makeConfig = (
 
 const MODES: Mode[] = [
   { name: 'individual', config: makeConfig('individual') },
+  // #228: other prefixes. Host param keys from `hardChar` cannot start with
+  // these, so the host params stay host params.
+  ...['', 'filter', 'x-'].map(paramPrefix => ({
+    name: `individual, paramPrefix ${JSON.stringify(paramPrefix)}`,
+    config: { ...makeConfig('individual'), paramPrefix }
+  })),
   { name: 'grouped querystring', config: makeConfig('grouped', 'querystring') },
   { name: 'grouped json', config: makeConfig('grouped', 'json') },
   { name: 'grouped base64', config: makeConfig('grouped', 'base64') }
@@ -259,7 +266,8 @@ const roundTrip = (state: FilterState, base: string, config: ParseConfig) =>
   parseUrlFilters(generateUrl(base, state, config), config)
 
 const isFilterParam = (key: string, config: ParseConfig) =>
-  key === config.groupedParam || key.startsWith(config.paramPrefix)
+  key === config.groupedParam ||
+  key.startsWith(resolveParamPrefix(config.paramPrefix))
 
 // ----------------------------------------------------------------------------
 // Properties

@@ -1,5 +1,5 @@
 import type { FilterState, ParseConfig } from './types.js'
-import { serializeFilters } from './individual-params.js'
+import { serializeFilters, resolveParamPrefix } from './individual-params.js'
 import { serializeGrouped } from './serialization/grouped.js'
 
 export { serializeFilters }
@@ -13,7 +13,7 @@ export { serializeFilters }
 function isFilterParam(key: string, config: ParseConfig): boolean {
   return (
     key === config.groupedParam ||
-    (Boolean(config.paramPrefix) && key.startsWith(config.paramPrefix))
+    key.startsWith(resolveParamPrefix(config.paramPrefix))
   )
 }
 

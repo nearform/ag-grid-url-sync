@@ -1,4 +1,3 @@
-import { DEFAULT_CONFIG } from '../index.js'
 import type {
   FilterState,
   SerializationFormat,
@@ -7,7 +6,7 @@ import type {
 } from '../types.js'
 import { generateUrl } from '../url-generator.js'
 import { parseUrlFilters } from '../url-parser.js'
-import { isValidColumnFilter } from '../validation.js'
+import { DEFAULT_CONFIG, isValidColumnFilter } from '../validation.js'
 
 /**
  * QueryString format serializer

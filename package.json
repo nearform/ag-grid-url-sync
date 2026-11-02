@@ -1,6 +1,6 @@
 {
   "name": "ag-grid-url-sync",
-  "version": "0.3.0",
+  "version": "0.4.1",
   "description": "AG Grid URL Sync - Synchronize AG Grid text filters with URL parameters",
   "main": "dist/index.js",
   "type": "module",
@@ -35,6 +35,11 @@
       "types": "./dist/core/grid-integration.d.ts",
       "import": "./dist/core/grid-integration.js",
       "require": "./dist/core/grid-integration.js"
+    },
+    "./view-storage": {
+      "types": "./dist/core/view-storage.d.ts",
+      "import": "./dist/core/view-storage.js",
+      "require": "./dist/core/view-storage.js"
     },
     "./types": {
       "types": "./dist/core/types.d.ts",
@@ -72,6 +77,9 @@
       "grid-integration": [
         "dist/core/grid-integration.d.ts"
       ],
+      "view-storage": [
+        "dist/core/view-storage.d.ts"
+      ],
       "types": [
         "dist/core/types.d.ts"
       ],
@@ -90,7 +98,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rimraf dist",
-    "compile": "tsc",
+    "compile": "tsc --removeComments && tsc --emitDeclarationOnly",
     "build": "npm run clean && npm run compile && npm run validate",
     "validate": "npm run size-check && npm run type-check",
     "size-check": "size-limit",
@@ -101,7 +109,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nearform/ag-grid-url-state-sync.git"
+    "url": "git+https://github.com/nearform/ag-grid-url-sync.git"
   },
   "keywords": [
     "ag-grid",
@@ -116,36 +124,39 @@
   "author": "NearForm",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/nearform/ag-grid-url-state-sync/issues"
+    "url": "https://github.com/nearform/ag-grid-url-sync/issues"
   },
   "files": [
     "dist"
   ],
-  "homepage": "https://github.com/nearform/ag-grid-url-state-sync#readme",
+  "homepage": "https://github.com/nearform/ag-grid-url-sync#readme",
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
-    "@commitlint/cli": "^20.0.0",
-    "@commitlint/config-conventional": "^20.0.0",
-    "@eslint/js": "^9.29.0",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@eslint/js": "^10.0.1",
+    "@size-limit/esbuild": "^14.0.0",
+    "@size-limit/file": "^14.0.0",
     "@testing-library/react": "^16.3.0",
-    "@types/jsdom": "^27.0.0",
-    "@types/react": "^18.0.0",
-    "@vitest/coverage-v8": "^3.2.4",
-    "ag-grid-community": "^34.0.0",
-    "@size-limit/file": "^11.2.0",
-    "size-limit": "^11.2.0",
-    "eslint": "^9.29.0",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.1",
+    "@vitest/coverage-v8": "^5.0.1",
+    "ag-grid-community": "^36.1.0",
+    "eslint": "^10.9.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.0",
-    "globals": "^16.2.0",
+    "globals": "^17.11.0",
     "husky": "^9.1.7",
-    "jsdom": "^27.0.0",
-    "lint-staged": "^16.1.2",
+    "jsdom": "^30.0.1",
+    "lint-staged": "^17.4.1",
     "prettier": "^3.6.0",
-    "react": "^18.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "rimraf": "^6.0.1",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "size-limit": "^14.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   },
   "peerDependencies": {
     "ag-grid-community": ">=28.0.0",
@@ -161,32 +172,75 @@
   },
   "size-limit": [
     {
+      "name": "dist/index.js (bundled)",
       "path": "./dist/index.js",
-      "limit": "5KB"
+      "limit": "5 KiB",
+      "gzip": true
+    },
+    {
+      "name": "dist/react/index.js (bundled, react external)",
+      "path": "./dist/react/index.js",
+      "limit": "8 KiB",
+      "gzip": true,
+      "ignore": [
+        "react"
+      ]
     },
     {
       "path": "./dist/core/ag-grid-url-sync.js",
-      "limit": "4KB"
+      "limit": "4 KiB",
+      "gzip": true,
+      "disablePlugins": [
+        "@size-limit/esbuild"
+      ]
     },
     {
       "path": "./dist/core/validation.js",
-      "limit": "2.5KB"
+      "limit": "2.5 KiB",
+      "gzip": true,
+      "disablePlugins": [
+        "@size-limit/esbuild"
+      ]
     },
     {
       "path": "./dist/core/url-parser.js",
-      "limit": "3KB"
+      "limit": "3 KiB",
+      "gzip": true,
+      "disablePlugins": [
+        "@size-limit/esbuild"
+      ]
     },
     {
       "path": "./dist/core/url-generator.js",
-      "limit": "2KB"
+      "limit": "2 KiB",
+      "gzip": true,
+      "disablePlugins": [
+        "@size-limit/esbuild"
+      ]
     },
     {
       "path": "./dist/core/grid-integration.js",
-      "limit": "3KB"
+      "limit": "3 KiB",
+      "gzip": true,
+      "disablePlugins": [
+        "@size-limit/esbuild"
+      ]
     },
     {
-      "path": "./dist/react/index.js",
-      "limit": "7KB"
+      "path": "./dist/core/view-storage.js",
+      "limit": "1.5 KiB",
+      "gzip": true,
+      "disablePlugins": [
+        "@size-limit/esbuild"
+      ]
+    },
+    {
+      "path": "./dist/react/use-ag-grid-url-sync.js",
+      "limit": "4 KiB",
+      "gzip": true,
+      "disablePlugins": [
+        "@size-limit/esbuild"
+      ]
     }
   ]
 }

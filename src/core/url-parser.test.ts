@@ -46,6 +46,36 @@ describe('URL Parser', () => {
       })
     })
 
+    // #214: parseFloat accepts a number at the start of the value ("3M" -> 3)
+    describe.each([
+      ['eq', 'eq'],
+      ['neq', 'notEqual']
+    ])('shared operation %s with a guessed type', (op, type) => {
+      it.each(['3M', '1e', '12abc', '0x10', '1e400', '1.2.3'])(
+        'should keep %s as text',
+        value => {
+          expect(parseFilterParam(`f_name_${op}`, value, 'f_')).toEqual({
+            filterType: 'text',
+            type,
+            filter: value
+          })
+        }
+      )
+
+      it.each([
+        ['42', 42],
+        ['-1.5', -1.5],
+        ['.5', 0.5],
+        ['2e3', 2000]
+      ])('should parse %s as a number', (value, expected) => {
+        expect(parseFilterParam(`f_age_${op}`, value, 'f_')).toEqual({
+          filterType: 'number',
+          type,
+          filter: expected
+        })
+      })
+    })
+
     it('should parse date operations', () => {
       expect(parseFilterParam('f_created_eq', '2024-01-15', 'f_')).toEqual({
         filterType: 'date',
@@ -95,6 +125,12 @@ describe('URL Parser', () => {
         name: { filterType: 'text', type: 'contains', filter: 'john' },
         age: { filterType: 'number', type: 'greaterThanOrEqual', filter: 25 },
         created: { filterType: 'date', type: 'dateAfter', filter: '2024-01-01' }
+      })
+    })
+
+    it('should keep a value that only starts with a number as text (#214)', () => {
+      expect(parseUrlFilters('?f_name_eq=3M', mockConfig)).toEqual({
+        name: { filterType: 'text', type: 'eq', filter: '3M' }
       })
     })
 

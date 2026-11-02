@@ -8,7 +8,6 @@ import {
   validateFilterValue,
   validateAndParseNumber,
   validateNumberRange,
-  validateNumberFilter,
   validateAndParseDate,
   validateAndParseDateRange,
   validateDateFilter,
@@ -174,6 +173,19 @@ function tryParseAsDate(value: string): 'date' | null {
 }
 
 /**
+ * Parses the value as a number only if the whole value is a valid number.
+ * Returns null otherwise. `parseFloat` alone accepts a number at the start of
+ * the value, so "3M" became 3 (#214).
+ */
+function tryParseNumber(value: string): number | null {
+  try {
+    return validateAndParseNumber(value)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Detects the most appropriate filter type for a shared operation based on the value
  * Priority: Date > Number > Text (if the value can be parsed as date/number, prefer that type)
  */
@@ -194,16 +206,8 @@ function detectFilterTypeForSharedOperation(
     }
 
     // Try number second
-    try {
-      const numValue = parseFloat(value)
-      if (!isNaN(numValue) && Number.isFinite(numValue)) {
-        const validation = validateNumberFilter(numValue)
-        if (validation.valid) {
-          return 'number'
-        }
-      }
-    } catch {
-      // Fall through to text
+    if (tryParseNumber(value) !== null) {
+      return 'number'
     }
 
     // Default to text
@@ -368,20 +372,13 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
     }
 
     if (detectedType === 'number') {
-      try {
-        const numValue = parseFloat(value)
-        if (!isNaN(numValue) && Number.isFinite(numValue)) {
-          const validation = validateNumberFilter(numValue)
-          if (validation.valid) {
-            return {
-              filterType: 'number',
-              type: filterOp as any,
-              filter: numValue
-            }
-          }
+      const numValue = tryParseNumber(value)
+      if (numValue !== null) {
+        return {
+          filterType: 'number',
+          type: filterOp as any,
+          filter: numValue
         }
-      } catch {
-        // Fall through to text handling
       }
     }
 

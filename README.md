@@ -208,18 +208,20 @@ function getFiltersFromUrl(url: string): FilterState {
 }
 ```
 
-`parseUrlFilters` accepts these input forms:
+`parseUrlFilters` reads the input with these rules, in this order:
 
-| Input form       | Example                                   |
-| ---------------- | ----------------------------------------- |
-| Absolute URL     | `https://example.com/users?f_name_eq=bob` |
-| Relative path    | `/users?f_name_eq=bob`                    |
-| Query string     | `?f_name_eq=bob`                          |
-| Raw query string | `f_name_eq=bob`                           |
+| #   | Input                       | Result                   | Example                                   |
+| --- | --------------------------- | ------------------------ | ----------------------------------------- |
+| 1   | A host with no scheme       | Throws `InvalidURLError` | `example.com?…`, `localhost:3000?…`       |
+| 2   | Starts with a scheme        | Absolute URL             | `https://example.com/users?f_name_eq=bob` |
+| 3   | Starts with `/`, `?` or `#` | Relative URL             | `/users?f_name_eq=bob`, `?f_name_eq=bob`  |
+| 4   | Anything else               | Raw query string         | `f_name_eq=bob`                           |
 
-A relative path must start with `/`. Input with no scheme and no leading `/` or `?` is a raw query string, so `users?f_name_eq=bob` gives no filters.
+- A relative path must start with `/`. `users?f_name_eq=bob` matches rule 4, so it gives no filters.
+- A bare `localhost?…` with no port cannot be told apart from a raw query, so it matches rule 4.
+- In a raw query string, a `?` or `#` is part of a param name or value.
 
-A param that is not valid is skipped and sent to `onParseError`. `InvalidURLError` is thrown only for an absolute URL that is not valid (for example `http://`), or for a host with no scheme (for example `example.com?f_name_eq=bob`).
+`InvalidURLError` is thrown for rule 1, and for any input that the `URL` constructor rejects under rules 2 and 3 (for example `http://` or `//[`). A param that is not valid is skipped and sent to `onParseError`.
 
 #### Example: Custom URL Generator
 

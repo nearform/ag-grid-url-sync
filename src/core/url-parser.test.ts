@@ -188,7 +188,8 @@ describe('URL Parser', () => {
       it.each([
         ['an empty host', 'http://'],
         ['a host with a space', 'https://exa mple.com?f_name_contains=bob'],
-        ['an unclosed IPv6 host', 'http://[::1?f_name_contains=bob']
+        ['an unclosed IPv6 host', 'http://[::1?f_name_contains=bob'],
+        ['a protocol-relative URL with a bad host', '//[']
       ])('should throw InvalidURLError for %s', (_label, url) => {
         expect(() => parseUrlFilters(url, mockConfig)).toThrow(InvalidURLError)
       })
@@ -197,7 +198,12 @@ describe('URL Parser', () => {
         ['a host', 'example.com?f_name_eq=bob'],
         ['a host and a path', 'example.com/users?f_name_eq=bob'],
         ['a host and a port', 'www.example.com:8080?f_name_eq=bob'],
-        ['a host alone', 'example.com']
+        ['a host alone', 'example.com'],
+        ['a single-label host and a port', 'localhost:3000?f_name_eq=bob'],
+        [
+          'a single-label host, a port and a path',
+          'localhost:3000/users?f_name_eq=bob'
+        ]
       ])(
         'should throw InvalidURLError for %s with no scheme',
         (_label, url) => {

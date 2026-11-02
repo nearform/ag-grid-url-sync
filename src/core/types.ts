@@ -462,12 +462,16 @@ export interface GroupedSerializationResult {
 export interface FormatSerializer {
   /**
    * Serialize filter state to string
-   * @param config - Caller's configuration, for validation and error handling
+   * @param config - Caller's configuration. Only the querystring serializer
+   * uses it (maxValueLength and onParseError). The JSON and Base64
+   * serializers ignore it (see #207).
    */
   serialize(filterState: FilterState, config?: ParseConfig): string
   /**
    * Deserialize string to filter state
-   * @param config - Caller's configuration, for validation and error handling
+   * @param config - Caller's configuration. Only the querystring serializer
+   * uses it (maxValueLength and onParseError). The JSON and Base64
+   * serializers ignore it (see #207).
    */
   deserialize(value: string, config?: ParseConfig): FilterState
   /** Format identifier */

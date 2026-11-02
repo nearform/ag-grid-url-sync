@@ -124,6 +124,22 @@ describe('grouped querystring serialization with caller config (#201)', () => {
     expect(config.onParseError).toHaveBeenCalledOnce()
   })
 
+  it("keeps the other filters when one is over the caller's maxValueLength", () => {
+    const config = createGroupedConfig({ maxValueLength: 5 })
+    const age: FilterState = {
+      age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+    }
+
+    const url = generateUrl(
+      BASE_URL,
+      { ...textFilter('john smith'), ...age },
+      config
+    )
+
+    expect(parseUrlFilters(url, config)).toEqual(age)
+    expect(config.onParseError).toHaveBeenCalledOnce()
+  })
+
   it("reports a value over the caller's maxValueLength when parsing", () => {
     const config = createGroupedConfig({ maxValueLength: 5 })
     const grouped = new URLSearchParams({

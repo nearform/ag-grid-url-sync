@@ -111,6 +111,8 @@ function appendSerializedParam(
  * Converts a filter state object into URL search parameters.
  * This function does not require a GridApi instance - you can omit `gridApi` (or
  * pass `null`) when you only need to serialize filters without a grid.
+ * A text value over `config.maxValueLength` is reported through
+ * `config.onParseError` and skipped. The other filters are kept.
  */
 export function serializeFilters(
   filterState: FilterState,
@@ -129,11 +131,14 @@ export function serializeFilters(
 
     // Apply validation for text filters before serialization
     if (filter.filterType === FILTER_TYPES.TEXT) {
-      const validatedValue = validateFilterValue(
-        filter.filter,
-        config,
-        filter.type
-      )
+      let validatedValue: string
+      try {
+        validatedValue = validateFilterValue(filter.filter, config, filter.type)
+      } catch (error) {
+        // Skip this filter and keep the others, the same as parsing does
+        config.onParseError?.(error as Error)
+        continue
+      }
       const updatedFilter = { ...filter, filter: validatedValue }
       const serialized = serializeColumnFilter(
         column,

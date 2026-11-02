@@ -40,8 +40,10 @@ function innerConfig(config?: ParseConfig): ParseConfig {
   if (!config) return DEFAULT_CONFIG
   return {
     ...DEFAULT_CONFIG,
-    maxValueLength: config.maxValueLength,
-    onParseError: config.onParseError
+    // `??` keeps the defaults when a JS caller or a partial config leaves a
+    // field out
+    maxValueLength: config.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
+    onParseError: config.onParseError ?? DEFAULT_CONFIG.onParseError
   }
 }
 

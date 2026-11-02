@@ -5,6 +5,7 @@ import {
   serializeGrouped,
   deserializeGrouped
 } from './serialization/grouped.js'
+import { QueryStringSerializer } from './serialization/formats.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import type { FilterState, ParseConfig, SerializationFormat } from './types.js'
 
@@ -134,6 +135,18 @@ describe('grouped querystring serialization with caller config (#201)', () => {
       age: { filterType: 'number', type: 'greaterThan', filter: 25 }
     })
     expect(config.onParseError).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the default maxValueLength when the caller leaves it out', () => {
+    // A JS caller, or a partial config cast to ParseConfig
+    const onParseError = vi.fn()
+    const config = { onParseError } as unknown as ParseConfig
+    const value = `f_name_contains=${'a'.repeat(201)}`
+
+    const filters = new QueryStringSerializer().deserialize(value, config)
+
+    expect(filters).toEqual({})
+    expect(onParseError).toHaveBeenCalledOnce()
   })
 
   it('reports an invalid parameter in the grouped value to onParseError', () => {

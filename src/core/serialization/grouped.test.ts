@@ -337,6 +337,22 @@ describe('Format Serializers', () => {
       const oldLink = btoa(JSON.stringify(state))
       expect(serializer.deserialize(oldLink)).toEqual(state)
     })
+
+    it('should decode old Latin-1 links whose bytes are also valid UTF-8', () => {
+      // 'Ã©' is the bytes C3 A9, which are 'é' in UTF-8
+      const state: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'Ã©' }
+      }
+      const oldLink = btoa(JSON.stringify(state))
+      expect(serializer.deserialize(oldLink)).toEqual(state)
+    })
+
+    it('should give output that atob and JSON.parse can decode', () => {
+      const state: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: '日本 😀 é' }
+      }
+      expect(JSON.parse(atob(serializer.serialize(state)))).toEqual(state)
+    })
   })
 
   describe('base64 format with non-Latin-1 text (#212)', () => {

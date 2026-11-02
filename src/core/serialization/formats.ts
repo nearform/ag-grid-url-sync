@@ -102,12 +102,12 @@ export class Base64Serializer implements FormatSerializer {
 
   serialize(filterState: FilterState): string {
     const jsonString = this.jsonSerializer.serialize(filterState)
-    return encodeBase64(jsonString)
+    return btoa(escapeNonAscii(jsonString))
   }
 
   deserialize(value: string): FilterState {
     try {
-      const decoded = decodeBase64(value)
+      const decoded = atob(value)
       return this.jsonSerializer.deserialize(decoded)
     } catch (error) {
       throw new Error(`Base64 decoding failed: ${(error as Error).message}`)
@@ -116,32 +116,19 @@ export class Base64Serializer implements FormatSerializer {
 }
 
 /**
- * Base64-encode the UTF-8 bytes of a string.
+ * Write each non-ASCII character in a JSON string as a `\uXXXX` escape.
  *
  * `btoa` accepts Latin-1 characters only, so CJK text or emoji made it throw
- * (#212). ASCII text gives the same output as `btoa`.
- */
-function encodeBase64(text: string): string {
-  let binary = ''
-  for (const byte of new TextEncoder().encode(text)) {
-    binary += String.fromCharCode(byte)
-  }
-  return btoa(binary)
-}
-
-/**
- * Decode a base64 value to a string. Reads the bytes as UTF-8.
+ * (#212). After this step the JSON is ASCII only, and `JSON.parse` gives back
+ * the same text. Characters outside the BMP (such as emoji) are two UTF-16
+ * code units, so they become two escapes, and `JSON.parse` joins them again.
  *
- * Links made before #212 encoded Latin-1 characters (such as `é`) as one byte
- * each. Those bytes are not valid UTF-8, so the decoder falls back to Latin-1
- * and old links still decode.
+ * The decoder does not change: `atob` then `JSON.parse`. So links made before
+ * #212 decode exactly as before, and ASCII text gives the same output.
  */
-function decodeBase64(value: string): string {
-  const binary = atob(value)
-  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-  } catch {
-    return binary
-  }
+function escapeNonAscii(json: string): string {
+  return json.replace(
+    /[\u0080-\uffff]/g,
+    char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`
+  )
 }

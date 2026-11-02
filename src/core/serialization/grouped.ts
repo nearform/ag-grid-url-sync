@@ -48,7 +48,7 @@ export function serializeGrouped(
       config.format,
       error as Error
     )
-    config.onParseError(serializationError)
+    config.onParseError?.(serializationError)
 
     // Return empty state on error
     return {
@@ -82,7 +82,7 @@ export function deserializeGrouped(
       format,
       error as Error
     )
-    config.onParseError(serializationError)
+    config.onParseError?.(serializationError)
 
     // Return empty state on error
     return {}

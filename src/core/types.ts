@@ -4,7 +4,7 @@ import type {
   NumberFilterModel,
   DateFilterModel
 } from 'ag-grid-community'
-import { attachColumn, columnOf } from './issue-columns.js'
+import { attachColumn } from './issue-columns.js'
 import {
   OPERATORS,
   operationsFor,
@@ -384,6 +384,9 @@ export class URLSyncError extends Error {
   /** The reason for the error */
   readonly code: IssueCode
 
+  /** The column of the filter, when it is known */
+  declare readonly column?: string
+
   constructor(
     message: string,
     public override readonly cause?: Error,
@@ -394,11 +397,6 @@ export class URLSyncError extends Error {
     this.code = details.code ?? 'UNKNOWN'
 
     if (details.column !== undefined) attachColumn(this, details.column)
-  }
-
-  /** The column of the filter, when it is known */
-  get column(): string | undefined {
-    return columnOf(this)
   }
 }
 

@@ -14,3 +14,8 @@ error.column = 'x'
 
 // @ts-expect-error code is read-only
 error.code = 'UNKNOWN'
+
+// A subclass can still declare its own column property (#220 review)
+export class AppError extends URLSyncError {
+  override column = 'fixed'
+}

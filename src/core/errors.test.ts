@@ -96,3 +96,31 @@ describe('attachColumn', () => {
     expect(error.column).toBe('x')
   })
 })
+
+// The column is an own property, so loggers and JSON keep it (#220 review)
+describe('column as an own property', () => {
+  it('is in JSON and in the own keys when it is known', () => {
+    const error = new InvalidFilterError('m', undefined, {
+      code: 'VALUE_TOO_LONG',
+      column: 'name'
+    })
+
+    expect(Object.keys(error)).toContain('column')
+    expect(JSON.parse(JSON.stringify(error))).toMatchObject({
+      code: 'VALUE_TOO_LONG',
+      column: 'name'
+    })
+  })
+
+  it('is set by attachColumn as an own property', () => {
+    const error = new InvalidFilterError('m')
+    attachColumn(error, 'age')
+
+    expect(Object.keys(error)).toContain('column')
+    expect({ ...error }).toMatchObject({ column: 'age' })
+  })
+
+  it('is not an own key when it is not known', () => {
+    expect(Object.keys(new InvalidFilterError('m'))).not.toContain('column')
+  })
+})

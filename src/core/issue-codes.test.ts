@@ -228,7 +228,13 @@ describe('issue codes (#220)', () => {
     const [error] = errors
 
     expect(error).toBeInstanceOf(errorClass)
-    expect(error).toMatchObject({ code, column })
+    expect(error).toMatchObject({ code })
+
+    if (column === undefined) {
+      expect(error).not.toHaveProperty('column')
+    } else {
+      expect(error).toHaveProperty('column', column)
+    }
   })
 
   it('throws InvalidURLError with INVALID_URL for a host with no scheme', () => {

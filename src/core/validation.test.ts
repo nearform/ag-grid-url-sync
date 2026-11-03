@@ -3,6 +3,7 @@ import {
   validateFilterValue,
   validateNumberFilter,
   validateAndParseNumber,
+  parseExactNumber,
   validateAndParseDate,
   validateNumberRange,
   validateDateFilter,
@@ -124,6 +125,59 @@ describe('Validation Functions', () => {
       expect(() => validateAndParseNumber('42abc')).toThrow(
         'Invalid number format: 42abc'
       )
+    })
+
+    it('should reject a number that loses digits (#238)', () => {
+      expect(() => validateAndParseNumber('12345678901234567890')).toThrow(
+        'Number value loses digits: 12345678901234567890'
+      )
+    })
+  })
+
+  // A number is exact when the double that parseFloat gives has the same
+  // decimal digits as the text. The form of the text does not matter (#238).
+  describe('parseExactNumber (#238)', () => {
+    it.each([
+      ['42', 42],
+      ['-3.14', -3.14],
+      [' 42 ', 42],
+      ['1.50', 1.5],
+      ['007', 7],
+      ['.5', 0.5],
+      ['1e3', 1000],
+      ['0', 0],
+      ['0.000', 0],
+      ['9007199254740992', 2 ** 53],
+      ['+9007199254740992', 2 ** 53],
+      ['9007199254740992.0', 2 ** 53],
+      ['1e21', 1e21],
+      ['1E+21', 1e21],
+      ['1e+21', 1e21],
+      ['1000000000000000000000', 1e21],
+      ['0.1', 0.1],
+      ['5e-324', 5e-324]
+    ])('should parse %s as %s', (value, expected) => {
+      expect(parseExactNumber(value)).toBe(expected)
+    })
+
+    it.each([
+      // Digits lost above the safe integer range
+      '9007199254740993',
+      '12345678901234567890',
+      '-12345678901234567891',
+      // Digits lost inside the safe range
+      '0.12345678901234567891',
+      '1234567890.12345678901234',
+      // Too small or too large for a double
+      '1e-400',
+      '1e400',
+      // Not a number
+      '',
+      'abc',
+      '42abc',
+      '1e 21'
+    ])('should give null for %s', value => {
+      expect(parseExactNumber(value)).toBeNull()
     })
   })
 

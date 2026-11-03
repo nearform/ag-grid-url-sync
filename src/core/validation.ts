@@ -66,7 +66,9 @@ export function validateFilterValue(
  */
 export function validateNumberFilter(value: number): ValidationResult {
   // Every finite number is valid. There is no safe-integer limit: String(n)
-  // and parseFloat give back the same number, so a URL keeps it exactly (#238)
+  // and parseFloat give back the same number, so a number that generateUrl
+  // writes comes back exactly. A hand-written value that would lose digits
+  // is rejected when it is parsed (see parseExactNumber, #238).
   if (!Number.isFinite(value)) {
     return { valid: false, error: 'Filter value must be a finite number' }
   }
@@ -104,6 +106,59 @@ export function validateNumberRange(
 }
 
 /**
+ * A whole number in decimal or exponent form. The full match stops parseFloat
+ * from taking a number at the start of the value ("42abc" would be 42).
+ */
+const NUMBER_FORMAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
+
+/**
+ * A key for the value of a number in NUMBER_FORMAT, without its sign: the
+ * significant digits (no leading or trailing zeros), then the position of the
+ * decimal point after `e`. "1.50", "150e-2" and "0.0150e2" all give "15e1".
+ * Zero gives "".
+ */
+function significantDigits(text: string): string {
+  const [mantissa = '', exponent = '0'] = text.replace(/^[+-]/, '').split(/e/i)
+  const [whole = '', fraction = ''] = mantissa.split('.')
+  const allDigits = whole + fraction
+  const leadingZeros = allDigits.length - allDigits.replace(/^0+/, '').length
+  const digits = allDigits.slice(leadingZeros).replace(/0+$/, '')
+
+  if (digits === '') return ''
+
+  const point = whole.length - leadingZeros + Number(exponent)
+
+  return `${digits}e${point}`
+}
+
+/**
+ * Whether `number` has the same decimal digits as `text`, so the text loses
+ * no digits when it is stored as a double. String(n) gives the shortest form
+ * that reads back as n, so any other digits in the text are lost.
+ */
+const keepsDigits = (text: string, number: number): boolean =>
+  significantDigits(text) === significantDigits(String(Math.abs(number)))
+
+/**
+ * Parses the value as a number only if the whole value is a number, and only
+ * if no digit is lost. Returns null otherwise.
+ *
+ * The form does not matter: "1e21", "1E+21" and "1000000000000000000000" are
+ * all 1e21, and "1.50" and "007" are 1.5 and 7. A value such as the ID
+ * "12345678901234567890" would come back as 12345678901234567000, so it is
+ * not a number here (#238).
+ */
+export function parseExactNumber(value: string): number | null {
+  const text = value.trim()
+
+  if (!NUMBER_FORMAT.test(text)) return null
+
+  const number = parseFloat(text)
+
+  return Number.isFinite(number) && keepsDigits(text, number) ? number : null
+}
+
+/**
  * Validates a parsed number from string input
  *
  * @param value - String representation of number
@@ -116,24 +171,21 @@ export function validateAndParseNumber(value: string): number {
     throw new InvalidFilterError('Number filter value cannot be empty')
   }
 
-  // Use a regex to validate proper number format before parsing
-  // This prevents parseFloat from accepting partial numbers like "42abc" -> 42
-  const numberRegex = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
-
-  if (!numberRegex.test(trimmedValue)) {
+  if (!NUMBER_FORMAT.test(trimmedValue)) {
     throw new InvalidFilterError(`Invalid number format: ${value}`)
   }
 
   const numValue = parseFloat(trimmedValue)
 
-  if (isNaN(numValue)) {
-    throw new InvalidFilterError(`Invalid number format: ${value}`)
-  }
-
   const validation = validateNumberFilter(numValue)
 
   if (!validation.valid) {
     throw new InvalidFilterError(validation.error || 'Invalid number value')
+  }
+
+  // The same rule as parseExactNumber (#238)
+  if (!keepsDigits(trimmedValue, numValue)) {
+    throw new InvalidFilterError(`Number value loses digits: ${trimmedValue}`)
   }
 
   return numValue

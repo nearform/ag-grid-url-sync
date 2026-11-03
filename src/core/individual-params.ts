@@ -9,6 +9,7 @@ import {
 import {
   validateFilterValue,
   validateAndParseNumber,
+  parseExactNumber,
   validateNumberRange,
   validateAndParseDate,
   validateAndParseDateRange,
@@ -157,35 +158,6 @@ function tryParseAsDate(value: string): 'date' | null {
 }
 
 /**
- * Parses the value as a number only if the whole value is a valid number.
- * Returns null otherwise. `parseFloat` alone accepts a number at the start of
- * the value, so "3M" became 3 (#214).
- *
- * Above the safe integer range, a number can lose digits: an ID such as
- * "12345678901234567890" would come back as 12345678901234567000. Such a value
- * is a number only when it is written the way `String(n)` writes it, as
- * `generateUrl` does. Any other form stays text (#238).
- */
-function tryParseNumber(value: string): number | null {
-  let number: number
-
-  try {
-    number = validateAndParseNumber(value)
-  } catch {
-    return null
-  }
-
-  if (
-    Math.abs(number) > Number.MAX_SAFE_INTEGER &&
-    String(number) !== value.trim()
-  ) {
-    return null
-  }
-
-  return number
-}
-
-/**
  * Detects the most appropriate filter type for a shared operation based on the value
  * Priority: Date > Number > Text (if the value can be parsed as date/number, prefer that type)
  */
@@ -206,7 +178,7 @@ function detectFilterTypeForSharedOperation(
     }
 
     // Try number second
-    if (tryParseNumber(value) !== null) {
+    if (parseExactNumber(value) !== null) {
       return 'number'
     }
 
@@ -377,7 +349,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
     }
 
     if (detectedType === 'number') {
-      const numValue = tryParseNumber(value)
+      const numValue = parseExactNumber(value)
 
       if (numValue !== null) {
         return {

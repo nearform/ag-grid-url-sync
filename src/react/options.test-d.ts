@@ -13,7 +13,10 @@ import type {
   SerializationFormat,
   SerializationMode
 } from '../core/types.js'
-import type { UseAGGridUrlSyncOptions } from './types.js'
+import type {
+  UseAGGridUrlSyncOptions,
+  UseAGGridUrlSyncReturn
+} from './types.js'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 
 // Every optional option of the core takes undefined
@@ -85,3 +88,8 @@ export function ReadmeIssuesExample({
 
   return issues.length > 0 ? 'The link leaves out a filter' : null
 }
+
+// getSerializationMode returns the serialization mode (#222)
+expectTypeOf<UseAGGridUrlSyncReturn['getSerializationMode']>().toEqualTypeOf<
+  () => SerializationMode
+>()

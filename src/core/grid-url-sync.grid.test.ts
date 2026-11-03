@@ -197,6 +197,32 @@ describe('createGridUrlSync: snapshot and subscribe', () => {
     expect(sync.getSnapshot()).toBe(before)
   })
 
+  // The React hook keeps its issues array stable from this (#222)
+  it('keeps the issues array when only the url changes', async () => {
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api, maxValueLength: 3 })
+    const tooLong = { filterType: 'text', type: 'contains', filter: 'abcd' }
+
+    api.setFilterModel({
+      name: tooLong,
+      age: { filterType: 'number', type: 'greaterThan', filter: 5 }
+    })
+
+    await settle()
+    const before = sync.getSnapshot()
+
+    api.setFilterModel({
+      name: tooLong,
+      age: { filterType: 'number', type: 'greaterThan', filter: 6 }
+    })
+
+    await settle()
+
+    expect(before.issues).toHaveLength(1)
+    expect(sync.getSnapshot().url).not.toBe(before.url)
+    expect(sync.getSnapshot().issues).toBe(before.issues)
+  })
+
   it('runs the other listeners when one throws, and keeps working', async () => {
     const api = createRealGrid()
     const sync = createGridUrlSync({ api })

@@ -142,24 +142,28 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
   /** Builds a new snapshot, and tells the listeners, when something changed */
   function publish(): void {
-    const issues = [...applyIssues, ...readIssues, ...writeIssues]
+    const list = [...applyIssues, ...readIssues, ...writeIssues]
     const hasFilters = Object.keys(state).length > 0
+    const sameList = sameIssues(snapshot.issues, list)
 
     if (
       snapshot.status === status &&
       snapshot.url === url &&
       snapshot.hasFilters === hasFilters &&
-      sameIssues(snapshot.issues, issues)
+      sameList
     ) {
       return
     }
 
-    snapshot = Object.freeze({
-      status,
-      url,
-      hasFilters,
-      issues: issues.length ? Object.freeze(issues) : NO_ISSUES
-    })
+    // The same issues keep the same array, so a URL change alone does not
+    // give React a new issues value (#222)
+    const issues = sameList
+      ? snapshot.issues
+      : list.length
+        ? Object.freeze(list)
+        : NO_ISSUES
+
+    snapshot = Object.freeze({ status, url, hasFilters, issues })
 
     // A copy, so a listener that unsubscribes during notify stops no other
     // one. A listener's error is reported out of band, so it stops neither

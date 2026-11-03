@@ -4,7 +4,9 @@ import type {
   FilterModel,
   GridApi
 } from 'ag-grid-community'
+import { useSyncExternalStore } from 'use-sync-external-store/shim'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
+import { createGridUrlSync, IDLE_SNAPSHOT } from '../core/grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { resolveParamPrefix } from '../core/individual-params.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
@@ -13,7 +15,11 @@ import { toError } from '../core/to-error.js'
 import { isDataIssue, shouldThrow, toIssue } from '../core/issues.js'
 import { URLSyncError } from '../core/types.js'
 import type {
+  AGGridUrlSyncConfig,
   FilterState,
+  GridUrlSync,
+  GridUrlSyncSnapshot,
+  IssueEvent,
   SerializationFormat,
   SerializationMode
 } from '../core/types.js'
@@ -21,6 +27,8 @@ import type {
   UseAGGridUrlSyncOptions,
   UseAGGridUrlSyncReturn
 } from './types.js'
+import { createSyncHolder } from './sync-holder.js'
+import { gridUrlSyncOptions } from './sync-options.js'
 
 /**
  * Content equality for view lists, used to skip no-op re-renders.
@@ -51,6 +59,9 @@ function sameFilterModel(a: FilterModel, b: FilterModel): boolean {
 
 /** The empty list, one object so that an empty state keeps its identity */
 const NO_ISSUES: readonly URLSyncError[] = []
+
+/** The snapshot of a server render: no grid and no sync yet (#222) */
+const getServerSnapshot = (): GridUrlSyncSnapshot => IDLE_SNAPSHOT
 
 /** Whether two lists have the same issues: the code, message and column */
 function sameIssues(
@@ -153,14 +164,42 @@ export function useAGGridUrlSync(
     ...coreOptions
   } = options
 
-  // Internal state
-  const [isReady, setIsReady] = useState(false)
-  const [currentUrl, setCurrentUrl] = useState('')
-  const [hasFilters, setHasFilters] = useState(false)
-  // The data issues of the latest URL apply and of the latest URL write
-  // (#229). Only data issues: operation failures go to onError.
+  // The URL-format options, after defaults. The memo keys on the five plain
+  // values, so a new options object with the same values makes no new sync,
+  // and a changed value makes one (#222).
+  const resolved = resolveOptions(coreOptions)
+
+  const { paramPrefix, maxValueLength, serialization, groupedParam, format } =
+    resolved
+
+  const urlOptions = useMemo(
+    (): AGGridUrlSyncConfig => ({
+      paramPrefix,
+      maxValueLength,
+      serialization,
+      groupedParam,
+      format
+    }),
+    [paramPrefix, maxValueLength, serialization, groupedParam, format]
+  )
+
+  // The URL state comes from the sync (#222). The holder exists before the
+  // sync, which the init effect makes, so React always has a store to read.
+  const [holder] = useState(createSyncHolder)
+
+  const snapshot = useSyncExternalStore(
+    holder.subscribe,
+    holder.getSnapshot,
+    getServerSnapshot
+  )
+
+  const isReady = snapshot.status === 'active'
+  const currentUrl = isReady ? snapshot.url : ''
+  const hasFilters = isReady && snapshot.hasFilters
+
+  // The data issues of the latest apply (#229). Only data issues: operation
+  // failures go to onError. The grid-read issues come from the snapshot.
   const [applyIssues, setApplyIssues] = useState(NO_ISSUES)
-  const [writeIssues, setWriteIssues] = useState(NO_ISSUES)
 
   // Saved views. The presence of storageKey is what enables the feature, so
   // there is no separate flag to keep in sync.
@@ -378,7 +417,7 @@ export function useAGGridUrlSync(
   // applyFromUrl() against a filterless URL clears the grid. A store that has
   // gone away has no namespace left to apply.
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- syncs from the view store (localStorage); #222 moves this to useSyncExternalStore
+    // oxlint-disable-next-line react/set-state-in-effect -- syncs from the view store (localStorage); #223 moves the saved views out of the hook
     syncViewsFromStore()
     commitActiveViewId(null)
 
@@ -437,58 +476,85 @@ export function useAGGridUrlSync(
     [reportFailure]
   )
 
-  // Initialize or update URL sync instance when grid API changes
+  // Make the sync and the class instance for each grid and each set of
+  // URL-format options. The class does the operations; the sync gives the
+  // URL state (#222). A new grid resets what described the old one. A new
+  // option only changes the URL format: the grid keeps its filters, and the
+  // URL is not applied again.
   useEffect(() => {
-    if (gridApi && enabledWhenReady) {
-      // Clean up previous instance if grid API changed
-      if (lastGridApiRef.current && lastGridApiRef.current !== gridApi) {
-        urlSyncRef.current?.destroy()
-        urlSyncRef.current = null
-        autoAppliedRef.current = false
-        urlAppliedRef.current = false
-        // The marker described the grid that went away; this one has had
-        // nothing applied. Session marker only - the pointer still records what
-        // to restore, and with autoApplyOnMount the re-arm above does restore it.
-        commitActiveViewId(null)
-        // Nothing has been applied to the new grid yet
-        setApplyIssues(NO_ISSUES)
-      }
+    const previousGrid = lastGridApiRef.current
+    const live = gridApi && enabledWhenReady ? gridApi : null
 
-      // Create new instance if needed
-      if (!urlSyncRef.current) {
-        try {
-          urlSyncRef.current = new AGGridUrlSync(gridApi, {
-            ...coreOptions,
-            onParseError: issue => reportFailure(issue, contextRef.current)
-          })
-          // oxlint-disable-next-line react/set-state-in-effect -- marks the hook ready once the grid API exists; #222 moves this to useSyncExternalStore
-          setIsReady(true)
-          lastGridApiRef.current = gridApi
-        } catch (error) {
-          reportFailure(error, 'initialization')
-          setIsReady(false)
-        }
-      }
-    } else {
-      // Clean up when grid API is null or disabled
-      if (urlSyncRef.current) {
-        urlSyncRef.current.destroy()
-        urlSyncRef.current = null
-        autoAppliedRef.current = false
-        urlAppliedRef.current = false
-        // As above: no live grid left for the marker to describe. Guarded on
-        // urlSyncRef so a first render with a null gridApi touches nothing.
-        commitActiveViewId(null)
-        setApplyIssues(NO_ISSUES)
-      }
+    if (previousGrid && previousGrid !== live) {
+      autoAppliedRef.current = false
+      urlAppliedRef.current = false
+      // The marker described the grid that went away; this one has had
+      // nothing applied. Session marker only - the pointer still records what
+      // to restore, and with autoApplyOnMount the re-arm above does restore it.
+      commitActiveViewId(null)
+      // Nothing has been applied to the new grid yet
+      setApplyIssues(NO_ISSUES)
+    }
 
-      setIsReady(false)
-      lastGridApiRef.current = null
+    lastGridApiRef.current = live
+
+    if (!live) return
+
+    let sync: GridUrlSync | null = null
+
+    // A grid-read issue gets the context of the state update, as before
+    const onIssue = ({ issue, source }: IssueEvent): void =>
+      reportFailure(
+        issue,
+        source === 'grid' ? 'update-state' : 'initialization'
+      )
+
+    try {
+      urlSyncRef.current = new AGGridUrlSync(live, {
+        ...urlOptions,
+        onParseError: issue => reportFailure(issue, contextRef.current)
+      })
+      sync = createGridUrlSync(gridUrlSyncOptions(live, urlOptions, onIssue))
+    } catch (error) {
+      urlSyncRef.current = null
+      reportFailure(error, 'initialization')
+
+      return
+    }
+
+    const core = urlSyncRef.current
+
+    // AG Grid destroyed the grid: the operations take the not-ready path, as
+    // with no grid. A sync made on a grid that is already destroyed starts
+    // as destroyed, so check one time now too (#222 review).
+    const leaveIfDestroyed = (): void => {
+      if (
+        sync?.getSnapshot().status === 'destroyed' &&
+        urlSyncRef.current === core
+      ) {
+        urlSyncRef.current = null
+      }
+    }
+
+    const stopWatching = sync.subscribe(leaveIfDestroyed)
+    leaveIfDestroyed()
+
+    holder.set(sync)
+
+    return () => {
+      stopWatching()
+      sync?.destroy()
+      core.destroy()
+
+      if (urlSyncRef.current === core) urlSyncRef.current = null
+
+      holder.set(null)
     }
   }, [
     gridApi,
     enabledWhenReady,
-    coreOptions,
+    urlOptions,
+    holder,
     reportFailure,
     commitActiveViewId
   ])
@@ -506,7 +572,7 @@ export function useAGGridUrlSync(
     // The same options as the real parse, so the probe decides on the same
     // terms. No grid is needed, so this stays callable before the grid
     // resolves.
-    const options = resolveOptions(coreOptions)
+    const options = resolveOptions(urlOptions)
 
     // The same prefix the writer and the parser use: an empty string means
     // the default rather than matching everything, and a trailing underscore
@@ -561,7 +627,7 @@ export function useAGGridUrlSync(
       // parse reports it if it is reached; here it just means "no".
       return false
     }
-  }, [coreOptions])
+  }, [urlOptions])
 
   // Auto-apply on mount. URL filters win over a stored view: a shared link
   // should show the sender's filters, not the recipient's saved default.
@@ -603,7 +669,7 @@ export function useAGGridUrlSync(
           // The URL won, so no saved view is active. Clear the stored pointer
           // too, or the next mount would restore a view the user never chose
           // here. State first, same as loadView.
-          // oxlint-disable-next-line react/set-state-in-effect -- the URL won over the saved view, so the active marker clears; #222 moves this to useSyncExternalStore
+          // oxlint-disable-next-line react/set-state-in-effect -- the URL won over the saved view, so the active marker clears; #223 moves the saved views out of the hook
           commitActiveViewId(null)
 
           try {
@@ -663,7 +729,6 @@ export function useAGGridUrlSync(
   }, [
     isReady,
     autoApplyOnMount,
-    coreOptions,
     reportFailure,
     urlHasFilterParams,
     viewStore,
@@ -672,16 +737,10 @@ export function useAGGridUrlSync(
     applyModelToGrid
   ])
 
-  // Update current URL and filter state on filter changes
+  // The saved-view checks on filter changes. The URL state comes from the
+  // sync (#222), so this listener only follows the active view.
   useEffect(() => {
-    if (!isReady || !urlSyncRef.current || !gridApi) {
-      setCurrentUrl('')
-      setHasFilters(false)
-      // No live grid, so no URL write to describe (#229)
-      setWriteIssues(NO_ISSUES)
-
-      return
-    }
+    if (!isReady || !urlSyncRef.current || !gridApi) return
 
     /**
      * Drops the active view marker once the grid stops showing that view.
@@ -774,49 +833,20 @@ export function useAGGridUrlSync(
       }
     }
 
-    const updateState = (
-      fromEvent: boolean,
-      source?: FilterChangedEvent['source']
-    ) => {
-      syncActiveViewToGrid(fromEvent, source)
-
-      try {
-        // One read of the grid gives both values. hasFilters comes from the
-        // filter state: the URL also keeps the page's own params (#215).
-        contextRef.current = 'update-state'
-        const { url, hasFilters, issues } = urlSyncRef.current!.getUrlState()
-        setCurrentUrl(url)
-        setHasFilters(hasFilters)
-        setWriteIssues(keepIssues(issues))
-      } catch (error) {
-        reportFailure(error, 'update-state')
-      }
-    }
-
     // Attach event listener for filter changes
     const onFilterChanged = (event?: FilterChangedEvent) =>
-      updateState(true, event?.source)
+      syncActiveViewToGrid(true, event?.source)
 
     gridApi.addEventListener('filterChanged', onFilterChanged)
 
-    // Initial state update
-    updateState(false)
+    // The grid may already show something other than the active view
+    syncActiveViewToGrid(false)
 
     // Cleanup event listener on unmount or gridApi change
     return () => {
       gridApi.removeEventListener('filterChanged', onFilterChanged)
     }
   }, [isReady, gridApi, reportFailure, viewStore, commitActiveViewId])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (urlSyncRef.current) {
-        urlSyncRef.current.destroy()
-        urlSyncRef.current = null
-      }
-    }
-  }, [])
 
   // Memoized API methods
   const shareUrl = useCallback(
@@ -908,14 +938,19 @@ export function useAGGridUrlSync(
 
       try {
         // The parser fills in the defaults of the options that are not set
-        return parseFilters(url, coreOptions)
+        return parseFilters(url, {
+          ...urlOptions,
+          // The latest callback, so a new one on each render keeps this
+          // function stable (#222)
+          onParseError: issue => callbacksRef.current.onParseError?.(issue)
+        })
       } catch (error) {
         reportFailure(error, 'parse-url-filters')
 
         return {}
       }
     },
-    [coreOptions, gridApi, reportFailure]
+    [urlOptions, gridApi, reportFailure]
   )
 
   const applyFilters = useCallback(
@@ -960,7 +995,7 @@ export function useAGGridUrlSync(
     [reportFailure]
   )
 
-  const getCurrentFormat = useCallback((): SerializationMode => {
+  const getSerializationMode = useCallback((): SerializationMode => {
     if (!urlSyncRef.current) {
       return DEFAULT_CONFIG.serialization
     }
@@ -968,11 +1003,14 @@ export function useAGGridUrlSync(
     try {
       return urlSyncRef.current.getSerializationMode()
     } catch (error) {
-      reportFailure(error, 'get-current-format')
+      reportFailure(error, 'get-serialization-mode')
 
       return DEFAULT_CONFIG.serialization
     }
   }, [reportFailure])
+
+  // Deprecated: the old name of getSerializationMode (#222)
+  const getCurrentFormat = getSerializationMode
 
   // Saved view operations. All no-op when storageKey is unset, and when the hook
   // is disabled: urlSyncRef is null on the init effect's disabled branch, which
@@ -1200,14 +1238,23 @@ export function useAGGridUrlSync(
     ]
   )
 
+  // The data issues of the latest grid read. The snapshot keeps its issues
+  // array while the content is the same, so this changes only with it (#229
+  // identity).
+  const readIssues = useMemo(() => {
+    const data = isReady ? snapshot.issues.filter(isDataIssue) : NO_ISSUES
+
+    return data.length ? data : NO_ISSUES
+  }, [isReady, snapshot.issues])
+
   const issues = useMemo(
     () =>
       applyIssues.length === 0
-        ? writeIssues
-        : writeIssues.length === 0
+        ? readIssues
+        : readIssues.length === 0
           ? applyIssues
-          : [...applyIssues, ...writeIssues],
-    [applyIssues, writeIssues]
+          : [...applyIssues, ...readIssues],
+    [applyIssues, readIssues]
   )
 
   // Return the hook API
@@ -1224,6 +1271,7 @@ export function useAGGridUrlSync(
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
+      getSerializationMode,
       getCurrentFormat,
       views,
       activeViewId,
@@ -1243,6 +1291,7 @@ export function useAGGridUrlSync(
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
+      getSerializationMode,
       getCurrentFormat,
       views,
       activeViewId,

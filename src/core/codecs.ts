@@ -66,3 +66,18 @@ export function codecOptions(codec: Codec): CodecOptions {
 
   return options
 }
+
+/**
+ * A codec with all four settings, for the React hook (#222). Internal: the
+ * hook's old options name the params of both modes, and the URL must strip
+ * the names that the app set, as the class does. Not exported from the
+ * package.
+ */
+export function codecFromOptions(options: CodecOptions): Codec {
+  return makeCodec({
+    serialization: options.serialization,
+    paramPrefix: options.paramPrefix,
+    groupedParam: options.groupedParam,
+    format: options.format
+  })
+}

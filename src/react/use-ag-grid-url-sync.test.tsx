@@ -8,9 +8,11 @@ import type { FilterState } from '../core/types.js'
 import type { UseAGGridUrlSyncReturn } from './types.js'
 import {
   asGridApi,
+  createGridListeners,
   waitForEffects,
   type FilterChangedListener,
-  type GridApiFake
+  type GridApiFake,
+  type GridListeners
 } from '../test-helpers.js'
 
 // A grid fake that has the four methods every hook test needs
@@ -25,15 +27,17 @@ type MockGridApi = GridApiFake &
     >
   >
 
-const createMockGridApi = (): MockGridApi => ({
+// The mock grid with a listener registry: fire() calls every live listener
+type ListeningGridApi = MockGridApi & Pick<GridListeners, 'fire' | 'count'>
+
+const createMockGridApi = (): ListeningGridApi => ({
   setFilterModel: vi.fn(),
   getFilterModel: vi.fn(() => ({})),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn()
+  ...createGridListeners()
 })
 
 describe('useAGGridUrlSync', () => {
-  let mockGridApi: MockGridApi
+  let mockGridApi: ListeningGridApi
 
   // The hook runs on the real core. Spies on the core's prototype record its
   // calls and run the real method, so a test can check a call or replace one
@@ -420,30 +424,17 @@ describe('useAGGridUrlSync', () => {
     test('handles initialization errors gracefully', async () => {
       const onError = vi.fn()
 
-      // The real constructor cannot fail for any input, so make its read of
-      // an option that is not set throw. The options object has no own
-      // `paramPrefix`, so resolveOptions reads it from Object.prototype. The
-      // hook copies only own keys, so nothing reads it before the constructor.
-      const paramPrefix = vi.fn(() => {
+      // The sync listens to the grid when it is made (#222), so a grid that
+      // cannot take a listener makes the initialization fail
+      vi.mocked(mockGridApi.addEventListener).mockImplementation(() => {
         throw new Error('Initialization failed')
       })
 
-      Object.defineProperty(Object.prototype, 'paramPrefix', {
-        configurable: true,
-        get: paramPrefix
-      })
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), { onError })
+      )
 
-      let result: { current: ReturnType<typeof useAGGridUrlSync> }
-
-      try {
-        ;({ result } = renderHook(() =>
-          useAGGridUrlSync(asGridApi(mockGridApi), { onError })
-        ))
-      } finally {
-        Reflect.deleteProperty(Object.prototype, 'paramPrefix')
-      }
-
-      expect(paramPrefix).toHaveBeenCalled()
+      expect(mockGridApi.addEventListener).toHaveBeenCalled()
       expect(result.current.isReady).toBe(false)
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'Initialization failed' }),
@@ -547,12 +538,6 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('sets hasFilters to false when the grid has no filters', async () => {
-      core.getUrlState.mockReturnValue({
-        url: 'http://example.com?tab=1',
-        hasFilters: false,
-        issues: []
-      })
-
       const { result } = renderHook(() =>
         useAGGridUrlSync(asGridApi(mockGridApi))
       )
@@ -603,31 +588,26 @@ describe('useAGGridUrlSync', () => {
       })
     }
 
-    // The mock grid records listeners rather than dispatching to them, so a
-    // model change has to be announced by hand. The hook re-registers on every
-    // grid change, so the newest handler is the live one.
-    const fireFilterChanged = async (api: MockGridApi = mockGridApi) => {
-      const handler = vi
-        .mocked(api.addEventListener)
-        .mock.calls.filter(([event]) => event === 'filterChanged')
-        .at(-1)?.[1]
+    // The mock grid does not fire events on its own, so a model change has
+    // to be announced by hand, to every live filterChanged listener
+    const fireFilterChanged = async (api: ListeningGridApi = mockGridApi) => {
+      if (api.count('filterChanged') === 0) {
+        throw new Error('no filterChanged listener registered')
+      }
 
-      if (!handler) throw new Error('no filterChanged listener registered')
       await act(async () => {
-        handler()
+        api.fire('filterChanged')
       })
     }
 
     // Like fireFilterChanged, but synchronous and carrying an event source, so a
     // mocked write can raise it from inside the call as AG Grid does.
     const emitFilterChanged = (source?: string): void => {
-      const handler = vi
-        .mocked(mockGridApi.addEventListener)
-        .mock.calls.filter(([event]) => event === 'filterChanged')
-        .at(-1)?.[1]
+      if (mockGridApi.count('filterChanged') === 0) {
+        throw new Error('no filterChanged listener registered')
+      }
 
-      if (!handler) throw new Error('no filterChanged listener registered')
-      handler(source ? { source } : undefined)
+      mockGridApi.fire('filterChanged', source ? { source } : undefined)
     }
 
     beforeEach(() => {
@@ -3005,13 +2985,11 @@ describe('useAGGridUrlSync', () => {
   // issues go to onParseError, and operation failures go to onError.
   describe('one callback per failure (#220)', () => {
     const fireFilterChanged = (): void => {
-      const handler = vi
-        .mocked(mockGridApi.addEventListener)
-        .mock.calls.filter(([event]) => event === 'filterChanged')
-        .at(-1)?.[1]
+      if (mockGridApi.count('filterChanged') === 0) {
+        throw new Error('no filterChanged listener registered')
+      }
 
-      if (!handler) throw new Error('no filterChanged listener registered')
-      act(() => handler())
+      act(() => mockGridApi.fire('filterChanged'))
     }
 
     // test-setup.ts gives each test a plain location object

@@ -1,5 +1,5 @@
 import { act } from '@testing-library/react'
-import { vi } from 'vitest'
+import { vi, type Mock } from 'vitest'
 import type {
   ColDef,
   FilterModel,
@@ -47,6 +47,57 @@ export const waitForMultipleEffects = async (cycles: number = 2) => {
  * event's source, and a fake can call it with no event.
  */
 export type FilterChangedListener = (event?: { source?: string }) => void
+
+/**
+ * The listener methods of a grid fake, with a registry. The hook and its
+ * sync both listen to the grid (#222), so a fake must call every live
+ * listener of an event, not only the newest one.
+ */
+export interface GridListeners {
+  addEventListener: Mock<
+    (event: string, listener: FilterChangedListener) => void
+  >
+  removeEventListener: Mock<
+    (event: string, listener: FilterChangedListener) => void
+  >
+  /** Calls every live listener of the event, in the order they were added */
+  fire(event: string, payload?: { source?: string }): void
+  /** The number of live listeners of the event */
+  count(event: string): number
+}
+
+export function createGridListeners(): GridListeners {
+  const live = new Map<string, FilterChangedListener[]>()
+
+  const listenersOf = (event: string): FilterChangedListener[] =>
+    live.get(event) ?? []
+
+  return {
+    addEventListener: vi.fn(
+      (event: string, listener: FilterChangedListener) => {
+        live.set(event, [...listenersOf(event), listener])
+      }
+    ),
+    removeEventListener: vi.fn(
+      (event: string, listener: FilterChangedListener) => {
+        const list = listenersOf(event)
+        const at = list.indexOf(listener)
+
+        if (at >= 0)
+          live.set(
+            event,
+            list.filter((_, index) => index !== at)
+          )
+      }
+    ),
+    fire(event, payload) {
+      // add and remove make a new array, so a listener that removes itself
+      // does not change the list that this loop reads
+      for (const listener of listenersOf(event)) listener(payload)
+    },
+    count: event => listenersOf(event).length
+  }
+}
 
 /**
  * A column as the library reads it: the hook calls isFilterAllowed, and the

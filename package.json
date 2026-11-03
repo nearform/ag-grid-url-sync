@@ -143,6 +143,8 @@
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.4.0",
     "@types/react": "^19.2.1",
+    "@types/react-dom": "^19.3.0",
+    "@types/use-sync-external-store": "^1.7.0",
     "@vitest/coverage-v8": "^5.0.1",
     "ag-grid-community": "^36.1.0",
     "fast-check": "^4.10.2",
@@ -188,7 +190,7 @@
     {
       "name": "dist/react/index.js (bundled, react external)",
       "path": "./dist/react/index.js",
-      "limit": "12 KiB",
+      "limit": "14.5 KiB",
       "gzip": true,
       "ignore": [
         "react"
@@ -260,6 +262,7 @@
     }
   ],
   "dependencies": {
+    "use-sync-external-store": "^1.7.0",
     "valibot": "^1.5.0"
   }
 }

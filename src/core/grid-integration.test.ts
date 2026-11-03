@@ -5,6 +5,7 @@ import {
   detectColumnFilterType
 } from './grid-integration.js'
 
+import { generateUrl } from './url-generator.js'
 import type { InternalConfig, FilterState } from './types.js'
 import { asGridApi, createGridApiSpies } from '../test-helpers.js'
 
@@ -679,6 +680,153 @@ describe('Grid Integration', () => {
       expect(() =>
         applyFilterModel(filterState, asGridApi(mockGridApi))
       ).not.toThrow()
+    })
+  })
+
+  // AG Grid leaves a value out, or sets it to null, while a filter is being
+  // edited. A filter whose operation needs a value that is not there is "no
+  // filter" for that column. Blank filters need no value, so they are kept
+  // (#260).
+  describe('filters with no value (#260)', () => {
+    const NUMBER_OPERATIONS = [
+      'equals',
+      'notEqual',
+      'lessThan',
+      'lessThanOrEqual',
+      'greaterThan',
+      'greaterThanOrEqual'
+    ]
+
+    const MISSING = [
+      ['null', { filter: null }],
+      ['left out', {}],
+      ['an empty string', { filter: '' }],
+      ['spaces', { filter: '  ' }]
+    ] as const
+
+    describe.each(MISSING)('a number value that is %s', (_, value) => {
+      it.each(NUMBER_OPERATIONS)('drops %s and reports nothing', type => {
+        mockGridApi.getFilterModel.mockReturnValue({
+          n: { filterType: 'number', type, ...value },
+          name: { filterType: 'text', type: 'contains', filter: 'john' }
+        })
+
+        expect(getFilterModel(mockConfig)).toEqual({
+          name: { filterType: 'text', type: 'contains', filter: 'john' }
+        })
+        expect(mockConfig.onParseError).not.toHaveBeenCalled()
+      })
+    })
+
+    it('does not write a param for a number value that is null', () => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        n: { filterType: 'number', type: 'equals', filter: null }
+      })
+
+      const url = generateUrl(
+        'https://example.com/',
+        getFilterModel(mockConfig)
+      )
+
+      expect(url).toBe('https://example.com')
+    })
+
+    it.each([
+      ['filterTo is null', { filter: 5, filterTo: null }],
+      ['filterTo is left out', { filter: 5 }],
+      ['filter is null', { filter: null, filterTo: 10 }],
+      ['both are left out', {}]
+    ])('drops an inRange number filter when %s', (_, values) => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        n: { filterType: 'number', type: 'inRange', ...values }
+      })
+
+      expect(getFilterModel(mockConfig)).toEqual({})
+      expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
+    it.each(['blank', 'notBlank'] as const)(
+      'keeps a %s number filter',
+      type => {
+        mockGridApi.getFilterModel.mockReturnValue({
+          n: { filterType: 'number', type }
+        })
+
+        expect(getFilterModel(mockConfig)).toEqual({
+          n: { filterType: 'number', type, filter: 0 }
+        })
+        expect(mockConfig.onParseError).not.toHaveBeenCalled()
+      }
+    )
+
+    it.each(['blank', 'notBlank'] as const)(
+      'writes a %s number filter to the URL',
+      type => {
+        mockGridApi.getFilterModel.mockReturnValue({
+          n: { filterType: 'number', type, filter: null }
+        })
+
+        const url = generateUrl(
+          'https://example.com/',
+          getFilterModel(mockConfig)
+        )
+
+        expect(new URL(url).searchParams.get(`f_n_${type}`)).toBe('true')
+      }
+    )
+
+    it.each(['blank', 'notBlank'] as const)(
+      'gives a %s number filter back to AG Grid with no value',
+      type => {
+        mockGridApi.getFilterModel.mockReturnValue({
+          n: { filterType: 'number', type }
+        })
+        mockGridApi.getColumn.mockReturnValue({
+          getColDef: () => ({ filter: 'agNumberColumnFilter' })
+        })
+
+        applyFilterModel(getFilterModel(mockConfig), mockConfig)
+
+        expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+          n: { filterType: 'number', type, filter: null }
+        })
+      }
+    )
+
+    it.each([
+      ['null', { dateFrom: null }],
+      ['left out', {}],
+      ['an empty string', { dateFrom: '' }]
+    ])('drops a date filter whose date is %s', (_, value) => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        d: { filterType: 'date', type: 'lessThan', ...value }
+      })
+
+      expect(getFilterModel(mockConfig)).toEqual({})
+      expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['dateTo is null', { dateFrom: '2024-01-01', dateTo: null }],
+      ['dateTo is left out', { dateFrom: '2024-01-01' }],
+      ['dateFrom is null', { dateFrom: null, dateTo: '2024-12-31' }]
+    ])('drops an inRange date filter when %s', (_, values) => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        d: { filterType: 'date', type: 'inRange', ...values }
+      })
+
+      expect(getFilterModel(mockConfig)).toEqual({})
+      expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
+    it.each(['blank', 'notBlank'] as const)('keeps a %s date filter', type => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        d: { filterType: 'date', type, dateFrom: null, dateTo: null }
+      })
+
+      expect(getFilterModel(mockConfig)).toEqual({
+        d: { filterType: 'date', type, filter: '' }
+      })
     })
   })
 })

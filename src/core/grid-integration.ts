@@ -130,7 +130,7 @@ export function getFilterModel(
  * Gets the current filter model from AG Grid
  *
  * @deprecated Give the grid API as an argument:
- * `getFilterModel(gridApi, options)`. This form will be removed in v1.0.
+ * `getFilterModel(gridApi, options)`. This form will be removed in 0.6.0.
  */
 export function getFilterModel(config: InternalConfig): FilterState
 export function getFilterModel(
@@ -435,7 +435,7 @@ export function applyFilterModel(
  *
  * @deprecated Give the grid API as an argument:
  * `applyFilterModel(filterState, gridApi, options)`. This form will be
- * removed in v1.0.
+ * removed in 0.6.0.
  */
 export function applyFilterModel(
   filterState: FilterState,

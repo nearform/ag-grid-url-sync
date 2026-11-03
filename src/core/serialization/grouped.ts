@@ -117,7 +117,7 @@ export function deserializeGrouped(
  * @deprecated parseUrlFilters no longer uses this. It reads only
  * `config.groupedParam` and decodes it with `config.format`, because a guessed
  * format takes any non-empty value as grouped filters (#210). This function
- * will be removed in v1.0.
+ * will be removed in 0.6.0.
  * @param url - URL to analyze
  * @param possibleParams - Array of possible grouped parameter names to check
  * @returns Detection result with format and value if found

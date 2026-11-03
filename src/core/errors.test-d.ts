@@ -33,3 +33,12 @@ export const readmeErrorExample = createUrlSync(gridApiForReadme, {
     }
   }
 })
+
+// README "Dropped Filters in the Result" example (#229)
+export function readmeResultExample(): number {
+  const urlSync = createUrlSync(gridApiForReadme)
+  const { issues } = urlSync.getUrlState()
+  const { issues: urlIssues } = urlSync.applyFromUrl()
+
+  return issues.length + urlIssues.length
+}

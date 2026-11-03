@@ -478,6 +478,44 @@ In grouped mode, an error that comes from the grouped URL value is an `InvalidSe
 
 In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onParseError`, both when the URL is generated and when it is parsed.
 
+#### Dropped Filters in the Result
+
+A caller does not need a callback to see dropped filters. `getUrlState()` and the apply methods return the issues of each call. They are the same objects that `onParseError` gets.
+
+```typescript
+const { url, hasFilters, issues } = urlSync.getUrlState()
+
+if (issues.length > 0) {
+  // The link leaves out these filters, so the recipient sees other rows
+  showToast(`The link leaves out ${issues.length} filter(s)`)
+}
+
+const { issues: urlIssues } = urlSync.applyFromUrl()
+```
+
+In React, the hook returns `issues`: the issues of the latest URL apply (`applyUrlFilters`, `applyFilters`, auto-apply), followed by the issues of the latest URL write. The apply issues stay until the next apply, `clearFilters` or `loadView`. Operation failures (`onError`) are not in the list:
+
+```tsx
+const { shareUrl, issues } = useAGGridUrlSync(gridApi)
+
+return issues.length > 0 ? (
+  <Warning>The link leaves out a filter</Warning>
+) : null
+```
+
+#### `throwOnError`
+
+Like TanStack Query, the library can throw an issue instead of reporting it. Set `throwOnError: true` to throw every issue, or give a function that picks issues. In the core, a thrown issue does not go to `onParseError`, and the first one stops the call. In React, the hook keeps reporting each issue to `onParseError` one time, and then throws the picked issue during render, so an error boundary catches it. The default is `false`.
+
+The library does not change the address bar. Before an error boundary resets, remove the bad param from the URL (or the filter from the grid), or the same issue is thrown again.
+
+```tsx
+useAGGridUrlSync(gridApi, {
+  // Throw only when a link would leave out a filter
+  throwOnError: issue => issue.code === 'VALUE_TOO_LONG'
+})
+```
+
 ### Exports
 
 The package supports granular subpath exports for advanced usage and optimal bundle size:
@@ -596,6 +634,7 @@ const {
   isReady,
   currentUrl,
   hasFilters,
+  issues,
   parseUrlFilters,
   applyFilters,
   getFiltersAsFormat,
@@ -611,6 +650,7 @@ interface UseAGGridUrlSyncOptions {
   paramPrefix?: string // Default: 'f_'
   maxValueLength?: number // Default: 200
   onParseError?: (error: Error) => void
+  throwOnError?: boolean | ((issue: URLSyncError) => boolean) // Default: false
 
   // React-specific options
   autoApplyOnMount?: boolean // Default: false
@@ -624,19 +664,20 @@ interface UseAGGridUrlSyncOptions {
 
 #### Hook Return Values
 
-| Property             | Type                                                      | Description                                                    |
-| -------------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
-| `shareUrl`           | `(baseUrl?: string) => string`                            | Generate shareable URL with current filters                    |
-| `getQueryParams`     | `() => string`                                            | Get filter state as query parameters                           |
-| `applyUrlFilters`    | `(url?: string) => void`                                  | Apply filters from URL to grid                                 |
-| `clearFilters`       | `() => void`                                              | Clear all text filters                                         |
-| `isReady`            | `boolean`                                                 | Whether grid API is available and hook is ready                |
-| `currentUrl`         | `string`                                                  | Current URL with filters applied                               |
-| `hasFilters`         | `boolean`                                                 | Whether the grid has supported filters                         |
-| `parseUrlFilters`    | `(url: string) => FilterState`                            | Parse filters from URL without applying                        |
-| `applyFilters`       | `(filters: FilterState) => void`                          | Apply filter state object to grid                              |
-| `getFiltersAsFormat` | `(format: 'querystring' \| 'json' \| 'base64') => string` | Serialize filters to any supported format (for sharing/export) |
-| `getCurrentFormat`   | `() => 'individual' \| 'grouped'`                         | Get the current serialization mode (individual or grouped)     |
+| Property             | Type                                                      | Description                                                                 |
+| -------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `shareUrl`           | `(baseUrl?: string) => string`                            | Generate shareable URL with current filters                                 |
+| `getQueryParams`     | `() => string`                                            | Get filter state as query parameters                                        |
+| `applyUrlFilters`    | `(url?: string) => void`                                  | Apply filters from URL to grid                                              |
+| `clearFilters`       | `() => void`                                              | Clear all text filters                                                      |
+| `isReady`            | `boolean`                                                 | Whether grid API is available and hook is ready                             |
+| `currentUrl`         | `string`                                                  | Current URL with filters applied                                            |
+| `hasFilters`         | `boolean`                                                 | Whether the grid has supported filters                                      |
+| `issues`             | `readonly URLSyncError[]`                                 | Filters that the latest URL apply or URL write dropped (see Error Handling) |
+| `parseUrlFilters`    | `(url: string) => FilterState`                            | Parse filters from URL without applying                                     |
+| `applyFilters`       | `(filters: FilterState) => void`                          | Apply filter state object to grid                                           |
+| `getFiltersAsFormat` | `(format: 'querystring' \| 'json' \| 'base64') => string` | Serialize filters to any supported format (for sharing/export)              |
+| `getCurrentFormat`   | `() => 'individual' \| 'grouped'`                         | Get the current serialization mode (individual or grouped)                  |
 
 Saved views (inert unless `storageKey` is set):
 
@@ -928,7 +969,7 @@ const url = urlSync.generateUrl('https://app.com/page')
 // https://app.com/page?f_name_contains=john
 ```
 
-##### `getUrlState(baseUrl?: string): { url: string; hasFilters: boolean }`
+##### `getUrlState(baseUrl?: string): { url: string; hasFilters: boolean; issues: readonly URLSyncError[] }`
 
 Generates the same URL as `generateUrl`, and tells if the grid has filters that the library supports. It reads the grid one time for both values. `hasFilters` comes from the filter state, not from the URL, because the URL also keeps the page's own params.
 
@@ -936,6 +977,8 @@ Generates the same URL as `generateUrl`, and tells if the grid has filters that 
 const { url, hasFilters } = urlSync.getUrlState('https://app.com/page?tab=1')
 // url: https://app.com/page?tab=1 (no filters), hasFilters: false
 ```
+
+`issues` holds the filters that this call dropped, for example a text value over `maxValueLength`.
 
 ##### `getQueryParams(): string`
 
@@ -946,17 +989,17 @@ const params = urlSync.getQueryParams()
 // ?f_name_contains=john
 ```
 
-##### `applyFromUrl(url?: string): void`
+##### `applyFromUrl(url?: string): { issues: readonly URLSyncError[] }`
 
-Applies filters from a URL to the grid.
+Applies filters from a URL to the grid, and returns the filters in the URL that were dropped.
 
 ```typescript
 urlSync.applyFromUrl('https://app.com/page?f_name_contains=john')
 ```
 
-##### `applyFilters(filterState: FilterState): void`
+##### `applyFilters(filterState: FilterState): { issues: readonly URLSyncError[] }`
 
-Applies a filter state object to the grid.
+Applies a filter state object to the grid, and returns the filters that were dropped (for example a number filter on a text column).
 
 ```typescript
 urlSync.applyFilters({
@@ -968,7 +1011,7 @@ urlSync.applyFilters({
 })
 ```
 
-##### `clearFilters(): void`
+##### `clearFilters(): { issues: readonly URLSyncError[] }`
 
 Clears all text filters from the grid.
 

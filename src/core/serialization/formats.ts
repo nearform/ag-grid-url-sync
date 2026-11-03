@@ -13,7 +13,7 @@ import {
 } from '../individual-params.js'
 import { validateFilterValue } from '../validation.js'
 import { DEFAULT_CONFIG, resolveOptions } from '../options.js'
-import { reportIssue, toIssue } from '../issues.js'
+import { reportIssue, rethrowIfThrown, toIssue } from '../issues.js'
 import { ColumnFilterSchema, JsonObjectSchema } from '../schemas.js'
 import { toError } from '../to-error.js'
 
@@ -166,6 +166,9 @@ export class Base64Serializer implements FormatSerializer {
         'base64'
       )
     } catch (error) {
+      // An issue that throwOnError threw is not wrapped again (#229)
+      rethrowIfThrown(error)
+
       throw new Error(`Base64 decoding failed: ${toError(error).message}`)
     }
   }

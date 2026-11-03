@@ -17,7 +17,8 @@ import type {
   FormatSerializer,
   InternalConfig,
   ParseConfig,
-  ResolvedOptions
+  ResolvedOptions,
+  URLSyncError
 } from './types.js'
 
 // The grid-free functions take a partial config, and the config is optional
@@ -128,4 +129,19 @@ export function createShareableUrl(
 export function copyFilters(otherGridApi: GridApi): void {
   const filters = getFilterModel(gridApi, { onParseError: console.warn })
   applyFilterModel(filters, otherGridApi)
+}
+
+// throwOnError is optional in the resolved options, so a full ParseConfig
+// literal with no throwOnError still compiles (#229)
+expectTypeOf<ResolvedOptions['throwOnError']>().toEqualTypeOf<
+  boolean | ((issue: URLSyncError) => boolean) | undefined
+>()
+
+export const fullParseConfig: ParseConfig = {
+  paramPrefix: 'f_',
+  maxValueLength: 200,
+  onParseError: () => {},
+  serialization: 'individual',
+  groupedParam: 'grid_filters',
+  format: 'querystring'
 }

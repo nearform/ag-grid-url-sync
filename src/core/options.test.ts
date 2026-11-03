@@ -53,7 +53,8 @@ describe('resolveOptions', () => {
       format: 'base64'
     } as const
 
-    expect(resolveOptions(config)).toEqual(config)
+    // throwOnError gets its default (#229)
+    expect(resolveOptions(config)).toEqual({ ...config, throwOnError: false })
   })
 
   it('leaves out gridApi and other keys that are not options', () => {
@@ -77,5 +78,13 @@ describe('resolveOptions', () => {
 describe('DEFAULT_CONFIG', () => {
   it('is the same object from the validation module', () => {
     expect(VALIDATION_DEFAULT_CONFIG).toBe(DEFAULT_CONFIG)
+  })
+})
+
+describe('throwOnError default (#229)', () => {
+  it('is false when it is left out or undefined', () => {
+    expect(resolveOptions().throwOnError).toBe(false)
+    expect(resolveOptions({ throwOnError: undefined }).throwOnError).toBe(false)
+    expect(DEFAULT_CONFIG.throwOnError).toBe(false)
   })
 })

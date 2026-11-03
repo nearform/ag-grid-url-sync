@@ -100,6 +100,21 @@ export interface AGGridUrlSyncConfig {
    * @default 'querystring'
    */
   format?: SerializationFormat | undefined
+
+  /**
+   * Throw an issue instead of reporting it (#229), like TanStack Query's
+   * `throwOnError`. `true` throws every issue, and a function throws the
+   * issues for which it gives `true`. In the core, a thrown issue is not sent
+   * to `onParseError`, and the first one stops the call. In the React hook,
+   * each issue is still sent to `onParseError` one time, and the picked issue
+   * is thrown during render, so an error boundary catches it. The library does
+   * not change the address bar, so remove the bad param before the boundary
+   * resets, or the same issue is thrown again.
+   *
+   * A function that throws makes the library throw that error.
+   * @default false
+   */
+  throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
 }
 
 /**
@@ -111,7 +126,16 @@ export interface AGGridUrlSyncConfig {
  * it keeps the undefined.
  */
 export type ResolvedOptions = {
-  [K in keyof AGGridUrlSyncConfig]-?: Exclude<AGGridUrlSyncConfig[K], undefined>
+  [K in Exclude<keyof AGGridUrlSyncConfig, 'throwOnError'>]-?: Exclude<
+    AGGridUrlSyncConfig[K],
+    undefined
+  >
+} & {
+  /**
+   * Optional, so that ParseConfig and InternalConfig, which extend this type,
+   * get no new required key (#229). resolveOptions always sets it.
+   */
+  throwOnError?: Exclude<AGGridUrlSyncConfig['throwOnError'], undefined>
 }
 
 /**
@@ -505,6 +529,20 @@ export interface UrlState {
   url: string
   /** Whether the grid has filters that the library supports */
   hasFilters: boolean
+  /**
+   * The issues of this call (#229): filters that the grid read or the URL
+   * leaves out. The same objects also go to `onParseError`.
+   */
+  issues: readonly URLSyncError[]
+}
+
+/** The result of an apply method (#229) */
+export interface ApplyResult {
+  /**
+   * The issues of this call: filters that were dropped. The same objects
+   * also go to `onParseError`.
+   */
+  issues: readonly URLSyncError[]
 }
 
 /**

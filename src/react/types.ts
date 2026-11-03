@@ -2,7 +2,8 @@ import type {
   AGGridUrlSyncConfig,
   FilterState,
   SerializationFormat,
-  SerializationMode
+  SerializationMode,
+  URLSyncError
 } from '../core/types.js'
 import type { GridView } from '../core/view-storage.js'
 
@@ -106,10 +107,23 @@ export interface UseAGGridUrlSyncReturn {
    * Comes from the grid's filter state, not from the URL, because the URL also
    * keeps the page's own params. A filter that the URL cannot carry (for
    * example a text value over `maxValueLength`) still counts, so a "clear
-   * filters" button stays enabled. The URL leaves that filter out and reports
-   * it through `onParseError`.
+   * filters" button stays enabled. The URL leaves that filter out, reports it
+   * through `onParseError`, and puts it in `issues`.
    */
   hasFilters: boolean
+
+  /**
+   * The filters that were dropped (#229): the data issues of the latest URL
+   * apply (`applyUrlFilters`, `applyFilters`, auto-apply), and of the latest
+   * URL write (each filter change). Each one is a `URLSyncError` with a
+   * `code` and, when it is known, a `column`. The apply issues stay until the
+   * next apply, `clearFilters` or `loadView`.
+   *
+   * The array keeps its identity while its content does not change. Operation
+   * failures (`NOT_READY`, `GRID_ERROR`, storage) go to `onError` and are not
+   * here. With `throwOnError`, the hook throws a picked issue during render.
+   */
+  issues: readonly URLSyncError[]
 
   /**
    * Parse filters from a URL without applying them

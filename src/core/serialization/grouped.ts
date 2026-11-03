@@ -16,7 +16,7 @@ import {
 import { JsonObjectSchema } from '../schemas.js'
 import { toError } from '../to-error.js'
 import { resolveOptions } from '../options.js'
-import { reportIssue } from '../issues.js'
+import { reportIssue, rethrowIfThrown } from '../issues.js'
 
 /**
  * Registry of available format serializers
@@ -54,6 +54,9 @@ export function serializeGrouped(
       value
     }
   } catch (error) {
+    // An issue that throwOnError threw is not wrapped again (#229)
+    rethrowIfThrown(error)
+
     const serializationError = new InvalidSerializationError(
       options.format,
       toError(error)
@@ -93,6 +96,9 @@ export function deserializeGrouped(
 
     return serializer.deserialize(value, options)
   } catch (error) {
+    // An issue that throwOnError threw is not wrapped again (#229)
+    rethrowIfThrown(error)
+
     const serializationError = new InvalidSerializationError(
       format,
       toError(error)

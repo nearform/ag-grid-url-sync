@@ -12,7 +12,8 @@ export const DEFAULT_CONFIG = {
   serialization: 'individual' as const,
   groupedParam: 'grid_filters',
   format: 'querystring' as const,
-  onParseError: () => {}
+  onParseError: () => {},
+  throwOnError: false
 } as const satisfies ResolvedOptions
 
 /**
@@ -31,6 +32,7 @@ export function resolveOptions(
     onParseError: options.onParseError ?? DEFAULT_CONFIG.onParseError,
     serialization: options.serialization ?? DEFAULT_CONFIG.serialization,
     groupedParam: options.groupedParam ?? DEFAULT_CONFIG.groupedParam,
-    format: options.format ?? DEFAULT_CONFIG.format
+    format: options.format ?? DEFAULT_CONFIG.format,
+    throwOnError: options.throwOnError ?? DEFAULT_CONFIG.throwOnError
   }
 }

@@ -10,7 +10,7 @@ import { resolveParamPrefix } from '../core/individual-params.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
 import { DEFAULT_CONFIG, resolveOptions } from '../core/options.js'
 import { toError } from '../core/to-error.js'
-import { isDataIssue, toIssue } from '../core/issues.js'
+import { isDataIssue, shouldThrow, toIssue } from '../core/issues.js'
 import { URLSyncError } from '../core/types.js'
 import type {
   FilterState,
@@ -47,6 +47,37 @@ function sameFilterModel(a: FilterModel, b: FilterModel): boolean {
     keys.length === Object.keys(b).length &&
     keys.every(key => JSON.stringify(a[key]) === JSON.stringify(b[key]))
   )
+}
+
+/** The empty list, one object so that an empty state keeps its identity */
+const NO_ISSUES: readonly URLSyncError[] = []
+
+/** Whether two lists have the same issues: the code, message and column */
+function sameIssues(
+  a: readonly URLSyncError[],
+  b: readonly URLSyncError[]
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (issue, index) =>
+        issue.code === b[index]?.code &&
+        issue.message === b[index]?.message &&
+        issue.column === b[index]?.column
+    )
+  )
+}
+
+/**
+ * A state update to the data issues in the list. It keeps the previous array
+ * when the issues are the same, so a filter change does not make a new one.
+ */
+function keepIssues(
+  list: readonly Error[]
+): (previous: readonly URLSyncError[]) => readonly URLSyncError[] {
+  const next = list.filter(isDataIssue)
+
+  return previous => (sameIssues(previous, next) ? previous : next)
 }
 
 /**
@@ -115,6 +146,10 @@ export function useAGGridUrlSync(
     enabledWhenReady = true,
     onError,
     storageKey,
+    // Only decides whether the hook throws in render (#229). The core and the
+    // hook's own parse calls never get it, so they always report and keep the
+    // valid filters.
+    throwOnError,
     ...coreOptions
   } = options
 
@@ -122,6 +157,10 @@ export function useAGGridUrlSync(
   const [isReady, setIsReady] = useState(false)
   const [currentUrl, setCurrentUrl] = useState('')
   const [hasFilters, setHasFilters] = useState(false)
+  // The data issues of the latest URL apply and of the latest URL write
+  // (#229). Only data issues: operation failures go to onError.
+  const [applyIssues, setApplyIssues] = useState(NO_ISSUES)
+  const [writeIssues, setWriteIssues] = useState(NO_ISSUES)
 
   // Saved views. The presence of storageKey is what enables the feature, so
   // there is no separate flag to keep in sync.
@@ -411,6 +450,8 @@ export function useAGGridUrlSync(
         // nothing applied. Session marker only - the pointer still records what
         // to restore, and with autoApplyOnMount the re-arm above does restore it.
         commitActiveViewId(null)
+        // Nothing has been applied to the new grid yet
+        setApplyIssues(NO_ISSUES)
       }
 
       // Create new instance if needed
@@ -438,6 +479,7 @@ export function useAGGridUrlSync(
         // As above: no live grid left for the marker to describe. Guarded on
         // urlSyncRef so a first render with a null gridApi touches nothing.
         commitActiveViewId(null)
+        setApplyIssues(NO_ISSUES)
       }
 
       setIsReady(false)
@@ -551,7 +593,8 @@ export function useAGGridUrlSync(
           (!urlAppliedRef.current && urlHasFilterParams())
         ) {
           contextRef.current = 'auto-apply-filters'
-          urlSyncRef.current.applyFromUrl()
+          const applied = urlSyncRef.current.applyFromUrl()
+          setApplyIssues(keepIssues(applied.issues))
 
           if (viewStore && gridApi) {
             urlAppliedRef.current = true
@@ -593,6 +636,8 @@ export function useAGGridUrlSync(
             // Cannot throw itself; it sits in the try only so that a failed
             // write above skips it and the marker is not committed.
             commitActiveViewId(stored.id)
+            // The grid shows the stored view, not an applied URL
+            setApplyIssues(NO_ISSUES)
           } catch (error) {
             // A grid rejecting the stored view's model is not the URL being
             // invalid (the URL made no claim), so it must not reach
@@ -611,6 +656,8 @@ export function useAGGridUrlSync(
         // unconditional apply there.
       } catch (error) {
         reportFailure(error, 'auto-apply-filters')
+        // A URL that cannot be read drops all of its filters
+        setApplyIssues(keepIssues([toError(error)]))
       }
     }
   }, [
@@ -630,6 +677,8 @@ export function useAGGridUrlSync(
     if (!isReady || !urlSyncRef.current || !gridApi) {
       setCurrentUrl('')
       setHasFilters(false)
+      // No live grid, so no URL write to describe (#229)
+      setWriteIssues(NO_ISSUES)
 
       return
     }
@@ -735,9 +784,10 @@ export function useAGGridUrlSync(
         // One read of the grid gives both values. hasFilters comes from the
         // filter state: the URL also keeps the page's own params (#215).
         contextRef.current = 'update-state'
-        const { url, hasFilters } = urlSyncRef.current!.getUrlState()
+        const { url, hasFilters, issues } = urlSyncRef.current!.getUrlState()
         setCurrentUrl(url)
         setHasFilters(hasFilters)
+        setWriteIssues(keepIssues(issues))
       } catch (error) {
         reportFailure(error, 'update-state')
       }
@@ -819,9 +869,15 @@ export function useAGGridUrlSync(
       try {
         const sync = urlSyncRef.current
         contextRef.current = 'apply-url-filters'
-        writeOverPendingView(() => sync.applyFromUrl(url))
+        const applied = { issues: NO_ISSUES }
+        writeOverPendingView(() => {
+          applied.issues = sync.applyFromUrl(url).issues
+        })
+        setApplyIssues(keepIssues(applied.issues))
       } catch (error) {
         reportFailure(error, 'apply-url-filters')
+        // A URL that cannot be read drops all of its filters
+        setApplyIssues(keepIssues([toError(error)]))
       }
     },
     [reportFailure, reportNotReady, writeOverPendingView]
@@ -838,6 +894,7 @@ export function useAGGridUrlSync(
       const sync = urlSyncRef.current
       contextRef.current = 'clear-filters'
       writeOverPendingView(() => sync.clearFilters())
+      setApplyIssues(NO_ISSUES)
     } catch (error) {
       reportFailure(error, 'clear-filters')
     }
@@ -872,7 +929,11 @@ export function useAGGridUrlSync(
       try {
         const sync = urlSyncRef.current
         contextRef.current = 'apply-filters'
-        writeOverPendingView(() => sync.applyFilters(filters))
+        const applied = { issues: NO_ISSUES }
+        writeOverPendingView(() => {
+          applied.issues = sync.applyFilters(filters).issues
+        })
+        setApplyIssues(keepIssues(applied.issues))
       } catch (error) {
         reportFailure(error, 'apply-filters')
       }
@@ -1013,6 +1074,9 @@ export function useAGGridUrlSync(
             throw error
           }
 
+          // The grid no longer shows the applied URL
+          setApplyIssues(NO_ISSUES)
+
           viewStore.persistActiveViewId(null)
 
           return
@@ -1047,6 +1111,9 @@ export function useAGGridUrlSync(
           rollBack()
           throw error
         }
+
+        // The grid no longer shows the applied URL
+        setApplyIssues(NO_ISSUES)
 
         // Only while the marker still names it: a pointer to a view the marker
         // has already dropped would restore on the next mount a view the UI
@@ -1133,8 +1200,18 @@ export function useAGGridUrlSync(
     ]
   )
 
+  const issues = useMemo(
+    () =>
+      applyIssues.length === 0
+        ? writeIssues
+        : writeIssues.length === 0
+          ? applyIssues
+          : [...applyIssues, ...writeIssues],
+    [applyIssues, writeIssues]
+  )
+
   // Return the hook API
-  return useMemo(
+  const hookApi = useMemo(
     () => ({
       shareUrl,
       getQueryParams,
@@ -1143,6 +1220,7 @@ export function useAGGridUrlSync(
       isReady,
       currentUrl,
       hasFilters,
+      issues,
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
@@ -1161,6 +1239,7 @@ export function useAGGridUrlSync(
       isReady,
       currentUrl,
       hasFilters,
+      issues,
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
@@ -1172,4 +1251,13 @@ export function useAGGridUrlSync(
       deleteView
     ]
   )
+
+  // throwOnError, as in TanStack Query: the issue is thrown during render, so
+  // a React error boundary catches it (#229). It is also sent to onParseError
+  // one time, when it is found.
+  const thrownIssue = issues.find(issue => shouldThrow(throwOnError, issue))
+
+  if (thrownIssue) throw thrownIssue
+
+  return hookApi
 }

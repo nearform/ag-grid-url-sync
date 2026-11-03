@@ -5,7 +5,7 @@ import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import {
   asGridApi,
   waitForEffects,
-  type FilterChangedListener
+  createGridListeners
 } from '../test-helpers.js'
 
 // These tests use the real core (no module mocks), because the bug is in how
@@ -18,19 +18,18 @@ const setPageUrl = (url: string) => {
 }
 
 const createGridApi = (model: FilterModel) => {
-  let listener: FilterChangedListener | undefined
+  const listeners = createGridListeners()
 
   const api = {
     getFilterModel: vi.fn(() => model),
     setFilterModel: vi.fn(),
     onFilterChanged: vi.fn(),
-    addEventListener: vi.fn((_: string, fn: FilterChangedListener) => {
-      listener = fn
-    }),
-    removeEventListener: vi.fn()
+    addEventListener: listeners.addEventListener,
+    removeEventListener: listeners.removeEventListener
   }
 
-  const fireFilterChanged = () => act(() => listener?.({ source: 'api' }))
+  const fireFilterChanged = () =>
+    act(() => listeners.fire('filterChanged', { source: 'api' }))
 
   return { api, fireFilterChanged }
 }

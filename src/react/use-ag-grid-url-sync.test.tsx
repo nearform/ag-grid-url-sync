@@ -8,9 +8,11 @@ import type { FilterState } from '../core/types.js'
 import type { UseAGGridUrlSyncReturn } from './types.js'
 import {
   asGridApi,
+  createGridListeners,
   waitForEffects,
   type FilterChangedListener,
-  type GridApiFake
+  type GridApiFake,
+  type GridListeners
 } from '../test-helpers.js'
 
 // A grid fake that has the four methods every hook test needs
@@ -25,15 +27,17 @@ type MockGridApi = GridApiFake &
     >
   >
 
-const createMockGridApi = (): MockGridApi => ({
+// The mock grid with a listener registry: fire() calls every live listener
+type ListeningGridApi = MockGridApi & Pick<GridListeners, 'fire' | 'count'>
+
+const createMockGridApi = (): ListeningGridApi => ({
   setFilterModel: vi.fn(),
   getFilterModel: vi.fn(() => ({})),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn()
+  ...createGridListeners()
 })
 
 describe('useAGGridUrlSync', () => {
-  let mockGridApi: MockGridApi
+  let mockGridApi: ListeningGridApi
 
   // The hook runs on the real core. Spies on the core's prototype record its
   // calls and run the real method, so a test can check a call or replace one
@@ -603,31 +607,26 @@ describe('useAGGridUrlSync', () => {
       })
     }
 
-    // The mock grid records listeners rather than dispatching to them, so a
-    // model change has to be announced by hand. The hook re-registers on every
-    // grid change, so the newest handler is the live one.
-    const fireFilterChanged = async (api: MockGridApi = mockGridApi) => {
-      const handler = vi
-        .mocked(api.addEventListener)
-        .mock.calls.filter(([event]) => event === 'filterChanged')
-        .at(-1)?.[1]
+    // The mock grid does not fire events on its own, so a model change has
+    // to be announced by hand, to every live filterChanged listener
+    const fireFilterChanged = async (api: ListeningGridApi = mockGridApi) => {
+      if (api.count('filterChanged') === 0) {
+        throw new Error('no filterChanged listener registered')
+      }
 
-      if (!handler) throw new Error('no filterChanged listener registered')
       await act(async () => {
-        handler()
+        api.fire('filterChanged')
       })
     }
 
     // Like fireFilterChanged, but synchronous and carrying an event source, so a
     // mocked write can raise it from inside the call as AG Grid does.
     const emitFilterChanged = (source?: string): void => {
-      const handler = vi
-        .mocked(mockGridApi.addEventListener)
-        .mock.calls.filter(([event]) => event === 'filterChanged')
-        .at(-1)?.[1]
+      if (mockGridApi.count('filterChanged') === 0) {
+        throw new Error('no filterChanged listener registered')
+      }
 
-      if (!handler) throw new Error('no filterChanged listener registered')
-      handler(source ? { source } : undefined)
+      mockGridApi.fire('filterChanged', source ? { source } : undefined)
     }
 
     beforeEach(() => {

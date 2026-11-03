@@ -12,7 +12,7 @@ import { createViewStore } from '../core/view-storage.js'
 import {
   asGridApi,
   waitForEffects,
-  type FilterChangedListener
+  createGridListeners
 } from '../test-helpers.js'
 
 // The hook's issues state and throwOnError (#229), on the real core
@@ -25,7 +25,7 @@ const longText: FilterModel = {
 
 const createGridApi = (initial: FilterModel = {}) => {
   let model: FilterModel = initial
-  let listener: FilterChangedListener | undefined
+  const listeners = createGridListeners()
 
   const api = {
     getFilterModel: vi.fn(() => model),
@@ -34,13 +34,12 @@ const createGridApi = (initial: FilterModel = {}) => {
       isFilterAllowed: () => true,
       getColDef: () => ({ filter: 'agTextColumnFilter' })
     })),
-    addEventListener: vi.fn((_: string, fn: FilterChangedListener) => {
-      listener = fn
-    }),
-    removeEventListener: vi.fn()
+    addEventListener: listeners.addEventListener,
+    removeEventListener: listeners.removeEventListener
   }
 
-  const fireFilterChanged = () => act(() => listener?.({ source: 'api' }))
+  const fireFilterChanged = () =>
+    act(() => listeners.fire('filterChanged', { source: 'api' }))
 
   const setModel = (next: FilterModel) => {
     model = next

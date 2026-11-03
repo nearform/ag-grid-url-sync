@@ -287,6 +287,19 @@ describe('Format Serializers', () => {
       })
     })
 
+    it('should keep a column named __proto__ as an own key', () => {
+      const filter = { filterType: 'text', type: 'contains', filter: 'a' }
+      const value = `{"__proto__":${JSON.stringify(filter)}}`
+
+      const result = serializer.deserialize(value)
+
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
+      expect(Object.hasOwn(result, '__proto__')).toBe(true)
+      expect(
+        Object.getOwnPropertyDescriptor(result, '__proto__')?.value
+      ).toEqual(filter)
+    })
+
     it.each([
       [
         'a filter with an unknown operation',

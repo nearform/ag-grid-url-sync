@@ -26,24 +26,24 @@ function dropOverLengthTextValues(
   format: SerializationFormat
 ): FilterState {
   const cfg = config ?? DEFAULT_CONFIG
-  const result: FilterState = {}
 
-  for (const [column, filter] of Object.entries(filterState)) {
-    if (filter.filterType === 'text') {
-      try {
-        validateFilterValue(filter.filter, cfg, filter.type)
-      } catch (error) {
-        cfg.onParseError?.(
-          new InvalidSerializationError(format, error as Error)
-        )
-        continue
-      }
+  const kept = Object.entries(filterState).filter(([, filter]) => {
+    if (filter.filterType !== 'text') return true
+
+    try {
+      validateFilterValue(filter.filter, cfg, filter.type)
+
+      return true
+    } catch (error) {
+      cfg.onParseError?.(new InvalidSerializationError(format, error as Error))
+
+      return false
     }
+  })
 
-    result[column] = filter
-  }
-
-  return result
+  // Own keys, so a column named `__proto__` stays a column (see
+  // parseAndValidateJson)
+  return Object.fromEntries(kept)
 }
 
 /**
@@ -54,15 +54,15 @@ function dropOverLengthTextValues(
  */
 function parseAndValidateJson(value: string): FilterState {
   try {
-    const parsed = v.safeParse(JsonObjectSchema, JSON.parse(value))
+    const json: unknown = JSON.parse(value)
 
-    if (!parsed.success) {
+    // Checked, not parsed: Valibot's record output leaves out a `__proto__`
+    // key, and here that key is a column name like any other
+    if (!v.is(JsonObjectSchema, json)) {
       throw new Error('Invalid JSON: must be an object')
     }
 
-    const filterState: FilterState = {}
-
-    for (const [columnId, filter] of Object.entries(parsed.output)) {
+    const entries = Object.entries(json).map(([columnId, filter]) => {
       const column = v.safeParse(ColumnFilterSchema, filter)
 
       if (!column.success) {
@@ -71,10 +71,13 @@ function parseAndValidateJson(value: string): FilterState {
         )
       }
 
-      filterState[columnId] = column.output
-    }
+      return [columnId, column.output] as const
+    })
 
-    return filterState
+    // Object.fromEntries creates own keys, so a column named `__proto__`
+    // stays a column. An assignment to a plain object would call the
+    // prototype setter instead.
+    return Object.fromEntries(entries)
   } catch (error) {
     throw new Error(`JSON parsing failed: ${(error as Error).message}`)
   }

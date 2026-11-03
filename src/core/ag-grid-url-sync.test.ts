@@ -20,23 +20,15 @@ describe('AGGridUrlSync', () => {
 
   describe('config defaults', () => {
     // A caller can forward an optional prop, for example
-    // `format: props.format`, so a key can be present with the value undefined.
-    // The config as a caller without exactOptionalPropertyTypes sees it
-    type LooseConfig = {
-      [K in keyof AGGridUrlSyncConfig]?: AGGridUrlSyncConfig[K] | undefined
-    }
-
-    const looseConfig: LooseConfig = {
+    // `format: props.format`, so a key can be present with the value undefined
+    // (#258).
+    const undefinedConfig: AGGridUrlSyncConfig = {
       paramPrefix: undefined,
       maxValueLength: undefined,
       serialization: undefined,
       groupedParam: undefined,
       format: undefined
     }
-
-    // SAFETY: the constructor drops the keys set to undefined (the case under
-    // test), so each one keeps its default
-    const undefinedConfig = looseConfig as AGGridUrlSyncConfig
 
     it('should use the defaults for keys set to undefined', () => {
       const urlSync = new AGGridUrlSync(mockGridApi, undefinedConfig)

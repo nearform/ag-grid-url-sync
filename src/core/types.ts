@@ -57,13 +57,13 @@ export interface AGGridUrlSyncConfig {
    * @default 'f_'
    * @example 'filter_' results in URLs like '?filter_name_contains=john'
    */
-  paramPrefix?: string
+  paramPrefix?: string | undefined
 
   /**
    * Maximum length for filter values to prevent URL length issues
    * @default 200
    */
-  maxValueLength?: number
+  maxValueLength?: number | undefined
 
   /**
    * Optional error handler for parsing errors.
@@ -73,25 +73,33 @@ export interface AGGridUrlSyncConfig {
    * `InvalidSerializationError`, and the original error is in `error.cause`.
    * In individual mode, the same failure arrives with no wrapper.
    */
-  onParseError?: (error: Error) => void
+  onParseError?: ((error: Error) => void) | undefined
 
   /**
    * Serialization mode for URL parameters
    * @default 'individual'
    */
-  serialization?: SerializationMode
+  serialization?: SerializationMode | undefined
 
   /**
    * Parameter name for grouped serialization
    * @default 'grid_filters'
    */
-  groupedParam?: string
+  groupedParam?: string | undefined
 
   /**
    * Serialization format for grouped mode
    * @default 'querystring'
    */
-  format?: SerializationFormat
+  format?: SerializationFormat | undefined
+}
+
+/**
+ * The options with a value for each one. A caller can set an option to
+ * undefined (#258), so `Required` is not enough: it keeps the undefined.
+ */
+type ResolvedOptions = {
+  [K in keyof AGGridUrlSyncConfig]-?: Exclude<AGGridUrlSyncConfig[K], undefined>
 }
 
 /**
@@ -109,7 +117,7 @@ export interface AGGridUrlSyncConfig {
  * const filters = parseUrlFilters(url, config)
  * ```
  */
-export interface ParseConfig extends Required<AGGridUrlSyncConfig> {
+export interface ParseConfig extends ResolvedOptions {
   /** AG Grid API instance - not read by parsing/serialization operations */
   gridApi?: AGGridApi | null
 }

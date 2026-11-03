@@ -9,6 +9,7 @@ import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { resolveParamPrefix } from '../core/individual-params.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
 import { DEFAULT_CONFIG } from '../core/validation.js'
+import { toError } from '../core/to-error.js'
 import type {
   FilterState,
   ParseConfig,
@@ -338,7 +339,7 @@ export function useAGGridUrlSync(
   const handleError = useCallback(
     // `cause` is the caught value, which can be anything a callee threw
     (cause: unknown, context: string) => {
-      const errorObj = cause instanceof Error ? cause : new Error(String(cause))
+      const errorObj = toError(cause)
 
       if (onError) {
         onError(errorObj, context)
@@ -557,7 +558,7 @@ export function useAGGridUrlSync(
         // unconditional apply there.
       } catch (error) {
         handleError(error, 'auto-apply-filters')
-        coreOptions.onParseError?.(error as Error)
+        coreOptions.onParseError?.(toError(error))
       }
     }
   }, [
@@ -767,7 +768,7 @@ export function useAGGridUrlSync(
         writeOverPendingView(() => sync.applyFromUrl(url))
       } catch (error) {
         handleError(error, 'apply-url-filters')
-        coreOptions.onParseError?.(error as Error)
+        coreOptions.onParseError?.(toError(error))
       }
     },
     [coreOptions, handleError, writeOverPendingView]
@@ -812,7 +813,7 @@ export function useAGGridUrlSync(
         return parseFilters(url, config)
       } catch (error) {
         handleError(error, 'parse-url-filters')
-        coreOptions.onParseError?.(error as Error)
+        coreOptions.onParseError?.(toError(error))
 
         return {}
       }

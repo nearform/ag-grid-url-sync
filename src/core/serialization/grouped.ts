@@ -14,6 +14,7 @@ import {
   Base64Serializer
 } from './formats.js'
 import { JsonObjectSchema } from '../schemas.js'
+import { toError } from '../to-error.js'
 
 /**
  * Registry of available format serializers
@@ -50,7 +51,7 @@ export function serializeGrouped(
   } catch (error) {
     const serializationError = new InvalidSerializationError(
       config.format,
-      error as Error
+      toError(error)
     )
 
     config.onParseError?.(serializationError)
@@ -86,7 +87,7 @@ export function deserializeGrouped(
   } catch (error) {
     const serializationError = new InvalidSerializationError(
       format,
-      error as Error
+      toError(error)
     )
 
     config.onParseError?.(serializationError)
@@ -197,7 +198,7 @@ function isJsonFormat(value: string): boolean {
  * Get all available serialization formats
  */
 export function getAvailableFormats(): SerializationFormat[] {
-  return Object.keys(FORMAT_SERIALIZERS) as SerializationFormat[]
+  return Object.values(FORMAT_SERIALIZERS).map(serializer => serializer.format)
 }
 
 /**

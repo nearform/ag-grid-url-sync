@@ -35,11 +35,7 @@ export default defineConfig({
     // The import cycle from #202 must not return
     'import/no-cycle': 'error',
 
-    // anti-slop (https://github.com/dmmulroy/anti-slop). The last four rules
-    // of its manual installation are turned on by the follow-up PRs that fix
-    // their findings: no-chained-type-assertions,
-    // require-safety-comment-for-type-assertion, no-module-mocking and
-    // no-runtime-typeof.
+    // anti-slop (https://github.com/dmmulroy/anti-slop), manual installation
     'oxc/no-accumulating-spread': 'error',
     'anti-slop/no-array-filter-map': 'error',
     'anti-slop/no-reduce-accumulator-copy': 'error',
@@ -56,6 +52,8 @@ export default defineConfig({
     'anti-slop/no-widen-then-assert': 'error',
     'anti-slop/require-readable-spacing': 'error',
     'anti-slop/no-module-mocking': 'error',
-    'anti-slop/no-runtime-typeof': 'error'
+    'anti-slop/no-runtime-typeof': 'error',
+    'anti-slop/no-chained-type-assertions': 'error',
+    'anti-slop/require-safety-comment-for-type-assertion': 'error'
   }
 })

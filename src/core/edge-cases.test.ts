@@ -2,13 +2,13 @@ import { describe, it, expect, vi } from 'vitest'
 import { AGGridUrlSync } from './ag-grid-url-sync.js'
 import { validateFilterValue } from './validation.js'
 import { parseUrlFilters } from './url-parser.js'
-import type { GridApi } from 'ag-grid-community'
 import type { InternalConfig } from './types.js'
 import { InvalidFilterError, InvalidURLError } from './types.js'
+import { asGridApi } from '../test-helpers.js'
 
 describe('Edge Cases', () => {
   const config: InternalConfig = {
-    gridApi: {} as any,
+    gridApi: asGridApi({}),
     paramPrefix: 'f_',
     maxValueLength: 200,
     onParseError: vi.fn(),
@@ -54,14 +54,14 @@ describe('Edge Cases', () => {
 
   describe('Grid Integration', () => {
     it('should handle grid API errors gracefully', () => {
-      const mockGridApi = {
+      const mockGridApi = asGridApi({
         getFilterModel: vi.fn().mockImplementation(() => {
           throw new Error('Grid API Error')
         }),
         setFilterModel: vi.fn().mockImplementation(() => {
           throw new Error('Grid API Error')
         })
-      } as unknown as GridApi
+      })
 
       const urlSync = new AGGridUrlSync(mockGridApi)
       expect(() => urlSync.generateUrl()).not.toThrow()

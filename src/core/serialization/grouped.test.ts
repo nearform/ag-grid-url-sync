@@ -11,15 +11,24 @@ import {
   JsonSerializer,
   Base64Serializer
 } from './formats.js'
-import type { FilterState, InternalConfig } from '../types.js'
+import type {
+  FilterState,
+  InternalConfig,
+  SerializationFormat
+} from '../types.js'
 import { InvalidSerializationError, InvalidFilterError } from '../types.js'
+import { asGridApi } from '../../test-helpers.js'
 
-// Mock AG Grid API
-const mockGridApi = {
+const mockGridApi = asGridApi({
   setFilterModel: () => {},
-  getFilterModel: () => ({}),
-  onFilterChanged: () => {}
-} as any
+  getFilterModel: () => ({})
+})
+
+/** A format name that a JavaScript caller can give and TypeScript rejects */
+const untypedFormat = (name: string): SerializationFormat =>
+  // SAFETY: the tests give it only to code that checks the format at run time
+  // (the case under test)
+  name as SerializationFormat
 
 // Test configuration for grouped serialization
 const createTestConfig = (
@@ -165,11 +174,19 @@ describe('Grouped Serialization', () => {
   // A JS caller, or `{ onParseError: undefined }` spread over the defaults,
   // can leave the handler out. The fallback must still be returned.
   describe('without onParseError', () => {
-    const configWithoutHandler = () =>
-      createTestConfig({ onParseError: undefined as any })
+    const configWithoutHandler = (): InternalConfig => {
+      const { onParseError: _, ...config } = createTestConfig()
+
+      // SAFETY: serializeGrouped and deserializeGrouped call onParseError with
+      // `?.` (the case under test), as a JavaScript caller can leave it out
+      return config as InternalConfig
+    }
 
     it('serializeGrouped returns the empty fallback', () => {
-      const config = { ...configWithoutHandler(), format: 'unknown' as any }
+      const config = {
+        ...configWithoutHandler(),
+        format: untypedFormat('unknown')
+      }
 
       expect(serializeGrouped(sampleFilterState, config)).toEqual({
         paramName: 'grid_filters',
@@ -249,7 +266,7 @@ describe('Grouped Serialization', () => {
       )
       expect(getFormatSerializer('json')).toBeInstanceOf(JsonSerializer)
       expect(getFormatSerializer('base64')).toBeInstanceOf(Base64Serializer)
-      expect(getFormatSerializer('invalid' as any)).toBeNull()
+      expect(getFormatSerializer(untypedFormat('invalid'))).toBeNull()
     })
   })
 })

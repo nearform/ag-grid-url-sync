@@ -171,7 +171,10 @@ describe('grouped querystring serialization with caller config (#201)', () => {
   it('keeps the default maxValueLength when the caller leaves it out', () => {
     // A JS caller, or a partial config cast to ParseConfig
     const onParseError = vi.fn()
-    const config = { onParseError } as unknown as ParseConfig
+    const partial: Pick<ParseConfig, 'onParseError'> = { onParseError }
+    // SAFETY: deserialize gives each key the config leaves out its default
+    // (the case under test)
+    const config = partial as ParseConfig
     const value = `f_name_contains=${'a'.repeat(201)}`
 
     const filters = new QueryStringSerializer().deserialize(value, config)

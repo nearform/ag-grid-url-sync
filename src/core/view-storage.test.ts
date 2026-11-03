@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createViewStore } from './view-storage.js'
+import { asGridApi } from '../test-helpers.js'
 import type { FilterModel } from 'ag-grid-community'
 
 const STORAGE_KEY = 'ag-grid-url-sync:views:v1:test-grid'
@@ -73,7 +74,11 @@ describe('createViewStore', () => {
       // AG Grid's getFilterModel can return null despite its declared type.
       // Persisting that verbatim writes a blob isGridView later rejects, so the
       // save appears to succeed and the view then never appears in the list.
-      const view = store.saveView('X', null as unknown as FilterModel)
+      const nullModel = asGridApi({
+        getFilterModel: () => null
+      }).getFilterModel()
+
+      const view = store.saveView('X', nullModel)
 
       expect(view.filterModel).toEqual({})
       expect(store.listViews()).toHaveLength(1)
@@ -135,7 +140,7 @@ describe('createViewStore', () => {
     store.saveView('Engineering', model)
 
     // AG Grid mutates its own filter model objects in place.
-    ;(model.department as { filter: string }).filter = 'MUTATED'
+    model.department.filter = 'MUTATED'
 
     expect(store.listViews()[0]?.filterModel.department.filter).toBe(
       'Engineering'

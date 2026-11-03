@@ -3,10 +3,11 @@ import { serializeFilters, generateUrl } from './url-generator.js'
 import { parseUrlFilters } from './url-parser.js'
 import type { FilterState, InternalConfig } from './types.js'
 import { InvalidFilterError } from './types.js'
+import { asGridApi } from '../test-helpers.js'
 
 describe('URL Generator', () => {
   const mockConfig: InternalConfig = {
-    gridApi: {} as any,
+    gridApi: asGridApi({}),
     paramPrefix: 'f_',
     maxValueLength: 200,
     onParseError: vi.fn(),
@@ -71,13 +72,13 @@ describe('URL Generator', () => {
           type: 'inRange',
           filter: 25,
           filterTo: 65
-        } as any,
+        },
         period: {
           filterType: 'date',
           type: 'dateRange',
           filter: '2024-01-01',
           filterTo: '2024-12-31'
-        } as any
+        }
       }
 
       const result = serializeFilters(filterState, mockConfig)

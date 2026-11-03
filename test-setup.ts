@@ -1,9 +1,14 @@
 import { beforeEach, afterEach, vi } from 'vitest'
 
-// Mock window.location properly for jsdom
-const originalLocation = window.location
+// Mock window.location properly for jsdom. A file in the node environment
+// (`// @vitest-environment node`, for the no-window checks of #221) has no
+// window, so it gets no mock.
+const hasWindow = typeof window !== 'undefined'
+const originalLocation = hasWindow ? window.location : undefined
 
 beforeEach(() => {
+  if (!hasWindow) return
+
   const mockLocation = {
     href: 'https://example.com',
     search: '',
@@ -27,6 +32,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  if (!hasWindow) return
+
   Object.defineProperty(window, 'location', {
     value: originalLocation,
     writable: true,

@@ -1,6 +1,11 @@
 // Export core functionality (vanilla JS)
 export { AGGridUrlSync, createUrlSync } from './core/ag-grid-url-sync.js'
 
+// The framework-free sync (#221)
+export { createGridUrlSync, IDLE_SNAPSHOT } from './core/grid-url-sync.js'
+
+export { individual, grouped } from './core/codecs.js'
+
 export * from './core/types.js'
 
 // Validation utilities

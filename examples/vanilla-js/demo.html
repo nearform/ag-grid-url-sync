@@ -13,10 +13,20 @@
       href="https://cdn.jsdelivr.net/npm/ag-grid-community@33.3.2/styles/ag-theme-alpine.min.css"
       rel="stylesheet"
     />
+    <!-- The library imports valibot by its package name -->
+    <script type="importmap">
+      {
+        "imports": { "valibot": "https://cdn.jsdelivr.net/npm/valibot@1/+esm" }
+      }
+    </script>
     <script type="module">
       // Import our library from dist
-      import { createUrlSync } from '../../dist/index.js'
-      window.createUrlSync = createUrlSync
+      import {
+        createGridUrlSync,
+        individual,
+        grouped
+      } from '../../dist/index.js'
+      window.urlSyncLib = { createGridUrlSync, individual, grouped }
     </script>
     <style>
       body {
@@ -313,6 +323,22 @@
             <label>
               <input type="radio" name="format" value="base64" />
               Base64
+            </label>
+          </div>
+
+          <div class="mode-selector">
+            <label><strong>Address Bar (history):</strong></label>
+            <label>
+              <input type="radio" name="history" value="none" checked />
+              None
+            </label>
+            <label>
+              <input type="radio" name="history" value="replace" />
+              Replace
+            </label>
+            <label>
+              <input type="radio" name="history" value="push" />
+              Push (back button restores filters)
             </label>
           </div>
 
@@ -858,18 +884,11 @@
 
         // Wait for library to load
         setTimeout(() => {
-          if (window.createUrlSync) {
-            urlSync = window.createUrlSync(gridApi, {
-              onParseError: error => {
-                showError(`URL Parse Error: ${error.message}`)
-                performanceStats.errorCount++
-                updatePerformanceStats()
-              }
-            })
+          if (window.urlSyncLib) {
+            // createGridUrlSync applies the URL's filters on create
+            urlSync = createSync(true)
 
-            // Apply filters from URL on page load
             try {
-              urlSync.applyFromUrl()
               const filterCount = Object.keys(gridApi.getFilterModel()).length
               if (filterCount > 0) {
                 showSuccess(
@@ -1235,7 +1254,7 @@
         const start = performance.now()
 
         try {
-          const currentUrl = urlSync.generateUrl(
+          const currentUrl = urlSync.getUrl(
             window.location.origin + window.location.pathname
           )
           document.getElementById('urlDisplay').textContent = currentUrl
@@ -1312,7 +1331,7 @@
         const start = performance.now()
 
         try {
-          urlSync.clearFilters()
+          gridApi.setFilterModel(null)
           performanceStats.lastFilterApplicationTime = performance.now() - start
           performanceStats.operationCount++
           updatePerformanceStats()
@@ -1331,7 +1350,7 @@
         if (!urlSync) return
 
         try {
-          urlSync.applyFromUrl('not-a-valid-url')
+          urlSync.applyUrl('not-a-valid-url')
         } catch (error) {
           showError(`Expected error: ${error.message}`)
           performanceStats.errorCount++
@@ -1345,7 +1364,7 @@
         try {
           const invalidUrl =
             'https://example.com?f_nonexistent_invalidop=test&f__contains=empty'
-          urlSync.applyFromUrl(invalidUrl)
+          urlSync.applyUrl(invalidUrl)
         } catch (error) {
           showError(`Expected error: ${error.message}`)
           performanceStats.errorCount++
@@ -1359,7 +1378,7 @@
         try {
           const longValue = 'x'.repeat(300) // Exceeds default limit
           const longUrl = `https://example.com?f_name_contains=${encodeURIComponent(longValue)}`
-          urlSync.applyFromUrl(longUrl)
+          urlSync.applyUrl(longUrl)
         } catch (error) {
           showError(`Expected error: ${error.message}`)
           performanceStats.errorCount++
@@ -1378,8 +1397,8 @@
           setTimeout(() => {
             try {
               const testUrl = `https://example.com?f_test_contains=value${i}`
-              urlSync.applyFromUrl(testUrl)
-              const generatedUrl = urlSync.generateUrl('https://example.com')
+              urlSync.applyUrl(testUrl)
+              const generatedUrl = urlSync.getUrl('https://example.com')
 
               completed++
               if (completed === total) {
@@ -1409,7 +1428,7 @@
         // Perform many operations
         for (let i = 0; i < 1000; i++) {
           try {
-            urlSync.generateUrl(`https://example.com?iteration=${i}`)
+            urlSync.getUrl(`https://example.com?iteration=${i}`)
           } catch (error) {
             // Ignore errors for this test
           }
@@ -1508,6 +1527,11 @@
           })
         })
 
+        // Handle history changes
+        document.querySelectorAll('input[name="history"]').forEach(radio => {
+          radio.addEventListener('change', () => reinitializeUrlSync())
+        })
+
         // Handle format changes
         formatRadios.forEach(radio => {
           radio.addEventListener('change', () => {
@@ -1549,38 +1573,46 @@
         }
       }
 
+      /** Makes a sync from the mode, format and history controls */
+      function createSync(applyUrlOnCreate) {
+        const { createGridUrlSync, individual, grouped } = window.urlSyncLib
+        const mode = document.querySelector('input[name="mode"]:checked').value
+        const format = document.querySelector(
+          'input[name="format"]:checked'
+        ).value
+        const history = document.querySelector(
+          'input[name="history"]:checked'
+        ).value
+
+        return createGridUrlSync({
+          api: gridApi,
+          codec:
+            mode === 'grouped'
+              ? grouped({ param: 'grid_filters', format })
+              : individual(),
+          history,
+          applyUrlOnCreate,
+          onIssue: ({ issue, source }) => {
+            showError(
+              `URL issue (${issue.code}, from ${source}): ${issue.message}`
+            )
+            performanceStats.errorCount++
+            updatePerformanceStats()
+          }
+        })
+      }
+
       function reinitializeUrlSync() {
-        if (!gridApi || !window.createUrlSync) return
+        if (!gridApi || !window.urlSyncLib) return
 
         const mode = document.querySelector('input[name="mode"]:checked').value
         const format = document.querySelector(
           'input[name="format"]:checked'
         ).value
 
-        const config = {
-          onParseError: error => {
-            showError(`URL Parse Error: ${error.message}`)
-            performanceStats.errorCount++
-            updatePerformanceStats()
-          }
-        }
-
-        if (mode === 'grouped') {
-          config.serialization = 'grouped'
-          config.format = format
-          config.groupedParam = 'grid_filters'
-        }
-
-        // Preserve current filters
-        const currentFilters = gridApi.getFilterModel()
-
-        // Create new URL sync instance
-        urlSync = window.createUrlSync(gridApi, config)
-
-        // Reapply filters
-        if (Object.keys(currentFilters).length > 0) {
-          gridApi.setFilterModel(currentFilters)
-        }
+        // The grid keeps its filters: the new sync does not apply the URL
+        urlSync?.destroy()
+        urlSync = createSync(false)
 
         showSuccess(
           `Switched to ${mode} mode${mode === 'grouped' ? ` with ${format} format` : ''}`

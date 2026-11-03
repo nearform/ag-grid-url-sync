@@ -153,6 +153,49 @@ describe('createGridUrlSync: history writes', () => {
     expect(window.history.length).toBe(length)
   })
 
+  it('writes a change back to the filters of its own apply', async () => {
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api, history: 'replace' })
+    sync.applyUrl(`${window.location.origin}/?f_name_contains=jo`)
+    await settle()
+
+    api.setFilterModel(NAME_X)
+    await settle()
+    api.setFilterModel(NAME_JO)
+    await settle()
+
+    expect(params().get('f_name_contains')).toBe('jo')
+  })
+
+  it('does not write on create when every filter param is bad', async () => {
+    window.history.replaceState(null, '', '/?f_age_gt=abc')
+    const router = vi.fn<(url: string) => void>()
+
+    const api = createRealGrid({
+      initialState: { filter: { filterModel: NAME_X } }
+    })
+
+    createGridUrlSync({ api, history: router })
+    await settle()
+
+    expect(router).not.toHaveBeenCalled()
+  })
+
+  it('does not push for its own apply when the grid takes only part of it', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/?f_name_contains=jo&f_gone_contains=q&f_age_contains=z'
+    )
+    const length = window.history.length
+    const api = createRealGrid()
+    createGridUrlSync({ api, history: 'push' })
+    await settle()
+
+    expect(api.getFilterModel()).toMatchObject(NAME_JO)
+    expect(window.history.length).toBe(length)
+  })
+
   it('never writes with history none', async () => {
     const push = vi.spyOn(window.history, 'pushState')
     const replace = vi.spyOn(window.history, 'replaceState')

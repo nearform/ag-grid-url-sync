@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { GridApi } from 'ag-grid-community'
 import { createGridUrlSync } from './grid-url-sync.js'
 import { grouped } from './codecs.js'
@@ -25,8 +25,17 @@ function gridWithInitialFilter(): GridApi {
   return createRealGrid({ initialState: { filter: { filterModel: NAME_X } } })
 }
 
+/** The browser's reportError, which jsdom does not have */
+let reportError: ReturnType<typeof vi.fn<(error: Error) => void>>
+
 beforeEach(() => {
   useRealLocation('/')
+  reportError = vi.fn<(error: Error) => void>()
+  vi.stubGlobal('reportError', reportError)
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('createGridUrlSync: apply on create', () => {
@@ -200,11 +209,11 @@ describe('createGridUrlSync: snapshot and subscribe', () => {
     sync.subscribe(failing)
     sync.subscribe(other)
 
-    // The sync's own apply notifies at once, so the throw reaches applyUrl
-    expect(() => sync.applyUrl('https://x.test/?f_name_contains=jo')).toThrow(
-      'listener'
-    )
+    // A listener's error is the app's bug: it is reported out of band, and
+    // the call that notified does not throw it
+    sync.applyUrl('https://x.test/?f_name_contains=jo')
 
+    expect(reportError).toHaveBeenCalledWith(new Error('listener'))
     expect(other).toHaveBeenCalledOnce()
     expect(sync.getSnapshot().hasFilters).toBe(true)
 
@@ -213,6 +222,22 @@ describe('createGridUrlSync: snapshot and subscribe', () => {
     await settle()
 
     expect(sync.getSnapshot().hasFilters).toBe(false)
+  })
+
+  it("does not stop the grid's other filterChanged listeners when one throws", async () => {
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api })
+    sync.subscribe(() => {
+      throw new Error('listener')
+    })
+    const appListener = vi.fn()
+    api.addEventListener('filterChanged', appListener)
+
+    api.setFilterModel(NAME_JO)
+    await settle()
+
+    expect(appListener).toHaveBeenCalledOnce()
+    expect(reportError).toHaveBeenCalledWith(new Error('listener'))
   })
 
   it('runs the other listeners when one unsubscribes during notify', async () => {
@@ -226,6 +251,59 @@ describe('createGridUrlSync: snapshot and subscribe', () => {
     await settle()
 
     expect(other).toHaveBeenCalledOnce()
+  })
+})
+
+describe('createGridUrlSync: onIssue', () => {
+  it('a throwing onIssue does not make create throw or leak listeners', async () => {
+    window.history.replaceState(null, '', '/?f_age_gt=abc')
+    const api = createRealGrid()
+
+    const onIssue = vi.fn<(event: IssueEvent) => void>(() => {
+      throw new Error('boom')
+    })
+
+    const sync = createGridUrlSync({ api, onIssue })
+
+    expect(onIssue).toHaveBeenCalledOnce()
+    expect(onIssue.mock.calls[0]?.[0].issue.code).toBe('INVALID_NUMBER')
+    expect(reportError).toHaveBeenCalledWith(new Error('boom'))
+
+    sync.destroy()
+    const listener = vi.fn()
+    sync.subscribe(listener)
+    api.setFilterModel(NAME_JO)
+    await settle()
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('reports each grid-read issue one time when the list grows', async () => {
+    const api = createRealGrid({
+      columnDefs: [
+        { field: 'age', filter: 'agNumberColumnFilter' },
+        { field: 'price', filter: 'agNumberColumnFilter' }
+      ]
+    })
+
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    createGridUrlSync({ api, onIssue })
+
+    api.setFilterModel({
+      age: { filterType: 'number', type: 'greaterThan', filter: 'abc' }
+    })
+    await settle()
+    api.setFilterModel({
+      age: { filterType: 'number', type: 'greaterThan', filter: 'abc' },
+      price: { filterType: 'number', type: 'greaterThan', filter: 'xyz' }
+    })
+    await settle()
+
+    expect(
+      onIssue.mock.calls.map(
+        ([event]) => `${event.source}:${event.issue.column}`
+      )
+    ).toEqual(['grid:age', 'grid:price'])
   })
 })
 

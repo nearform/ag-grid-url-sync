@@ -5,6 +5,7 @@ import type {
   DateFilterModel
 } from 'ag-grid-community'
 import { attachColumn } from './issue-columns.js'
+import { DATA_ISSUE_CODES } from './data-issue-codes.js'
 import {
   OPERATORS,
   operationsFor,
@@ -399,17 +400,6 @@ export type IssueCode =
   | 'STORAGE_WRITE_FAILED'
   | 'HISTORY_WRITE_FAILED'
   | 'UNKNOWN'
-
-/** The codes for a filter that is dropped or not valid */
-export const DATA_ISSUE_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
-  'INVALID_PARAM',
-  'INVALID_NUMBER',
-  'INVALID_DATE',
-  'VALUE_TOO_LONG',
-  'INVALID_GROUPED',
-  'TYPE_MISMATCH',
-  'INVALID_URL'
-])
 
 /**
  * How bad an issue is (#221). A `'warning'` is a data issue: the sync goes on

@@ -55,6 +55,20 @@ describe('createGridUrlSync: popstate', () => {
     ).toBe('jo')
   })
 
+  it('does not push on back to an entry that the grid takes only in part', async () => {
+    const api = createRealGrid()
+    createGridUrlSync({ api, history: 'push' })
+    window.history.pushState(null, '', '/?f_name_contains=jo&f_gone_contains=q')
+    window.history.pushState(null, '', '/?f_name_contains=x')
+    const push = vi.spyOn(window.history, 'pushState')
+
+    await back()
+
+    expect(api.getFilterModel()).toMatchObject(NAME_JO)
+    expect(push).not.toHaveBeenCalled()
+    push.mockRestore()
+  })
+
   it('clears the grid on back to an entry with no filters', async () => {
     const api = createRealGrid()
     createGridUrlSync({ api, history: 'push' })

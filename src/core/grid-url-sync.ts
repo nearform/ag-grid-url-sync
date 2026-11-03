@@ -13,8 +13,10 @@ import { URLSyncError } from './types.js'
 import { DEFAULT_CONFIG } from './options.js'
 import { codecOptions, individual } from './codecs.js'
 import { reportIssue, rethrowIfThrown, toIssue } from './issues.js'
+import { toError } from './to-error.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
+import { resolveParamPrefix } from './individual-params.js'
 import { getFilterModel, applyFilterModel } from './grid-integration.js'
 
 // createGridUrlSync (#221): the framework-free sync. It owns its grid
@@ -94,8 +96,17 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   const listensToPopstate = options.popstate ?? historyMode === 'push'
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
 
+  /**
+   * Sends an issue to onIssue. An error from the app's handler is reported
+   * out of band, so it cannot stop the sync's own work (a create that throws
+   * would leak its listeners).
+   */
   function emit(issue: URLSyncError, source: IssueSource): void {
-    onIssue?.({ issue, source })
+    try {
+      onIssue?.({ issue, source })
+    } catch (error) {
+      reportLater(toError(error))
+    }
   }
 
   function startCall(source: IssueSource, mode: IssueMode): Call {
@@ -150,26 +161,22 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       issues: issues.length ? Object.freeze(issues) : NO_ISSUES
     })
 
-    let firstError: unknown
-    let failed = false
-
-    // A copy, so a listener that unsubscribes during notify stops no other one
+    // A copy, so a listener that unsubscribes during notify stops no other
+    // one. A listener's error is reported out of band, so it stops neither
+    // the other listeners nor AG Grid's other filterChanged listeners.
     for (const listener of Array.from(listeners)) {
       try {
         listener()
       } catch (error) {
-        if (!failed) firstError = error
-        failed = true
+        reportLater(toError(error))
       }
     }
-
-    if (failed) throw firstError
   }
 
   /**
-   * Reads the grid's filters and the URL for them. The issues go to onIssue
-   * only when they differ from the last read, so a read after an apply and
-   * the late filterChanged do not report the same issue twice.
+   * Reads the grid's filters and the URL for them. Only the issues that the
+   * last read did not have go to onIssue, so a read after an apply and the
+   * late filterChanged do not report the same issue twice.
    */
   function readGrid(): void {
     const call = startCall('grid', 'collect')
@@ -184,8 +191,10 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       ? generateUrl(window.location.href, state, call.options)
       : ''
 
-    if (!sameIssues(readIssues, call.issues)) {
-      for (const issue of call.issues) emit(issue, 'grid')
+    const known = new Set(readIssues.map(issueKey))
+
+    for (const issue of call.issues) {
+      if (!known.has(issueKey(issue))) emit(issue, 'grid')
     }
 
     readIssues = call.issues.length ? call.issues : NO_ISSUES
@@ -210,10 +219,12 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       fail(call, cause, 'INVALID_URL')
     }
 
-    if (filters && !(onCreate && Object.keys(filters).length === 0)) {
+    const applies = filters && !(onCreate && Object.keys(filters).length === 0)
+    const before = applies ? liveKey() : null
+
+    if (filters && applies) {
       try {
         applyFilterModel(filters, api, call.options)
-        pendingApplied = filtersKey(filters)
       } catch (cause) {
         fail(call, cause, 'GRID_ERROR')
       }
@@ -221,9 +232,42 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
     applyIssues = call.issues.length ? call.issues : NO_ISSUES
     readGrid()
+
+    // The marker is the grid's model after the apply, not the parsed filters:
+    // the grid can take only part of them (a column that does not exist).
+    // AG Grid sends no filterChanged for a model that did not change.
+    if (applies) {
+      const after = filtersKey(state)
+      pendingApplied = after === before ? null : after
+    }
+
     publish()
 
     return { issues: call.issues }
+  }
+
+  /** The key of the grid's model now, or null when the grid cannot be read */
+  function liveKey(): string | null {
+    try {
+      return filtersKey(
+        getFilterModel(api, startCall('grid', 'collect').options)
+      )
+    } catch {
+      return null
+    }
+  }
+
+  /** Whether a URL has a param that the codec reads, even one that is bad */
+  function hasFilterParams(target: string): boolean {
+    const prefix = resolveParamPrefix(codec.paramPrefix)
+
+    try {
+      return Array.from(new URL(target).searchParams.keys()).some(
+        key => key.startsWith(prefix) || key === codec.groupedParam
+      )
+    } catch {
+      return false
+    }
   }
 
   /**
@@ -270,12 +314,12 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
     const key = filtersKey(state)
 
-    if (pendingApplied !== null) {
-      const own = key === pendingApplied
-      pendingApplied = null
+    // One apply can cause more than one filterChanged, so a match keeps the
+    // marker. The first event with another model is a real change: it clears
+    // the marker and is written.
+    if (key === pendingApplied) return
 
-      if (own) return
-    }
+    pendingApplied = null
 
     const current = parseUrlFilters(
       window.location.href,
@@ -386,12 +430,14 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   if (options.applyUrlOnCreate !== false && hasWindow()) {
-    apply(window.location.href, 'url', 'report', true)
+    const href = window.location.href
+    apply(href, 'url', 'report', true)
 
-    // The URL gave no filters, so the grid's own filters stay: show them in
-    // the address bar too, with no new history entry
+    // The URL has no filter params, so the grid's own filters stay: show them
+    // in the address bar too, with no new history entry. A URL with only bad
+    // filter params is left as it is until the user changes a filter.
     if (
-      pendingApplied === null &&
+      !hasFilterParams(href) &&
       historyMode !== 'none' &&
       Object.keys(state).length > 0
     ) {
@@ -404,6 +450,27 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   return sync
+}
+
+/** The key of an issue's content */
+function issueKey(issue: URLSyncError): string {
+  return `${issue.code}\u0000${issue.column ?? ''}\u0000${issue.message}`
+}
+
+/**
+ * Reports an error from app code (onIssue, a subscriber) out of band, as the
+ * browser does for an event listener's error
+ */
+function reportLater(error: Error): void {
+  if ('reportError' in globalThis) {
+    globalThis.reportError(error)
+
+    return
+  }
+
+  setTimeout(() => {
+    throw error
+  })
 }
 
 /** AG Grid before v31 has no isDestroyed */

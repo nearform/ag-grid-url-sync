@@ -19,6 +19,10 @@ describe.each([
     expect(entry.IDLE_SNAPSHOT).toMatchObject({ status: 'idle', url: '' })
   })
 
+  it('does not export the internal DATA_ISSUE_CODES', () => {
+    expect('DATA_ISSUE_CODES' in entry).toBe(false)
+  })
+
   it('still exports the deprecated class', () => {
     expect(entry.AGGridUrlSync).toBeInstanceOf(Function)
     expect(entry.createUrlSync).toBeInstanceOf(Function)

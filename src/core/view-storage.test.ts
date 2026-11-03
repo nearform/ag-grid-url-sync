@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createViewStore } from './view-storage.js'
 import { asGridApi } from '../test-helpers.js'
+import { URLSyncError } from './types.js'
+import { toError } from './to-error.js'
 import type { FilterModel } from 'ag-grid-community'
 
 const STORAGE_KEY = 'ag-grid-url-sync:views:v1:test-grid'
@@ -9,6 +11,30 @@ const filters = (): FilterModel => ({
   department: { filterType: 'text', type: 'equals', filter: 'Engineering' },
   salary: { filterType: 'number', type: 'greaterThan', filter: 90000 }
 })
+
+/** Runs the callback with a stub in place of localStorage */
+const withStorage = (stub: Partial<Storage>, run: () => void): void => {
+  const original = window.localStorage
+  Object.defineProperty(window, 'localStorage', {
+    value: {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+      clear: () => {},
+      ...stub
+    },
+    configurable: true
+  })
+
+  try {
+    run()
+  } finally {
+    Object.defineProperty(window, 'localStorage', {
+      value: original,
+      configurable: true
+    })
+  }
+}
 
 describe('createViewStore', () => {
   beforeEach(() => {
@@ -291,28 +317,6 @@ describe('createViewStore', () => {
      * the test passes without ever reaching the code under test. Replace the
      * whole object instead.
      */
-    const withStorage = (stub: Partial<Storage>, run: () => void): void => {
-      const original = window.localStorage
-      Object.defineProperty(window, 'localStorage', {
-        value: {
-          getItem: () => null,
-          setItem: () => {},
-          removeItem: () => {},
-          clear: () => {},
-          ...stub
-        },
-        configurable: true
-      })
-
-      try {
-        run()
-      } finally {
-        Object.defineProperty(window, 'localStorage', {
-          value: original,
-          configurable: true
-        })
-      }
-    }
 
     it('degrades to empty when storage cannot be read', () => {
       // Seed a view first, so an empty result can only mean the read failed.
@@ -375,6 +379,71 @@ describe('createViewStore', () => {
           ).toThrow(/Error writing to storage/)
         }
       )
+    })
+  })
+
+  // Each storage error is a URLSyncError with a code (#220)
+  describe('error codes (#220)', () => {
+    /** The error that the call throws */
+    function thrown(run: () => void): Error {
+      try {
+        run()
+      } catch (error) {
+        return toError(error)
+      }
+
+      throw new Error('expected the call to throw')
+    }
+
+    it('gives STORAGE_UNAVAILABLE with no DOM', () => {
+      const store = createViewStore('test-grid')
+      vi.stubGlobal('window', undefined)
+
+      try {
+        const error = thrown(() => store.saveView('X', filters()))
+
+        expect(error).toBeInstanceOf(URLSyncError)
+        expect(error).toMatchObject({
+          code: 'STORAGE_UNAVAILABLE',
+          message: 'Browser storage is unavailable.'
+        })
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it.each([
+      ['STORAGE_FULL', new DOMException('quota', 'QuotaExceededError')],
+      ['STORAGE_FULL', new DOMException('quota', 'NS_ERROR_DOM_QUOTA_REACHED')],
+      ['STORAGE_WRITE_FAILED', new Error('nope')]
+    ])('gives %s and keeps the storage error as the cause', (code, cause) => {
+      withStorage(
+        {
+          setItem: () => {
+            throw cause
+          }
+        },
+        () => {
+          const error = thrown(() =>
+            createViewStore('test-grid').saveView('X', filters())
+          )
+
+          expect(error).toBeInstanceOf(URLSyncError)
+          expect(error).toMatchObject({ code, cause })
+        }
+      )
+    })
+
+    it('gives VIEW_NAME_REQUIRED for an empty name', () => {
+      const error = thrown(() =>
+        createViewStore('test-grid').saveView('  ', filters())
+      )
+
+      expect(error).toBeInstanceOf(URLSyncError)
+      expect(error).toMatchObject({
+        code: 'VIEW_NAME_REQUIRED',
+        message: 'A view name is required.'
+      })
     })
   })
 })

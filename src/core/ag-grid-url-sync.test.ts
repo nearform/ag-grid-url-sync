@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { AGGridUrlSync } from './ag-grid-url-sync.js'
 import type { AGGridUrlSyncConfig, FilterState } from './types.js'
-import { asGridApi } from '../test-helpers.js'
+import { asGridApi, createGridApiSpies } from '../test-helpers.js'
+import type { FilterModel } from 'ag-grid-community'
 
 describe('AGGridUrlSync', () => {
   // Mock GridApi
@@ -91,7 +92,8 @@ describe('AGGridUrlSync', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
       expect(urlSync.getUrlState('https://example.com/?tab=1')).toEqual({
         url: 'https://example.com/?f_name_contains=john&tab=1',
-        hasFilters: true
+        hasFilters: true,
+        issues: []
       })
     })
 
@@ -104,7 +106,8 @@ describe('AGGridUrlSync', () => {
       const urlSync = new AGGridUrlSync(api)
       expect(urlSync.getUrlState('https://example.com/?tab=1')).toEqual({
         url: 'https://example.com/?tab=1',
-        hasFilters: false
+        hasFilters: false,
+        issues: []
       })
       expect(api.getFilterModel).toHaveBeenCalledTimes(1)
     })
@@ -158,6 +161,90 @@ describe('AGGridUrlSync', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
       urlSync.clearFilters()
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
+    })
+  })
+
+  // Each call gives its own issues, the same objects that onParseError gets
+  // (#229)
+  describe('issues in the result (#229)', () => {
+    const LONG = 'a'.repeat(201)
+
+    function createSync(model: FilterModel = {}) {
+      const api = createGridApiSpies()
+      api.getFilterModel.mockReturnValue(model)
+      api.getColumn.mockReturnValue({
+        getColDef: () => ({ filter: 'agTextColumnFilter' })
+      })
+      const onParseError = vi.fn()
+
+      return {
+        api,
+        onParseError,
+        sync: new AGGridUrlSync(asGridApi(api), { onParseError })
+      }
+    }
+
+    it('getUrlState gives the issues of the grid read and the URL write', () => {
+      const { sync, onParseError } = createSync({
+        name: { filterType: 'text', type: 'contains', filter: LONG }
+      })
+
+      const state = sync.getUrlState('https://example.com/')
+
+      expect(state.hasFilters).toBe(true)
+      expect(state.issues).toHaveLength(1)
+      expect(state.issues[0]).toMatchObject({
+        code: 'VALUE_TOO_LONG',
+        column: 'name'
+      })
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError.mock.calls[0]?.[0]).toBe(state.issues[0])
+    })
+
+    it('applyFromUrl gives the issues of the URL', () => {
+      const { sync } = createSync()
+
+      const { issues } = sync.applyFromUrl('?f_age_gt=abc')
+
+      expect(issues).toHaveLength(1)
+      expect(issues[0]).toMatchObject({ code: 'INVALID_NUMBER', column: 'age' })
+    })
+
+    it('applyFilters gives TYPE_MISMATCH issues', () => {
+      const { sync } = createSync()
+
+      const { issues } = sync.applyFilters({
+        n: { filterType: 'number', type: 'eq', filter: 1 }
+      })
+
+      expect(issues).toHaveLength(1)
+      expect(issues[0]).toMatchObject({ code: 'TYPE_MISMATCH', column: 'n' })
+    })
+
+    it('clearFilters gives no issues', () => {
+      const { sync } = createSync()
+
+      expect(sync.clearFilters()).toEqual({ issues: [] })
+    })
+
+    it('each call gives only its own issues', () => {
+      const { sync } = createSync({
+        name: { filterType: 'text', type: 'contains', filter: LONG }
+      })
+
+      sync.getUrlState('https://example.com/')
+
+      expect(sync.getUrlState('https://example.com/').issues).toHaveLength(1)
+    })
+
+    it('an issue that throwOnError throws is not in the list', () => {
+      const api = createGridApiSpies()
+      api.getFilterModel.mockReturnValue({})
+      const sync = new AGGridUrlSync(asGridApi(api), { throwOnError: true })
+
+      expect(() => sync.applyFromUrl('?f_age_gt=abc')).toThrow(
+        expect.objectContaining({ code: 'INVALID_NUMBER' })
+      )
     })
   })
 })

@@ -549,7 +549,8 @@ describe('useAGGridUrlSync', () => {
     test('sets hasFilters to false when the grid has no filters', async () => {
       core.getUrlState.mockReturnValue({
         url: 'http://example.com?tab=1',
-        hasFilters: false
+        hasFilters: false,
+        issues: []
       })
 
       const { result } = renderHook(() =>
@@ -1959,7 +1960,11 @@ describe('useAGGridUrlSync', () => {
             age
           )
 
-          core[coreMethod].mockImplementationOnce(() => setModel(target))
+          core[coreMethod].mockImplementationOnce(() => {
+            setModel(target)
+
+            return { issues: [] }
+          })
 
           await act(async () => write(result.current))
 
@@ -1969,7 +1974,11 @@ describe('useAGGridUrlSync', () => {
 
       test('a hook write of the view itself keeps it loaded', async () => {
         const { id, result, setModel } = await mountWithPendingRestore()
-        core.applyFilters.mockImplementationOnce(() => setModel(savedModel))
+        core.applyFilters.mockImplementationOnce(() => {
+          setModel(savedModel)
+
+          return { issues: [] }
+        })
 
         // savedModel as the library's filter state. The core write is
         // replaced, so only the model it lands matters.
@@ -1998,13 +2007,13 @@ describe('useAGGridUrlSync', () => {
           'is swallowed by the core',
           'applyFilters',
           (hook: Hook) => hook.applyFilters(john),
-          () => {}
+          () => ({ issues: [] })
         ],
         [
           'changes nothing',
           'clearFilters',
           (hook: Hook) => hook.clearFilters(),
-          () => {}
+          () => ({ issues: [] })
         ]
       ] as const)(
         'a hook write that %s leaves the restore pending',

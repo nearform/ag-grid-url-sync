@@ -2,12 +2,14 @@ import type { GridApi } from 'ag-grid-community'
 import type {
   AGGridUrlSyncConfig,
   FilterState,
+  ApplyResult,
   ResolvedOptions,
   SerializationFormat,
   SerializationMode,
   UrlState
 } from './types.js'
 import { resolveOptions } from './options.js'
+import { collectIssues } from './issues.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { getFilterModel, applyFilterModel } from './grid-integration.js'
@@ -51,12 +53,14 @@ export class AGGridUrlSync {
    * @param baseUrl - Optional base URL (defaults to current URL)
    */
   getUrlState(baseUrl?: string): UrlState {
-    const filterState = getFilterModel(this.gridApi, this.options)
+    const { options, issues } = collectIssues(this.options)
+    const filterState = getFilterModel(this.gridApi, options)
     const url = baseUrl ?? window.location.href
 
     return {
-      url: generateUrl(url, filterState, this.options),
-      hasFilters: Object.keys(filterState).length > 0
+      url: generateUrl(url, filterState, options),
+      hasFilters: Object.keys(filterState).length > 0,
+      issues
     }
   }
 
@@ -74,26 +78,35 @@ export class AGGridUrlSync {
   /**
    * Applies filters from a URL to the grid
    * @param url - Optional URL to parse (defaults to current URL)
+   * @returns The issues of this call: filters in the URL that were dropped
    */
-  applyFromUrl(url?: string): void {
+  applyFromUrl(url?: string): ApplyResult {
+    const { options, issues } = collectIssues(this.options)
     const urlToParse = url ?? window.location.href
-    const filterState = parseUrlFilters(urlToParse, this.options)
-    this.applyFilters(filterState)
+    const filterState = parseUrlFilters(urlToParse, options)
+    applyFilterModel(filterState, this.gridApi, options)
+
+    return { issues }
   }
 
   /**
    * Applies a filter state object to the grid
    * @param filterState - Filter state to apply
+   * @returns The issues of this call: filters that were dropped
    */
-  applyFilters(filterState: FilterState): void {
-    applyFilterModel(filterState, this.gridApi, this.options)
+  applyFilters(filterState: FilterState): ApplyResult {
+    const { options, issues } = collectIssues(this.options)
+    applyFilterModel(filterState, this.gridApi, options)
+
+    return { issues }
   }
 
   /**
    * Clears all text filters from the grid
+   * @returns The issues of this call
    */
-  clearFilters(): void {
-    this.applyFilters({})
+  clearFilters(): ApplyResult {
+    return this.applyFilters({})
   }
 
   /**

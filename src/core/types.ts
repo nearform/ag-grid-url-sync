@@ -526,6 +526,20 @@ export interface UrlState {
   url: string
   /** Whether the grid has filters that the library supports */
   hasFilters: boolean
+  /**
+   * The issues of this call (#229): filters that the grid read or the URL
+   * leaves out. The same objects also go to `onParseError`.
+   */
+  issues: readonly URLSyncError[]
+}
+
+/** The result of an apply method (#229) */
+export interface ApplyResult {
+  /**
+   * The issues of this call: filters that were dropped. The same objects
+   * also go to `onParseError`.
+   */
+  issues: readonly URLSyncError[]
 }
 
 /**

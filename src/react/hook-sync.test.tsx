@@ -309,3 +309,38 @@ describe('grid destroyed (#222)', () => {
     expect(result.current.isReady).toBe(true)
   })
 })
+
+describe('getSerializationMode (#222)', () => {
+  test('returns grouped for serialization grouped', async () => {
+    const grid = createGrid()
+
+    const { result } = renderSync({
+      grid,
+      options: { serialization: 'grouped' }
+    })
+
+    await waitForEffects()
+
+    expect(result.current.getSerializationMode()).toBe('grouped')
+  })
+
+  test('returns individual by default', async () => {
+    const { result } = renderSync({ grid: createGrid(), options: {} })
+    await waitForEffects()
+
+    expect(result.current.getSerializationMode()).toBe('individual')
+  })
+
+  test('getCurrentFormat returns the same as getSerializationMode', async () => {
+    const { result } = renderSync({
+      grid: createGrid(),
+      options: { serialization: 'grouped' }
+    })
+
+    await waitForEffects()
+
+    expect(result.current.getCurrentFormat()).toBe(
+      result.current.getSerializationMode()
+    )
+  })
+})

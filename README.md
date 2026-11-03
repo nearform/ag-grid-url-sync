@@ -586,6 +586,8 @@ For React applications, use the dedicated `useAGGridUrlSync` hook that provides 
 npm install ag-grid-url-sync
 ```
 
+The hook works with React 16.8 and later. It uses the `use-sync-external-store` package, which npm installs with the library. On React 18 and later, that package uses React's own `useSyncExternalStore`.
+
 ### Basic React Usage
 
 ```tsx
@@ -683,9 +685,17 @@ const {
   parseUrlFilters,
   applyFilters,
   getFiltersAsFormat,
-  getCurrentFormat
+  getSerializationMode
 } = useAGGridUrlSync(gridApi, options)
 ```
+
+The hook runs on [`createGridUrlSync`](#vanilla-js-creategridurlsync) and reads its state with `useSyncExternalStore`:
+
+- **Options can change after mount.** A change to `paramPrefix`, `maxValueLength`, `serialization`, `groupedParam` or `format` makes a new sync. The grid keeps its filters, and `currentUrl` uses the new format. The URL is not applied again. A new options object with the same values, or a new callback, makes no new sync.
+- **The returned object is stable.** It is the same object across renders until a value in it changes.
+- **A grid-read issue goes to `onParseError` one time** while it stays. It is reported again only after it goes away and comes back.
+- **After AG Grid destroys the grid**, `isReady` is `false` and `currentUrl` is `''`, as with no grid. The operations then report `NOT_READY` to `onError`.
+- **The hook does not write to the address bar.** Use `currentUrl` or `shareUrl()` to update it.
 
 #### Hook Options
 
@@ -709,20 +719,21 @@ interface UseAGGridUrlSyncOptions {
 
 #### Hook Return Values
 
-| Property             | Type                                                      | Description                                                                 |
-| -------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `shareUrl`           | `(baseUrl?: string) => string`                            | Generate shareable URL with current filters                                 |
-| `getQueryParams`     | `() => string`                                            | Get filter state as query parameters                                        |
-| `applyUrlFilters`    | `(url?: string) => void`                                  | Apply filters from URL to grid                                              |
-| `clearFilters`       | `() => void`                                              | Clear all text filters                                                      |
-| `isReady`            | `boolean`                                                 | Whether grid API is available and hook is ready                             |
-| `currentUrl`         | `string`                                                  | Current URL with filters applied                                            |
-| `hasFilters`         | `boolean`                                                 | Whether the grid has supported filters                                      |
-| `issues`             | `readonly URLSyncError[]`                                 | Filters that the latest URL apply or URL write dropped (see Error Handling) |
-| `parseUrlFilters`    | `(url: string) => FilterState`                            | Parse filters from URL without applying                                     |
-| `applyFilters`       | `(filters: FilterState) => void`                          | Apply filter state object to grid                                           |
-| `getFiltersAsFormat` | `(format: 'querystring' \| 'json' \| 'base64') => string` | Serialize filters to any supported format (for sharing/export)              |
-| `getCurrentFormat`   | `() => 'individual' \| 'grouped'`                         | Get the current serialization mode (individual or grouped)                  |
+| Property               | Type                                                      | Description                                                                                       |
+| ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `shareUrl`             | `(baseUrl?: string) => string`                            | Generate shareable URL with current filters                                                       |
+| `getQueryParams`       | `() => string`                                            | Get filter state as query parameters                                                              |
+| `applyUrlFilters`      | `(url?: string) => void`                                  | Apply filters from URL to grid                                                                    |
+| `clearFilters`         | `() => void`                                              | Clear all text filters                                                                            |
+| `isReady`              | `boolean`                                                 | Whether the grid API is available and the hook is ready. `false` after AG Grid destroys the grid. |
+| `currentUrl`           | `string`                                                  | Current URL with filters applied                                                                  |
+| `hasFilters`           | `boolean`                                                 | Whether the grid has supported filters                                                            |
+| `issues`               | `readonly URLSyncError[]`                                 | Filters that the latest URL apply or URL write dropped (see Error Handling)                       |
+| `parseUrlFilters`      | `(url: string) => FilterState`                            | Parse filters from URL without applying                                                           |
+| `applyFilters`         | `(filters: FilterState) => void`                          | Apply filter state object to grid                                                                 |
+| `getFiltersAsFormat`   | `(format: 'querystring' \| 'json' \| 'base64') => string` | Serialize filters to any supported format (for sharing/export)                                    |
+| `getSerializationMode` | `() => 'individual' \| 'grouped'`                         | Get the current serialization mode (individual or grouped)                                        |
+| `getCurrentFormat`     | `() => 'individual' \| 'grouped'`                         | **Deprecated** (removed in 0.6.0): use `getSerializationMode`                                     |
 
 Saved views (inert unless `storageKey` is set):
 
@@ -734,7 +745,7 @@ Saved views (inert unless `storageKey` is set):
 | `loadView`     | `(id: string \| null) => void`       | Apply a saved view, or pass `null` to reset to unfiltered               |
 | `deleteView`   | `(id: string) => void`               | Delete a saved view                                                     |
 
-> **Note:** `getFiltersAsFormat` and `getCurrentFormat` are especially useful for grouped serialization, format conversion, and advanced sharing scenarios.
+> **Note:** `getFiltersAsFormat` and `getSerializationMode` are especially useful for grouped serialization, format conversion, and advanced sharing scenarios.
 
 ### Saved Views
 

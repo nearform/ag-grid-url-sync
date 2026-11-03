@@ -991,7 +991,7 @@ export function useAGGridUrlSync(
     [reportFailure]
   )
 
-  const getCurrentFormat = useCallback((): SerializationMode => {
+  const getSerializationMode = useCallback((): SerializationMode => {
     if (!urlSyncRef.current) {
       return DEFAULT_CONFIG.serialization
     }
@@ -999,11 +999,14 @@ export function useAGGridUrlSync(
     try {
       return urlSyncRef.current.getSerializationMode()
     } catch (error) {
-      reportFailure(error, 'get-current-format')
+      reportFailure(error, 'get-serialization-mode')
 
       return DEFAULT_CONFIG.serialization
     }
   }, [reportFailure])
+
+  // Deprecated: the old name of getSerializationMode (#222)
+  const getCurrentFormat = getSerializationMode
 
   // Saved view operations. All no-op when storageKey is unset, and when the hook
   // is disabled: urlSyncRef is null on the init effect's disabled branch, which
@@ -1264,6 +1267,7 @@ export function useAGGridUrlSync(
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
+      getSerializationMode,
       getCurrentFormat,
       views,
       activeViewId,
@@ -1283,6 +1287,7 @@ export function useAGGridUrlSync(
       parseUrlFilters,
       applyFilters,
       getFiltersAsFormat,
+      getSerializationMode,
       getCurrentFormat,
       views,
       activeViewId,

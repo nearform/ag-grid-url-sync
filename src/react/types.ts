@@ -146,8 +146,14 @@ export interface UseAGGridUrlSyncReturn {
   getFiltersAsFormat: (format: SerializationFormat) => string
 
   /**
-   * Get the current serialization format
-   * @returns The current format
+   * The serialization mode of the URL: `'individual'` or `'grouped'`
+   */
+  getSerializationMode: () => SerializationMode
+
+  /**
+   * The serialization mode of the URL. The name is wrong: it returns the
+   * mode, not the format.
+   * @deprecated Use `getSerializationMode`. Removed in 0.6.0.
    */
   getCurrentFormat: () => SerializationMode
 

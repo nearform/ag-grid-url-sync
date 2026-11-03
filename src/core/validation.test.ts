@@ -3,6 +3,7 @@ import {
   validateFilterValue,
   validateNumberFilter,
   validateAndParseNumber,
+  parseExactNumber,
   validateAndParseDate,
   validateNumberRange,
   validateDateFilter,
@@ -69,12 +70,18 @@ describe('Validation Functions', () => {
       })
     })
 
-    it('should reject numbers exceeding safe integer range', () => {
-      const tooBig = Number.MAX_SAFE_INTEGER + 1
-      expect(validateNumberFilter(tooBig)).toEqual({
-        valid: false,
-        error: 'Number value exceeds safe integer range'
-      })
+    // #238: the URL keeps every finite number exactly, so there is no
+    // safe-integer limit
+    it('should accept finite numbers outside the safe integer range', () => {
+      for (const n of [
+        Number.MAX_SAFE_INTEGER + 1,
+        -Number.MAX_SAFE_INTEGER - 1,
+        1e21,
+        Number.MAX_VALUE,
+        Number.MIN_VALUE
+      ]) {
+        expect(validateNumberFilter(n)).toEqual({ valid: true })
+      }
     })
   })
 
@@ -118,6 +125,109 @@ describe('Validation Functions', () => {
       expect(() => validateAndParseNumber('42abc')).toThrow(
         'Invalid number format: 42abc'
       )
+    })
+
+    it('should reject a number that would be rounded (#238)', () => {
+      expect(() => validateAndParseNumber('12345678901234567890')).toThrow(
+        'Number value 12345678901234567890 would be rounded to 12345678901234567000'
+      )
+    })
+
+    // URLSearchParams reads a raw `+` as a space. In a number-only operation
+    // the space can only be an exponent sign.
+    it.each([
+      ['1e 21', 1e21],
+      ['1.5E 21', 1.5e21],
+      ['1.e 5', 1e5]
+    ])('should read %s as %s (#238)', (value, expected) => {
+      expect(validateAndParseNumber(value)).toBe(expected)
+    })
+
+    it('should give its own message for more than 100 significant digits', () => {
+      // The exact value of the double 1e-22, 104 significant digits
+      expect(() =>
+        validateAndParseNumber(
+          '0.00000000000000000000010000000000000000485967743265708723529783189783450120951502847720104849571498561999760568141937255859375'
+        )
+      ).toThrow('Number value has more than 100 significant digits')
+    })
+
+    it('should quote the trimmed value in every message', () => {
+      expect(() => validateAndParseNumber(' 42abc ')).toThrow(
+        'Invalid number format: 42abc'
+      )
+      expect(() => validateAndParseNumber(' 12345678901234567890 ')).toThrow(
+        'Number value 12345678901234567890 would be rounded'
+      )
+    })
+  })
+
+  // A number is exact when the double that parseFloat gives, written with as
+  // many significant digits as the text has, gives the text's digits back.
+  // The form of the text does not matter (#238).
+  describe('parseExactNumber (#238)', () => {
+    it.each([
+      ['42', 42],
+      ['-3.14', -3.14],
+      [' 42 ', 42],
+      ['1.50', 1.5],
+      ['007', 7],
+      ['.5', 0.5],
+      ['1e3', 1000],
+      ['0', 0],
+      ['0.000', 0],
+      ['9007199254740992', 2 ** 53],
+      ['+9007199254740992', 2 ** 53],
+      ['9007199254740992.0', 2 ** 53],
+      ['1e21', 1e21],
+      ['1E+21', 1e21],
+      ['1e+21', 1e21],
+      ['1000000000000000000000', 1e21],
+      ['0.1', 0.1],
+      ['5e-324', 5e-324],
+      // More digits than the shortest form, but the same double
+      ['19.989999999999998', 19.99],
+      ['0.10000000000000001', 0.1],
+      ['0.1000000000000000055511151231257827021181583404541015625', 0.1],
+      ['12345678901234567000', 12345678901234567000],
+      // The double is exactly ...248.25, a tie at 17 digits: String(n)
+      // writes .2 and toPrecision(17) writes .3
+      ['2194262264886248.2', 2194262264886248.25],
+      ['2194262264886248.3', 2194262264886248.25]
+    ])('should parse %s as %s', (value, expected) => {
+      expect(parseExactNumber(value)).toBe(expected)
+    })
+
+    it.each([
+      // Digits lost above the safe integer range
+      '9007199254740993',
+      '12345678901234567890',
+      '-12345678901234567891',
+      // Digits lost inside the safe range
+      '0.12345678901234567891',
+      '1234567890.12345678901234',
+      '3.14159265358979323846',
+      // At 17 digits, only the nearest text to the double is kept: these
+      // also parse to 19.99, but 19.99 written with 17 digits is
+      // 19.989999999999998
+      '19.989999999999999',
+      '19.989999999999997',
+      // Rounded to the nearest subnormal
+      '4e-324',
+      // Too small or too large for a double
+      '1e-400',
+      '1e400',
+      // Not a number
+      '',
+      'abc',
+      '42abc',
+      // The space for a raw `+` is read only in number-only operations
+      '1e 21',
+      '1 e21',
+      '1e  21',
+      '1 21'
+    ])('should give null for %s', value => {
+      expect(parseExactNumber(value)).toBeNull()
     })
   })
 

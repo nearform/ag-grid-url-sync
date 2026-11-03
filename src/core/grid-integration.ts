@@ -7,6 +7,7 @@ import type {
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
 import {
+  InvalidFilterError,
   NUMBER_FILTER_OPERATIONS,
   isDateFilterOperation,
   isNumberFilterOperation,
@@ -15,6 +16,7 @@ import {
 import { operatorById, operatorFromAgGrid } from './operators.js'
 import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
 import { toError } from './to-error.js'
+import { readNumber } from './validation.js'
 import type { GridApi } from 'ag-grid-community'
 
 /**
@@ -24,6 +26,24 @@ import type { GridApi } from 'ag-grid-community'
  */
 function toAgGridOperation(operation: string): ISimpleFilterModelType | null {
   return operatorById(operation)?.agGrid ?? null
+}
+
+/**
+ * A number from the AG Grid model. A number value is what the grid filters
+ * on, so it is kept. A string that AG Grid kept from the input box gets the
+ * same check as a URL param, and the error names the column (#238).
+ */
+function gridNumber(
+  value: string | number | null | undefined,
+  column: string
+): number | InvalidFilterError {
+  if (!v.is(v.string(), value)) return Number(value)
+
+  const number = readNumber(value)
+
+  return number instanceof InvalidFilterError
+    ? new InvalidFilterError(`${number.message} (column '${column}')`)
+    : number
 }
 
 /**
@@ -132,8 +152,27 @@ export function getFilterModel(config: InternalConfig): FilterState {
           continue
         }
 
-        // A number value, or a string AG Grid kept from the input box
-        const numericValue = Number(filter.filter)
+        const numericValue = gridNumber(filter.filter, column)
+
+        // Only inRange uses filterTo, so the other operations ignore it
+        const numericTo =
+          internalOperation !== 'inRange' ||
+          filter.filterTo === undefined ||
+          filter.filterTo === null
+            ? undefined
+            : gridNumber(filter.filterTo, column)
+
+        if (numericValue instanceof InvalidFilterError) {
+          if (config.onParseError) config.onParseError(numericValue)
+
+          continue
+        }
+
+        if (numericTo instanceof InvalidFilterError) {
+          if (config.onParseError) config.onParseError(numericTo)
+
+          continue
+        }
 
         // Skip invalid number filters
         if (isNaN(numericValue)) {
@@ -143,12 +182,12 @@ export function getFilterModel(config: InternalConfig): FilterState {
         // Handle range operations
         filters.set(
           column,
-          internalOperation === 'inRange' && filter.filterTo !== undefined
+          internalOperation === 'inRange' && numericTo !== undefined
             ? {
                 filterType: 'number',
                 type: internalOperation,
                 filter: numericValue,
-                filterTo: filter.filterTo
+                filterTo: numericTo
               }
             : {
                 filterType: 'number',

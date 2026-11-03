@@ -65,14 +65,12 @@ export function validateFilterValue(
  * @returns Validation result
  */
 export function validateNumberFilter(value: number): ValidationResult {
-  // Basic number validation
+  // Every finite number is valid. There is no safe-integer limit: String(n)
+  // and parseFloat give back the same number, so a number that generateUrl
+  // writes comes back exactly. Text that would be rounded is rejected by
+  // readNumber, which reads URL params and string values from the grid (#238).
   if (!Number.isFinite(value)) {
     return { valid: false, error: 'Filter value must be a finite number' }
-  }
-
-  // Range validation for precision
-  if (Math.abs(value) > Number.MAX_SAFE_INTEGER) {
-    return { valid: false, error: 'Number value exceeds safe integer range' }
   }
 
   return { valid: true }
@@ -108,39 +106,132 @@ export function validateNumberRange(
 }
 
 /**
+ * A whole number in decimal or exponent form. The full match stops parseFloat
+ * from taking a number at the start of the value ("42abc" would be 42).
+ */
+const NUMBER_FORMAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
+
+/**
+ * A space between the `e` and the exponent digits. URLSearchParams reads a
+ * raw `+` as a space, so "1e+21" in a hand-typed URL arrives as "1e 21".
+ * Only validateAndParseNumber reads it as a sign: in the eq type guess, a text
+ * value such as "2E 5" must stay text.
+ */
+const EXPONENT_SPACE = /(?<=[\d.][eE]) (?=\d+$)/
+
+/** The most significant digits that toPrecision writes */
+const MAX_PRECISION = 100
+
+/**
+ * A key for the value of a number in NUMBER_FORMAT, without its sign: the
+ * significant digits (no leading or trailing zeros), then the position of the
+ * decimal point after `e`. "1.50", "150e-2" and "0.0150e2" all give "15e1".
+ * Zero gives "".
+ */
+function significantDigits(text: string): string {
+  const [mantissa = '', exponent = '0'] = text.replace(/^[+-]/, '').split(/e/i)
+  const [whole = '', fraction = ''] = mantissa.split('.')
+  const allDigits = whole + fraction
+  const leadingZeros = allDigits.length - allDigits.replace(/^0+/, '').length
+  const digits = allDigits.slice(leadingZeros).replace(/0+$/, '')
+
+  if (digits === '') return ''
+
+  const point = whole.length - leadingZeros + Number(exponent)
+
+  return `${digits}e${point}`
+}
+
+/**
+ * Whether `number`, written with as many significant digits as `text` has,
+ * gives the digits of `text` back. Then the text is the double at the text's
+ * own precision: "19.989999999999998" is 19.99 written with 17 digits, so it
+ * is kept. "12345678901234567890" comes back as "12345678901234567168", so it
+ * would be rounded.
+ *
+ * String(n) is checked too. When the double lies exactly halfway between two
+ * texts, String(n) and toPrecision can round to different ones, and the text
+ * that generateUrl writes must always be kept.
+ */
+function keepsDigits(text: string, number: number): boolean {
+  const key = significantDigits(text)
+  const precision = Math.max(1, key.indexOf('e'))
+  const magnitude = Math.abs(number)
+
+  return (
+    key === significantDigits(String(magnitude)) ||
+    key === significantDigits(magnitude.toPrecision(precision))
+  )
+}
+
+/**
+ * Reads the value as a number, or gives the error that says why it is not
+ * one. The one rule for every number in a URL or a grid input (#238): the
+ * whole value must be a number, it must be finite, and it must not be rounded
+ * when it is stored as a double.
+ *
+ * The form does not matter: "1e21", "1E+21" and "1000000000000000000000" are
+ * all 1e21, and "1.50" and "007" are 1.5 and 7.
+ */
+export function readNumber(value: string): number | InvalidFilterError {
+  const text = value?.trim() ?? ''
+
+  if (!text) {
+    return new InvalidFilterError('Number filter value cannot be empty')
+  }
+
+  if (!NUMBER_FORMAT.test(text)) {
+    return new InvalidFilterError(`Invalid number format: ${text}`)
+  }
+
+  const number = parseFloat(text)
+  const validation = validateNumberFilter(number)
+
+  if (!validation.valid) {
+    return new InvalidFilterError(validation.error || 'Invalid number value')
+  }
+
+  // toPrecision writes at most MAX_PRECISION digits, so a longer text cannot
+  // be compared. Nothing is rounded: the text is too long to check.
+  if (significantDigits(text).indexOf('e') > MAX_PRECISION) {
+    return new InvalidFilterError(
+      `Number value has more than ${MAX_PRECISION} significant digits: ${text}`
+    )
+  }
+
+  if (!keepsDigits(text, number)) {
+    return new InvalidFilterError(
+      `Number value ${text} would be rounded to ${number}`
+    )
+  }
+
+  return number
+}
+
+/**
+ * The number in the value, or null when readNumber gives an error. The type
+ * guess for shared operations uses this, so such a value stays text.
+ */
+export function parseExactNumber(value: string): number | null {
+  const number = readNumber(value)
+
+  return number instanceof InvalidFilterError ? null : number
+}
+
+/**
  * Validates a parsed number from string input
  *
  * @param value - String representation of number
  * @returns Parsed number or throws InvalidFilterError
  */
 export function validateAndParseNumber(value: string): number {
-  const trimmedValue = value?.trim()
+  // A number-only operation has no text fallback, so a space here can only
+  // be the exponent sign
+  const number = readNumber((value?.trim() ?? '').replace(EXPONENT_SPACE, '+'))
 
-  if (!trimmedValue) {
-    throw new InvalidFilterError('Number filter value cannot be empty')
-  }
+  if (number instanceof InvalidFilterError) throw number
 
-  // Use a regex to validate proper number format before parsing
-  // This prevents parseFloat from accepting partial numbers like "42abc" -> 42
-  const numberRegex = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
-
-  if (!numberRegex.test(trimmedValue)) {
-    throw new InvalidFilterError(`Invalid number format: ${value}`)
-  }
-
-  const numValue = parseFloat(trimmedValue)
-
-  if (isNaN(numValue)) {
-    throw new InvalidFilterError(`Invalid number format: ${value}`)
-  }
-
-  const validation = validateNumberFilter(numValue)
-
-  if (!validation.valid) {
-    throw new InvalidFilterError(validation.error || 'Invalid number value')
-  }
-
-  return numValue
+  return number
 }
 
 /**

@@ -9,6 +9,7 @@ import {
 import {
   validateFilterValue,
   validateAndParseNumber,
+  parseExactNumber,
   validateNumberRange,
   validateAndParseDate,
   validateAndParseDateRange,
@@ -157,19 +158,6 @@ function tryParseAsDate(value: string): 'date' | null {
 }
 
 /**
- * Parses the value as a number only if the whole value is a valid number.
- * Returns null otherwise. `parseFloat` alone accepts a number at the start of
- * the value, so "3M" became 3 (#214).
- */
-function tryParseNumber(value: string): number | null {
-  try {
-    return validateAndParseNumber(value)
-  } catch {
-    return null
-  }
-}
-
-/**
  * Detects the most appropriate filter type for a shared operation based on the value
  * Priority: Date > Number > Text (if the value can be parsed as date/number, prefer that type)
  */
@@ -190,7 +178,7 @@ function detectFilterTypeForSharedOperation(
     }
 
     // Try number second
-    if (tryParseNumber(value) !== null) {
+    if (parseExactNumber(value) !== null) {
       return 'number'
     }
 
@@ -361,7 +349,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
     }
 
     if (detectedType === 'number') {
-      const numValue = tryParseNumber(value)
+      const numValue = parseExactNumber(value)
 
       if (numValue !== null) {
         return {

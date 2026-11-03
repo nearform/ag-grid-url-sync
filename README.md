@@ -493,7 +493,7 @@ if (issues.length > 0) {
 const { issues: urlIssues } = urlSync.applyFromUrl()
 ```
 
-In React, the hook returns the same list as `issues`:
+In React, the hook returns `issues`: the issues of the latest URL apply (`applyUrlFilters`, `applyFilters`, auto-apply), followed by the issues of the latest URL write. The apply issues stay until the next apply, `clearFilters` or `loadView`. Operation failures (`onError`) are not in the list:
 
 ```tsx
 const { shareUrl, issues } = useAGGridUrlSync(gridApi)
@@ -505,7 +505,9 @@ return issues.length > 0 ? (
 
 #### `throwOnError`
 
-Like TanStack Query, the library can throw an issue instead of reporting it. Set `throwOnError: true` to throw every issue, or give a function that picks issues. A thrown issue does not go to `onParseError`, and the first one stops the call. In React, the hook throws the issue during render, so an error boundary catches it. The default is `false`.
+Like TanStack Query, the library can throw an issue instead of reporting it. Set `throwOnError: true` to throw every issue, or give a function that picks issues. In the core, a thrown issue does not go to `onParseError`, and the first one stops the call. In React, the hook keeps reporting each issue to `onParseError` one time, and then throws the picked issue during render, so an error boundary catches it. The default is `false`.
+
+The library does not change the address bar. Before an error boundary resets, remove the bad param from the URL (or the filter from the grid), or the same issue is thrown again.
 
 ```tsx
 useAGGridUrlSync(gridApi, {
@@ -967,7 +969,7 @@ const url = urlSync.generateUrl('https://app.com/page')
 // https://app.com/page?f_name_contains=john
 ```
 
-##### `getUrlState(baseUrl?: string): { url: string; hasFilters: boolean; issues: URLSyncError[] }`
+##### `getUrlState(baseUrl?: string): { url: string; hasFilters: boolean; issues: readonly URLSyncError[] }`
 
 Generates the same URL as `generateUrl`, and tells if the grid has filters that the library supports. It reads the grid one time for both values. `hasFilters` comes from the filter state, not from the URL, because the URL also keeps the page's own params.
 
@@ -987,7 +989,7 @@ const params = urlSync.getQueryParams()
 // ?f_name_contains=john
 ```
 
-##### `applyFromUrl(url?: string): { issues: URLSyncError[] }`
+##### `applyFromUrl(url?: string): { issues: readonly URLSyncError[] }`
 
 Applies filters from a URL to the grid, and returns the filters in the URL that were dropped.
 
@@ -995,7 +997,7 @@ Applies filters from a URL to the grid, and returns the filters in the URL that 
 urlSync.applyFromUrl('https://app.com/page?f_name_contains=john')
 ```
 
-##### `applyFilters(filterState: FilterState): { issues: URLSyncError[] }`
+##### `applyFilters(filterState: FilterState): { issues: readonly URLSyncError[] }`
 
 Applies a filter state object to the grid, and returns the filters that were dropped (for example a number filter on a text column).
 
@@ -1009,7 +1011,7 @@ urlSync.applyFilters({
 })
 ```
 
-##### `clearFilters(): { issues: URLSyncError[] }`
+##### `clearFilters(): { issues: readonly URLSyncError[] }`
 
 Clears all text filters from the grid.
 

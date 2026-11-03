@@ -397,7 +397,9 @@ export function parseIndividualParams(
   searchParams: URLSearchParams,
   config: ParseConfig
 ): FilterState {
-  const filterState: FilterState = {}
+  // A Map, not a plain object: an assignment to `obj['__proto__']` would call
+  // the prototype setter, and the column would be lost (#253)
+  const filters = new Map<string, ColumnFilter>()
   const prefix = resolveParamPrefix(config.paramPrefix)
 
   for (const [param, value] of searchParams.entries()) {
@@ -420,13 +422,10 @@ export function parseIndividualParams(
           filterParam.type
         )
 
-        filterState[columnName] = {
-          ...filterParam,
-          filter: validatedValue
-        }
+        filters.set(columnName, { ...filterParam, filter: validatedValue })
       } else {
         // Number and date filters are already validated in parseFilterOperation
-        filterState[columnName] = filterParam
+        filters.set(columnName, filterParam)
       }
     } catch (error) {
       // Log parsing errors through the configured error handler
@@ -436,5 +435,6 @@ export function parseIndividualParams(
     }
   }
 
-  return filterState
+  // Object.fromEntries creates own keys, so `__proto__` stays a column
+  return Object.fromEntries(filters)
 }

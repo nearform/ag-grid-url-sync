@@ -96,6 +96,27 @@ describe('Grid Integration', () => {
       })
     })
 
+    it.each(['__proto__', 'constructor', 'prototype'])(
+      'should keep a column named %s as an own key (#253)',
+      column => {
+        // JSON.parse makes `__proto__` an own key, as AG Grid's model can have
+        mockGridApi.getFilterModel.mockReturnValue(
+          JSON.parse(
+            `{"name":{"filterType":"text","type":"contains","filter":"a"},` +
+              `"${column}":{"filterType":"text","type":"contains","filter":"b"}}`
+          )
+        )
+
+        const result = getFilterModel(mockConfig)
+
+        expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
+        expect(Object.entries(result)).toEqual([
+          ['name', { filterType: 'text', type: 'contains', filter: 'a' }],
+          [column, { filterType: 'text', type: 'contains', filter: 'b' }]
+        ])
+      }
+    )
+
     it('should convert number filters from AG Grid', () => {
       mockGridApi.getFilterModel.mockReturnValue({
         age: { filterType: 'number', type: 'equals', filter: 25 },
@@ -225,6 +246,30 @@ describe('Grid Integration', () => {
         status: { filterType: 'text', type: 'equals', filter: 'active' }
       })
     })
+
+    it.each(['__proto__', 'constructor', 'prototype'])(
+      'should send a column named %s as an own key (#253)',
+      column => {
+        const filterState: FilterState = Object.fromEntries([
+          ['name', { filterType: 'text', type: 'contains', filter: 'a' }],
+          [column, { filterType: 'text', type: 'contains', filter: 'b' }]
+        ])
+
+        mockGridApi.getColumn.mockReturnValue({
+          getColDef: () => ({ filter: 'agTextColumnFilter' })
+        })
+
+        applyFilterModel(filterState, mockConfig)
+
+        const model = mockGridApi.setFilterModel.mock.calls[0]?.[0]
+
+        expect(Object.getPrototypeOf(model)).toBe(Object.prototype)
+        expect(Object.entries(model ?? {})).toEqual([
+          ['name', { filterType: 'text', type: 'contains', filter: 'a' }],
+          [column, { filterType: 'text', type: 'contains', filter: 'b' }]
+        ])
+      }
+    )
 
     it('should apply number filters to AG Grid', () => {
       const filterState: FilterState = {

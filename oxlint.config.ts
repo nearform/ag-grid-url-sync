@@ -55,6 +55,7 @@ export default defineConfig({
     'anti-slop/no-unsafe-dictionary-type': 'error',
     'anti-slop/no-widen-then-assert': 'error',
     'anti-slop/require-readable-spacing': 'error',
-    'anti-slop/no-module-mocking': 'error'
+    'anti-slop/no-module-mocking': 'error',
+    'anti-slop/no-runtime-typeof': 'error'
   }
 })

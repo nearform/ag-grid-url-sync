@@ -1,3 +1,4 @@
+import * as v from 'valibot'
 import type {
   FilterState,
   InternalConfig,
@@ -5,12 +6,12 @@ import type {
   TextFilterOperation,
   NumberFilterOperation,
   DateFilterOperation,
-  AGGridFilter,
-  RawAGGridFilter
+  AGGridFilter
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
 import { NUMBER_FILTER_OPERATIONS } from './types.js'
 import { operatorById, operatorFromAgGrid } from './operators.js'
+import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
 import type { GridApi } from 'ag-grid-community'
 
 /** The AG Grid name of an internal operation */
@@ -70,52 +71,48 @@ export function detectColumnFilterType(
  */
 export function getFilterModel(config: InternalConfig): FilterState {
   try {
-    const model = config.gridApi.getFilterModel()
     const filterState: FilterState = {}
+    // AG Grid can hand back null despite the declared return type
+    const model = v.safeParse(JsonObjectSchema, config.gridApi.getFilterModel())
 
-    if (!model || typeof model !== 'object') {
+    if (!model.success) {
       return filterState
     }
 
-    for (const [column, filter] of Object.entries(model)) {
-      if (!filter || typeof filter !== 'object') continue
+    for (const [column, entry] of Object.entries(model.output)) {
+      // Filter types the library does not support (set, multi) are skipped
+      const parsed = v.safeParse(AgGridFilterSchema, entry)
 
-      const {
-        filterType,
-        type,
-        filter: value,
-        filterTo,
-        dateFrom,
-        dateTo
-      } = filter as RawAGGridFilter
+      if (!parsed.success) continue
+
+      const filter = parsed.output
 
       // Handle text filters
-      if (filterType === 'text') {
+      if (filter.filterType === 'text') {
         // The lookup key is the filter type and the AG Grid name
-        const operator = operatorFromAgGrid('text', type)
+        const operator = operatorFromAgGrid('text', filter.type)
 
         if (operator) {
           filterState[column] = {
             filterType: 'text',
             type: operator.id as TextFilterOperation,
-            filter: String(value || '')
+            filter: String(filter.filter || '')
           }
         }
       }
       // Handle number filters
-      else if (filterType === 'number') {
+      else if (filter.filterType === 'number') {
         // AG Grid uses the same names for number and date operations, so the
         // lookup key is the filter type and the AG Grid name
-        const internalOperation = operatorFromAgGrid('number', type)?.id as
-          | NumberFilterOperation
-          | undefined
+        const internalOperation = operatorFromAgGrid('number', filter.type)
+          ?.id as NumberFilterOperation | undefined
 
         // If the operation type is not recognized, report the error
         if (!internalOperation) {
           if (config.onParseError) {
             config.onParseError(
               new Error(
-                `Unknown number filter operation '${type}' for column '${column}'. ` +
+                `Unknown number filter operation '${filter.type}' for column '${column}'. ` +
                   `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`
               )
             )
@@ -124,48 +121,52 @@ export function getFilterModel(config: InternalConfig): FilterState {
           continue
         }
 
-        // Validate that the filter value is actually a number
-        const numericValue = typeof value === 'number' ? value : Number(value)
+        // A number value, or a string AG Grid kept from the input box
+        const numericValue = Number(filter.filter)
 
         // Skip invalid number filters
         if (isNaN(numericValue)) {
           continue
         }
 
-        const numberFilter: ColumnFilter = {
-          filterType: 'number',
-          type: internalOperation,
-          filter: numericValue
-        }
-
         // Handle range operations
-        if (internalOperation === 'inRange' && typeof filterTo === 'number') {
-          ;(numberFilter as any).filterTo = filterTo
-        }
-
-        filterState[column] = numberFilter
+        filterState[column] =
+          internalOperation === 'inRange' && filter.filterTo !== undefined
+            ? {
+                filterType: 'number',
+                type: internalOperation,
+                filter: numericValue,
+                filterTo: filter.filterTo
+              }
+            : {
+                filterType: 'number',
+                type: internalOperation,
+                filter: numericValue
+              }
       }
       // Handle date filters
-      else if (filterType === 'date') {
+      else {
         // AG Grid uses generic names for date operations (`lessThan` is
         // `dateBefore`), so the lookup key is the filter type and the name
-        const mappedOperation = operatorFromAgGrid('date', type)?.id as
+        const mappedOperation = operatorFromAgGrid('date', filter.type)?.id as
           | DateFilterOperation
           | undefined
 
         if (mappedOperation) {
-          const dateFilter: ColumnFilter = {
-            filterType: 'date',
-            type: mappedOperation,
-            filter: toIsoDateString(dateFrom || String(value || ''))
-          }
+          const from = toIsoDateString(
+            filter.dateFrom || String(filter.filter || '')
+          )
 
           // Handle date range operations (AG Grid uses dateFrom/dateTo)
-          if (mappedOperation === 'dateRange' && dateTo) {
-            ;(dateFilter as any).filterTo = toIsoDateString(dateTo)
-          }
-
-          filterState[column] = dateFilter
+          filterState[column] =
+            mappedOperation === 'dateRange' && filter.dateTo
+              ? {
+                  filterType: 'date',
+                  type: mappedOperation,
+                  filter: from,
+                  filterTo: toIsoDateString(filter.dateTo)
+                }
+              : { filterType: 'date', type: mappedOperation, filter: from }
         }
       }
     }
@@ -259,7 +260,8 @@ export function applyFilterModel(
     const model: any = {}
 
     for (const [column, filter] of Object.entries(filterState)) {
-      if (!filter || typeof filter !== 'object') continue
+      // A JavaScript caller can pass anything here
+      if (!v.is(JsonObjectSchema, filter)) continue
 
       // Detect expected filter type for this column
       const expectedType = detectColumnFilterType(config.gridApi, column)

@@ -1,3 +1,4 @@
+import * as v from 'valibot'
 import type {
   FilterState,
   SerializationFormat,
@@ -9,11 +10,8 @@ import {
   parseIndividualParams,
   serializeFilters
 } from '../individual-params.js'
-import {
-  DEFAULT_CONFIG,
-  isValidColumnFilter,
-  validateFilterValue
-} from '../validation.js'
+import { DEFAULT_CONFIG, validateFilterValue } from '../validation.js'
+import { ColumnFilterSchema, JsonObjectSchema } from '../schemas.js'
 
 /**
  * Returns a copy of the filter state with every text value over
@@ -48,24 +46,35 @@ function dropOverLengthTextValues(
   return result
 }
 
-/** Parse JSON and validate its structure. Does no length filtering. */
+/**
+ * Parse JSON and validate its structure. Does no length filtering.
+ *
+ * Each filter is parsed with its schema, so the result holds only the fields
+ * that a filter has: other keys in the URL value are dropped.
+ */
 function parseAndValidateJson(value: string): FilterState {
   try {
-    const parsed = JSON.parse(value)
+    const parsed = v.safeParse(JsonObjectSchema, JSON.parse(value))
 
-    if (typeof parsed !== 'object' || parsed === null) {
+    if (!parsed.success) {
       throw new Error('Invalid JSON: must be an object')
     }
 
-    for (const [columnId, filter] of Object.entries(parsed)) {
-      if (!isValidColumnFilter(filter)) {
+    const filterState: FilterState = {}
+
+    for (const [columnId, filter] of Object.entries(parsed.output)) {
+      const column = v.safeParse(ColumnFilterSchema, filter)
+
+      if (!column.success) {
         throw new Error(
           `Invalid JSON: filter for column ${columnId} is not a valid filter object`
         )
       }
+
+      filterState[columnId] = column.output
     }
 
-    return parsed as FilterState
+    return filterState
   } catch (error) {
     throw new Error(`JSON parsing failed: ${(error as Error).message}`)
   }

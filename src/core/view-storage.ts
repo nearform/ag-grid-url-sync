@@ -1,4 +1,6 @@
 import type { FilterModel } from 'ag-grid-community'
+import * as v from 'valibot'
+import { GridViewSchema, StoredViewsSchema } from './schemas.js'
 
 /**
  * localStorage-backed store for named grid views.
@@ -89,16 +91,7 @@ export interface ViewStore {
 const empty = (): StoredViews => ({ views: [], activeId: null })
 
 function isGridView(value: unknown): value is GridView {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as Partial<GridView>
-
-  return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.name === 'string' &&
-    typeof candidate.updatedAt === 'number' &&
-    typeof candidate.filterModel === 'object' &&
-    candidate.filterModel !== null
-  )
+  return v.is(GridViewSchema, value)
 }
 
 function createId(): string {
@@ -135,18 +128,17 @@ export function createViewStore(storageKey: string): ViewStore {
     if (!raw) return empty()
 
     try {
-      const parsed: unknown = JSON.parse(raw)
+      const parsed = v.safeParse(StoredViewsSchema, JSON.parse(raw))
 
-      if (typeof parsed !== 'object' || parsed === null) return empty()
+      if (!parsed.success) return empty()
 
-      const { views, activeId } = parsed as Partial<StoredViews>
-      const validViews = Array.isArray(views) ? views.filter(isGridView) : []
+      const { views, activeId } = parsed.output
+      const validViews = views.filter(isGridView)
 
       return {
         views: validViews,
         activeId:
-          typeof activeId === 'string' &&
-          validViews.some(view => view.id === activeId)
+          activeId !== null && validViews.some(view => view.id === activeId)
             ? activeId
             : null
       }

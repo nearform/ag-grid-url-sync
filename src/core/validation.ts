@@ -1,18 +1,12 @@
+import * as v from 'valibot'
 import type {
   ParseConfig,
   FilterOperation,
   DateFilterOperation,
-  ColumnFilter,
-  TextFilterOperation,
-  NumberFilterOperation
+  ColumnFilter
 } from './types.js'
-import {
-  InvalidFilterError,
-  InvalidDateError,
-  TEXT_FILTER_OPERATIONS,
-  NUMBER_FILTER_OPERATIONS,
-  DATE_FILTER_OPERATIONS
-} from './types.js'
+import { InvalidFilterError, InvalidDateError } from './types.js'
+import { ColumnFilterSchema } from './schemas.js'
 
 /**
  * Default configuration values
@@ -300,45 +294,5 @@ export function validateAndParseDateRange(
  * @returns Type guard that narrows the type to ColumnFilter
  */
 export function isValidColumnFilter(obj: unknown): obj is ColumnFilter {
-  if (!obj || typeof obj !== 'object') {
-    return false
-  }
-
-  const filter = obj as any
-
-  // Check for required properties
-  if (
-    !filter.filterType ||
-    !filter.type ||
-    typeof filter.filterType !== 'string' ||
-    typeof filter.type !== 'string'
-  ) {
-    return false
-  }
-
-  // Validate based on filter type
-  if (filter.filterType === 'text') {
-    return (
-      typeof filter.filter === 'string' &&
-      TEXT_FILTER_OPERATIONS.includes(filter.type as TextFilterOperation)
-    )
-  }
-
-  if (filter.filterType === 'number') {
-    return (
-      typeof filter.filter === 'number' &&
-      NUMBER_FILTER_OPERATIONS.includes(filter.type as NumberFilterOperation) &&
-      (filter.filterTo === undefined || typeof filter.filterTo === 'number')
-    )
-  }
-
-  if (filter.filterType === 'date') {
-    return (
-      typeof filter.filter === 'string' &&
-      DATE_FILTER_OPERATIONS.includes(filter.type as DateFilterOperation) &&
-      (filter.filterTo === undefined || typeof filter.filterTo === 'string')
-    )
-  }
-
-  return false
+  return v.is(ColumnFilterSchema, obj)
 }

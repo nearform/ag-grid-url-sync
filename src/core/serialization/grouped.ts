@@ -1,3 +1,4 @@
+import * as v from 'valibot'
 import type {
   FilterState,
   SerializationFormat,
@@ -12,6 +13,7 @@ import {
   JsonSerializer,
   Base64Serializer
 } from './formats.js'
+import { JsonObjectSchema } from '../schemas.js'
 
 /**
  * Registry of available format serializers
@@ -185,9 +187,7 @@ function isBase64Format(value: string): boolean {
  */
 function isJsonFormat(value: string): boolean {
   try {
-    const parsed = JSON.parse(value)
-
-    return typeof parsed === 'object' && parsed !== null
+    return v.is(JsonObjectSchema, JSON.parse(value))
   } catch {
     return false
   }

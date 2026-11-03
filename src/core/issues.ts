@@ -1,5 +1,5 @@
 import type { IssueCode, ResolvedOptions } from './types.js'
-import { URLSyncError } from './types.js'
+import { URLSyncError, DATA_ISSUE_CODES } from './types.js'
 import { attachColumn } from './issue-columns.js'
 import { toError } from './to-error.js'
 
@@ -7,16 +7,8 @@ import { toError } from './to-error.js'
 // through reportIssue, which is the only place in the core that calls
 // onParseError.
 
-/** The codes for a filter that is dropped or not valid */
-export const DATA_ISSUE_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
-  'INVALID_PARAM',
-  'INVALID_NUMBER',
-  'INVALID_DATE',
-  'VALUE_TOO_LONG',
-  'INVALID_GROUPED',
-  'TYPE_MISMATCH',
-  'INVALID_URL'
-])
+// The codes moved to types.ts, so URLSyncError can read them (#221)
+export { DATA_ISSUE_CODES }
 
 /** Whether the error is a data issue: a filter that is dropped or not valid */
 export function isDataIssue(error: unknown): error is URLSyncError {

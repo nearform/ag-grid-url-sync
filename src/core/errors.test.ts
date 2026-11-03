@@ -124,3 +124,22 @@ describe('column as an own property', () => {
     expect(Object.keys(new InvalidFilterError('m'))).not.toContain('column')
   })
 })
+
+// Each issue has a severity, derived from its code (#221)
+describe('error severity', () => {
+  it('is a warning for a data issue', () => {
+    expect(new InvalidFilterError('m').severity).toBe('warning')
+    expect(new InvalidURLError('m').severity).toBe('warning')
+  })
+
+  it.each(['GRID_ERROR', 'HISTORY_WRITE_FAILED', 'UNKNOWN'] as const)(
+    'is an error for %s',
+    code => {
+      expect(new URLSyncError('m', undefined, { code }).severity).toBe('error')
+    }
+  )
+
+  it('is not an own property, so toEqual comparisons do not change', () => {
+    expect(Object.keys(new InvalidURLError('m'))).not.toContain('severity')
+  })
+})

@@ -396,7 +396,26 @@ export type IssueCode =
   | 'STORAGE_UNAVAILABLE'
   | 'STORAGE_FULL'
   | 'STORAGE_WRITE_FAILED'
+  | 'HISTORY_WRITE_FAILED'
   | 'UNKNOWN'
+
+/** The codes for a filter that is dropped or not valid */
+export const DATA_ISSUE_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
+  'INVALID_PARAM',
+  'INVALID_NUMBER',
+  'INVALID_DATE',
+  'VALUE_TOO_LONG',
+  'INVALID_GROUPED',
+  'TYPE_MISMATCH',
+  'INVALID_URL'
+])
+
+/**
+ * How bad an issue is (#221). A `'warning'` is a data issue: the sync goes on
+ * and the bad filter (or the bad URL) is left out. An `'error'` is an
+ * operation that failed.
+ */
+export type IssueSeverity = 'error' | 'warning'
 
 /** The code and the column of an issue, when the default is not right */
 export interface IssueDetails {
@@ -424,6 +443,14 @@ export class URLSyncError extends Error {
     this.code = details.code ?? 'UNKNOWN'
 
     if (details.column !== undefined) attachColumn(this, details.column)
+  }
+
+  /**
+   * How bad the issue is, from its code (#221). A getter, so it is not an own
+   * property and `toEqual` comparisons of errors do not change.
+   */
+  get severity(): IssueSeverity {
+    return DATA_ISSUE_CODES.has(this.code) ? 'warning' : 'error'
   }
 }
 
@@ -645,3 +672,110 @@ export const AG_GRID_OPERATION_NAMES: Record<string, string> =
  */
 export const REVERSE_AG_GRID_OPERATION_NAMES: Record<string, FilterOperation> =
   Object.fromEntries(OPERATORS.map(op => [op.agGrid, op.id]))
+
+// ============================================================================
+// createGridUrlSync (#221)
+// ============================================================================
+
+declare const codecBrand: unique symbol
+
+/**
+ * How the filters are written in the URL. Make one with `individual()` or
+ * `grouped()`. It is opaque: only `createGridUrlSync` reads it.
+ */
+export interface Codec {
+  readonly [codecBrand]: true
+}
+
+/**
+ * The state of a sync. `'idle'`: there is no sync yet (the React hook uses
+ * it). `'active'`: the sync listens to the grid. `'destroyed'`: after
+ * `destroy()`, or after the grid is destroyed.
+ */
+export type SyncStatus = 'idle' | 'active' | 'destroyed'
+
+/**
+ * Where the work that found an issue started. `'url'`: the sync read the
+ * address bar itself (on create, or on `popstate`). `'grid'`: the sync read
+ * the grid after a filter change. `'api'`: a method that the app called.
+ */
+export type IssueSource = 'url' | 'grid' | 'api'
+
+/** The one argument of `onIssue` */
+export interface IssueEvent {
+  issue: URLSyncError
+  source: IssueSource
+}
+
+/**
+ * The state of a sync, for `useSyncExternalStore` and for apps. The same
+ * object is returned until something in it changes.
+ */
+export interface GridUrlSyncSnapshot {
+  readonly status: SyncStatus
+  /** The URL with the grid's filters and the page's own params */
+  readonly url: string
+  /** Whether the grid has filters that the library supports */
+  readonly hasFilters: boolean
+  /** The issues of the latest apply and of the latest grid read */
+  readonly issues: readonly URLSyncError[]
+}
+
+/**
+ * How the sync writes a filter change to the address bar. `'none'` never
+ * writes. `'replace'` and `'push'` use `window.history`. A function gets the
+ * URL, for example `url => router.replace(url)`.
+ */
+export type HistoryMode = 'none' | 'replace' | 'push' | ((url: string) => void)
+
+/** The options of `createGridUrlSync` */
+export interface GridUrlSyncOptions {
+  /** The AG Grid API */
+  api: AGGridApi
+  /**
+   * How the filters are written in the URL
+   * @default individual()
+   */
+  codec?: Codec | undefined
+  /**
+   * Maximum length for a filter value
+   * @default 200
+   */
+  maxValueLength?: number | undefined
+  /** @default 'none' */
+  history?: HistoryMode | undefined
+  /**
+   * Apply the URL when the browser's back or forward button changes it
+   * @default true when `history` is `'push'`, else false
+   */
+  popstate?: boolean | undefined
+  /**
+   * Apply the address bar's filters when the sync is made. A URL with no
+   * filters keeps the grid's filters.
+   * @default true
+   */
+  applyUrlOnCreate?: boolean | undefined
+  /**
+   * Throw an issue instead of reporting it, in the methods that the app
+   * calls (`applyUrl`, `getUrl`). `createGridUrlSync` and the sync's own
+   * listeners never throw.
+   * @default false
+   */
+  throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
+  /** Gets each issue one time */
+  onIssue?: ((event: IssueEvent) => void) | undefined
+}
+
+/** A sync between one grid and the URL */
+export interface GridUrlSync {
+  /** The current state. The same object until something changes. */
+  getSnapshot(): GridUrlSyncSnapshot
+  /** Calls the listener after each snapshot change. Returns unsubscribe. */
+  subscribe(listener: () => void): () => void
+  /** Applies the filters of a URL (default: the address bar) to the grid */
+  applyUrl(url?: string): ApplyResult
+  /** The URL with the grid's filters (default base: the address bar) */
+  getUrl(baseUrl?: string): string
+  /** Removes the listeners. The snapshot keeps the last state. */
+  destroy(): void
+}

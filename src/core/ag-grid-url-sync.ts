@@ -84,10 +84,12 @@ export class AGGridUrlSync {
     const { options, issues } = collectIssues(this.options)
     const urlToParse = url ?? window.location.href
     const filterState = parseUrlFilters(urlToParse, options)
-    // Through applyFilters, so a subclass that overrides it sees URL applies
+    // Through applyFilters, so a subclass that overrides it sees URL applies.
+    // An override from before #229 returns nothing, so its result is read
+    // with care.
     const applied = this.applyFilters(filterState)
 
-    return { issues: [...issues, ...applied.issues] }
+    return { issues: [...issues, ...(applied?.issues ?? [])] }
   }
 
   /**

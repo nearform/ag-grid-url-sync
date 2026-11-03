@@ -253,6 +253,24 @@ describe('AGGridUrlSync', () => {
       ])
     })
 
+    // An applyFilters override from before #229 returns nothing. applyFromUrl
+    // must still apply the URL and give the parse issues (PR #264 review).
+    it('applyFromUrl works with an applyFilters override that returns nothing', () => {
+      const { sync } = createSync()
+      const applied: FilterState[] = []
+      // A JavaScript override, so it is set without a TypeScript signature
+      Reflect.set(sync, 'applyFilters', (state: FilterState) => {
+        applied.push(state)
+      })
+
+      const { issues } = sync.applyFromUrl('?f_age_gt=abc&f_name_contains=bob')
+
+      expect(applied).toEqual([
+        { name: { filterType: 'text', type: 'contains', filter: 'bob' } }
+      ])
+      expect(issues.map(issue => issue.code)).toEqual(['INVALID_NUMBER'])
+    })
+
     it('an issue that throwOnError throws is not in the list', () => {
       const api = createGridApiSpies()
       api.getFilterModel.mockReturnValue({})

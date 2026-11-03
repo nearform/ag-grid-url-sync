@@ -176,6 +176,30 @@ describe('Grid Integration', () => {
       )
     })
 
+    // Only inRange uses filterTo, so the other operations ignore it, as before
+    it('should ignore filterTo outside inRange (#238)', () => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        a: {
+          filterType: 'number',
+          type: 'greaterThan',
+          filter: 5,
+          filterTo: ''
+        },
+        b: {
+          filterType: 'number',
+          type: 'lessThan',
+          filter: '7',
+          filterTo: 'abc'
+        }
+      })
+
+      expect(getFilterModel(mockConfig)).toEqual({
+        a: { filterType: 'number', type: 'greaterThan', filter: 5 },
+        b: { filterType: 'number', type: 'lessThan', filter: 7 }
+      })
+      expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
     it('should read a string filterTo from AG Grid as an exact number (#238)', () => {
       mockGridApi.getFilterModel.mockReturnValue({
         p: {

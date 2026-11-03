@@ -154,8 +154,11 @@ export function getFilterModel(config: InternalConfig): FilterState {
 
         const numericValue = gridNumber(filter.filter, column)
 
+        // Only inRange uses filterTo, so the other operations ignore it
         const numericTo =
-          filter.filterTo === undefined || filter.filterTo === null
+          internalOperation !== 'inRange' ||
+          filter.filterTo === undefined ||
+          filter.filterTo === null
             ? undefined
             : gridNumber(filter.filterTo, column)
 

@@ -5,7 +5,7 @@ import type {
   FormatSerializer,
   GroupedSerializationResult,
   GroupedDetectionResult,
-  ParseConfig
+  AGGridUrlSyncConfig
 } from '../types.js'
 import { InvalidSerializationError } from '../types.js'
 import {
@@ -15,6 +15,7 @@ import {
 } from './formats.js'
 import { JsonObjectSchema } from '../schemas.js'
 import { toError } from '../to-error.js'
+import { resolveOptions } from '../options.js'
 
 /**
  * Registry of available format serializers
@@ -28,37 +29,40 @@ const FORMAT_SERIALIZERS: Record<SerializationFormat, FormatSerializer> = {
 /**
  * Serialize filter state using grouped serialization
  * @param filterState - The filter state to serialize
- * @param config - Parse configuration (does not need a grid)
+ * @param config - Options (no grid needed). An option that is left out gets
+ *   its default.
  * @returns Grouped serialization result with parameter name and value
  */
 export function serializeGrouped(
   filterState: FilterState,
-  config: ParseConfig
+  config: AGGridUrlSyncConfig = {}
 ): GroupedSerializationResult {
+  const options = resolveOptions(config)
+
   try {
-    const serializer = FORMAT_SERIALIZERS[config.format]
+    const serializer = FORMAT_SERIALIZERS[options.format]
 
     if (!serializer) {
-      throw new Error(`Unknown serialization format: ${config.format}`)
+      throw new Error(`Unknown serialization format: ${options.format}`)
     }
 
-    const value = serializer.serialize(filterState, config)
+    const value = serializer.serialize(filterState, options)
 
     return {
-      paramName: config.groupedParam,
+      paramName: options.groupedParam,
       value
     }
   } catch (error) {
     const serializationError = new InvalidSerializationError(
-      config.format,
+      options.format,
       toError(error)
     )
 
-    config.onParseError?.(serializationError)
+    options.onParseError(serializationError)
 
     // Return empty state on error
     return {
-      paramName: config.groupedParam,
+      paramName: options.groupedParam,
       value: ''
     }
   }
@@ -68,14 +72,17 @@ export function serializeGrouped(
  * Deserialize grouped filter state from URL parameter value
  * @param value - The serialized value from URL parameter
  * @param format - The serialization format to use
- * @param config - Parse configuration for error handling (does not need a grid)
+ * @param config - Options for validation and error handling (no grid
+ *   needed). An option that is left out gets its default.
  * @returns Deserialized filter state
  */
 export function deserializeGrouped(
   value: string,
   format: SerializationFormat,
-  config: ParseConfig
+  config: AGGridUrlSyncConfig = {}
 ): FilterState {
+  const options = resolveOptions(config)
+
   try {
     const serializer = FORMAT_SERIALIZERS[format]
 
@@ -83,14 +90,14 @@ export function deserializeGrouped(
       throw new Error(`Unknown serialization format: ${format}`)
     }
 
-    return serializer.deserialize(value, config)
+    return serializer.deserialize(value, options)
   } catch (error) {
     const serializationError = new InvalidSerializationError(
       format,
       toError(error)
     )
 
-    config.onParseError?.(serializationError)
+    options.onParseError(serializationError)
 
     // Return empty state on error
     return {}

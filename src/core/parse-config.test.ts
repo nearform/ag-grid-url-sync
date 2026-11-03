@@ -5,8 +5,12 @@ import {
   serializeGrouped,
   deserializeGrouped
 } from './serialization/grouped.js'
-import { QueryStringSerializer } from './serialization/formats.js'
-import { DEFAULT_CONFIG } from './validation.js'
+import {
+  QueryStringSerializer,
+  JsonSerializer,
+  Base64Serializer
+} from './serialization/formats.js'
+import { DEFAULT_CONFIG, validateFilterValue } from './validation.js'
 import type { FilterState, ParseConfig, SerializationFormat } from './types.js'
 import { InvalidFilterError, InvalidSerializationError } from './types.js'
 
@@ -169,15 +173,12 @@ describe('grouped querystring serialization with caller config (#201)', () => {
   })
 
   it('keeps the default maxValueLength when the caller leaves it out', () => {
-    // A JS caller, or a partial config cast to ParseConfig
     const onParseError = vi.fn()
-    const partial: Pick<ParseConfig, 'onParseError'> = { onParseError }
-    // SAFETY: deserialize gives each key the config leaves out its default
-    // (the case under test)
-    const config = partial as ParseConfig
     const value = `f_name_contains=${'a'.repeat(201)}`
 
-    const filters = new QueryStringSerializer().deserialize(value, config)
+    const filters = new QueryStringSerializer().deserialize(value, {
+      onParseError
+    })
 
     expect(filters).toEqual({})
     expect(onParseError).toHaveBeenCalledOnce()
@@ -194,5 +195,107 @@ describe('grouped querystring serialization with caller config (#201)', () => {
 
     expect(filters).toEqual(textFilter('john'))
     expect(config.onParseError).toHaveBeenCalledOnce()
+  })
+})
+
+// The pure functions take a partial config and give each option that is left
+// out its default (#219)
+describe('partial config (#219)', () => {
+  const longText: FilterState = {
+    name: { filterType: 'text', type: 'contains', filter: 'a'.repeat(201) }
+  }
+
+  it('parseUrlFilters works with no config', () => {
+    expect(parseUrlFilters('?f_name_contains=john')).toEqual({
+      name: { filterType: 'text', type: 'contains', filter: 'john' }
+    })
+  })
+
+  it('serializeFilters and generateUrl work with no config', () => {
+    expect(serializeFilters(sampleFilterState).get('f_age_gt')).toBe('25')
+
+    const url = generateUrl(BASE_URL, sampleFilterState)
+
+    expect(parseUrlFilters(url)).toEqual(sampleFilterState)
+  })
+
+  it('generateUrl and parseUrlFilters use the options that are set', () => {
+    const config = { paramPrefix: 'flt_' }
+
+    const url = generateUrl(BASE_URL, sampleFilterState, config)
+
+    expect(new URL(url).searchParams.get('flt_name_contains')).toBe('john')
+    expect(parseUrlFilters(url, config)).toEqual(sampleFilterState)
+  })
+
+  it.each(groupedFormats)(
+    'round-trips grouped %s with a partial config',
+    format => {
+      const config = { serialization: 'grouped', format } as const
+
+      const url = generateUrl(BASE_URL, sampleFilterState, config)
+
+      expect(new URL(url).searchParams.has('grid_filters')).toBe(true)
+      expect(parseUrlFilters(url, config)).toEqual(sampleFilterState)
+    }
+  )
+
+  it.each(groupedFormats)(
+    'serializeGrouped and deserializeGrouped (%s) work with no config',
+    format => {
+      const { paramName, value } = serializeGrouped(sampleFilterState, {
+        format
+      })
+
+      expect(paramName).toBe('grid_filters')
+      expect(deserializeGrouped(value, format)).toEqual(sampleFilterState)
+    }
+  )
+
+  it('gives the default maxValueLength when only onParseError is set', () => {
+    const onParseError = vi.fn()
+
+    expect(serializeFilters(longText, { onParseError }).toString()).toBe('')
+    expect(onParseError).toHaveBeenCalledOnce()
+  })
+
+  // The value is written by hand: serialize with no config drops it already
+  it.each([
+    ['json', new JsonSerializer(), JSON.stringify(longText)],
+    ['base64', new Base64Serializer(), btoa(JSON.stringify(longText))]
+  ] as const)(
+    'the %s serializer drops a value over the default maxValueLength',
+    (_, serializer, value) => {
+      const onParseError = vi.fn()
+
+      expect(serializer.deserialize(value, { onParseError })).toEqual({})
+      expect(onParseError).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('gives the default for an option set to undefined', () => {
+    const config = {
+      paramPrefix: undefined,
+      maxValueLength: undefined,
+      onParseError: undefined,
+      serialization: undefined,
+      groupedParam: undefined,
+      format: undefined
+    }
+
+    const url = generateUrl(BASE_URL, sampleFilterState, config)
+
+    expect(new URL(url).searchParams.get('f_name_contains')).toBe('john')
+    expect(parseUrlFilters(url, config)).toEqual(sampleFilterState)
+  })
+
+  it('validateFilterValue uses the default maxValueLength', () => {
+    expect(validateFilterValue('john')).toBe('john')
+    expect(() => validateFilterValue('a'.repeat(201))).toThrow(
+      InvalidFilterError
+    )
+    expect(validateFilterValue('a'.repeat(201), { maxValueLength: 300 })).toBe(
+      'a'.repeat(201)
+    )
   })
 })

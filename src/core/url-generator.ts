@@ -1,6 +1,11 @@
-import type { FilterState, ParseConfig } from './types.js'
+import type {
+  AGGridUrlSyncConfig,
+  FilterState,
+  ResolvedOptions
+} from './types.js'
 import { serializeFilters, resolveParamPrefix } from './individual-params.js'
 import { serializeGrouped } from './serialization/grouped.js'
+import { resolveOptions } from './options.js'
 
 export { serializeFilters }
 
@@ -10,7 +15,7 @@ export { serializeFilters }
  * filters from the other mode, which the parser could read instead of the new
  * ones.
  */
-function isFilterParam(key: string, config: ParseConfig): boolean {
+function isFilterParam(key: string, config: ResolvedOptions): boolean {
   return (
     key === config.groupedParam ||
     key.startsWith(resolveParamPrefix(config.paramPrefix))
@@ -21,7 +26,7 @@ function isFilterParam(key: string, config: ParseConfig): boolean {
  * The host app's own params, in their original order. Repeated keys
  * (`?tag=a&tag=b`) are all kept.
  */
-function getHostParams(url: URL, config: ParseConfig): [string, string][] {
+function getHostParams(url: URL, config: ResolvedOptions): [string, string][] {
   return [...url.searchParams].filter(([key]) => !isFilterParam(key, config))
 }
 
@@ -46,8 +51,8 @@ function toUrlString(url: URL, params: URLSearchParams): string {
 
 /**
  * Generates a URL with the current filter state.
- * This function does not require a GridApi instance: leave `config.gridApi` out
- * (or set it to `null`) when you only need to generate URLs without a grid.
+ * This function does not need a grid. An option that the config leaves out
+ * gets its default.
  *
  * The host app's own params are kept, including repeated keys. Filter params
  * from either mode are replaced.
@@ -55,15 +60,16 @@ function toUrlString(url: URL, params: URLSearchParams): string {
 export function generateUrl(
   baseUrl: string,
   filterState: FilterState,
-  config: ParseConfig
+  config: AGGridUrlSyncConfig = {}
 ): string {
+  const options = resolveOptions(config)
   const url = new URL(baseUrl)
-  const hostParams = getHostParams(url, config)
+  const hostParams = getHostParams(url, options)
 
-  if (config.serialization === 'grouped') {
+  if (options.serialization === 'grouped') {
     // Host params first, then the grouped param
     const params = new URLSearchParams(hostParams)
-    const groupedResult = serializeGrouped(filterState, config)
+    const groupedResult = serializeGrouped(filterState, options)
 
     if (groupedResult.value) {
       params.append(groupedResult.paramName, groupedResult.value)
@@ -73,7 +79,7 @@ export function generateUrl(
   }
 
   // Filter params first, then host params
-  const params = serializeFilters(filterState, config)
+  const params = serializeFilters(filterState, options)
 
   for (const [key, value] of hostParams) {
     params.append(key, value)

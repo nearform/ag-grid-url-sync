@@ -1,4 +1,9 @@
-import type { FilterState, ColumnFilter, ParseConfig } from './types.js'
+import type {
+  AGGridUrlSyncConfig,
+  FilterState,
+  ColumnFilter,
+  ResolvedOptions
+} from './types.js'
 import { InvalidFilterError } from './types.js'
 import {
   operatorById,
@@ -13,9 +18,9 @@ import {
   validateNumberRange,
   validateAndParseDate,
   validateAndParseDateRange,
-  validateDateFilter,
-  DEFAULT_CONFIG
+  validateDateFilter
 } from './validation.js'
+import { DEFAULT_CONFIG, resolveOptions } from './options.js'
 import { toError } from './to-error.js'
 
 // Individual (prefixed) URL parameter serialization and parsing.
@@ -92,15 +97,16 @@ function serializeColumnFilter(
 
 /**
  * Converts a filter state object into URL search parameters.
- * This function does not require a GridApi instance: leave `config.gridApi` out
- * (or set it to `null`) when you only need to serialize filters without a grid.
+ * This function does not need a grid. An option that the config leaves out
+ * gets its default.
  * A text value over `config.maxValueLength` is reported through
  * `config.onParseError` and skipped. The other filters are kept.
  */
 export function serializeFilters(
   filterState: FilterState,
-  config: ParseConfig
+  config: AGGridUrlSyncConfig = {}
 ): URLSearchParams {
+  const options = resolveOptions(config)
   const params = new URLSearchParams()
 
   for (const [column, filter] of Object.entries(filterState)) {
@@ -120,11 +126,11 @@ export function serializeFilters(
       try {
         checkedFilter = {
           ...filter,
-          filter: validateFilterValue(filter.filter, config, filter.type)
+          filter: validateFilterValue(filter.filter, options, filter.type)
         }
       } catch (error) {
         // Skip this filter and keep the others, the same as parsing does
-        config.onParseError?.(toError(error))
+        options.onParseError(toError(error))
         continue
       }
     }
@@ -132,7 +138,7 @@ export function serializeFilters(
     const param = serializeColumnFilter(
       column,
       checkedFilter,
-      resolveParamPrefix(config.paramPrefix)
+      resolveParamPrefix(options.paramPrefix)
     )
 
     if (param) {
@@ -383,7 +389,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
  */
 export function parseIndividualParams(
   searchParams: URLSearchParams,
-  config: ParseConfig
+  config: ResolvedOptions
 ): FilterState {
   // A Map, not a plain object: an assignment to `obj['__proto__']` would call
   // the prototype setter, and the column would be lost (#253)
@@ -417,7 +423,7 @@ export function parseIndividualParams(
       }
     } catch (error) {
       // Log parsing errors through the configured error handler
-      config.onParseError?.(toError(error))
+      config.onParseError(toError(error))
       // Continue processing other parameters instead of failing completely
       continue
     }

@@ -195,16 +195,13 @@ import type {
 
 ```typescript
 import { parseUrlFilters } from 'ag-grid-url-sync/url-parser'
-import { DEFAULT_CONFIG } from 'ag-grid-url-sync/validation'
-import type { FilterState, ParseConfig } from 'ag-grid-url-sync/types'
+import type { FilterState } from 'ag-grid-url-sync/types'
 
 function getFiltersFromUrl(url: string): FilterState {
-  const config: ParseConfig = {
-    ...DEFAULT_CONFIG, // gridApi is not needed for parsing
+  // Options that you leave out get their defaults. No grid is needed.
+  return parseUrlFilters(url, {
     onParseError: error => console.error('Parse error:', error)
-  }
-
-  return parseUrlFilters(url, config)
+  })
 }
 ```
 
@@ -227,18 +224,26 @@ function getFiltersFromUrl(url: string): FilterState {
 
 ```typescript
 import { generateUrl } from 'ag-grid-url-sync/url-generator'
-import { DEFAULT_CONFIG } from 'ag-grid-url-sync/validation'
-import type { FilterState, ParseConfig } from 'ag-grid-url-sync/types'
+import type { FilterState } from 'ag-grid-url-sync/types'
 
 function createShareableUrl(filters: FilterState, baseUrl: string): string {
-  const config: ParseConfig = {
-    ...DEFAULT_CONFIG, // gridApi is not needed for generation
-    maxValueLength: 500
-  }
-
-  return generateUrl(baseUrl, filters, config)
+  return generateUrl(baseUrl, filters, { maxValueLength: 500 })
 }
 ```
+
+#### Example: Read and Write the Grid Filters
+
+```typescript
+import {
+  getFilterModel,
+  applyFilterModel
+} from 'ag-grid-url-sync/grid-integration'
+
+const filters = getFilterModel(gridApi, { onParseError: console.warn })
+applyFilterModel(filters, otherGridApi)
+```
+
+The config form (`getFilterModel({ ...DEFAULT_CONFIG, gridApi })`) still works, but it is deprecated.
 
 **💡 Pro Tip**: Use granular imports in libraries and applications where bundle size matters. All existing import patterns remain fully supported for backward compatibility.
 

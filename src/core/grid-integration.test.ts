@@ -609,4 +609,76 @@ describe('Grid Integration', () => {
       })
     })
   })
+
+  // gridApi is an argument, not a config field (#219). The tests above use the
+  // deprecated config form, which still works.
+  describe('gridApi as an argument (#219)', () => {
+    const gridModel = {
+      name: { filterType: 'text', type: 'contains', filter: 'john' },
+      age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+    }
+
+    const filterState: FilterState = {
+      name: { filterType: 'text', type: 'contains', filter: 'john' }
+    }
+
+    it('getFilterModel reads the grid with no options', () => {
+      mockGridApi.getFilterModel.mockReturnValue(gridModel)
+
+      expect(getFilterModel(asGridApi(mockGridApi))).toEqual({
+        name: { filterType: 'text', type: 'contains', filter: 'john' },
+        age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+      })
+    })
+
+    it('getFilterModel reports errors to the onParseError option', () => {
+      const onParseError = vi.fn()
+      mockGridApi.getFilterModel.mockImplementation(() => {
+        throw new Error('Grid API Error')
+      })
+
+      expect(getFilterModel(asGridApi(mockGridApi), { onParseError })).toEqual(
+        {}
+      )
+      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
+    })
+
+    it('getFilterModel gives the same result as the config form', () => {
+      mockGridApi.getFilterModel.mockReturnValue(gridModel)
+
+      expect(getFilterModel(asGridApi(mockGridApi))).toEqual(
+        getFilterModel(mockConfig)
+      )
+    })
+
+    it('applyFilterModel writes the model with no options', () => {
+      applyFilterModel(filterState, asGridApi(mockGridApi))
+
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
+        name: { filterType: 'text', type: 'contains', filter: 'john' }
+      })
+    })
+
+    it('applyFilterModel reports errors to the onParseError option', () => {
+      const onParseError = vi.fn()
+      mockGridApi.setFilterModel.mockImplementation(() => {
+        throw new Error('Grid API Error')
+      })
+
+      expect(() =>
+        applyFilterModel(filterState, asGridApi(mockGridApi), { onParseError })
+      ).not.toThrow()
+      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
+    })
+
+    it('applyFilterModel does not throw without onParseError', () => {
+      mockGridApi.setFilterModel.mockImplementation(() => {
+        throw new Error('Grid API Error')
+      })
+
+      expect(() =>
+        applyFilterModel(filterState, asGridApi(mockGridApi))
+      ).not.toThrow()
+    })
+  })
 })

@@ -95,27 +95,24 @@ export interface AGGridUrlSyncConfig {
 }
 
 /**
- * The options with a value for each one. A caller can set an option to
- * undefined (#258), so `Required` is not enough: it keeps the undefined.
+ * The options with a value for each one: the config after the defaults are
+ * filled in. It has no `gridApi`: the grid is an argument of the functions
+ * that read it (#219).
+ *
+ * A caller can set an option to undefined (#258), so `Required` is not enough:
+ * it keeps the undefined.
  */
-type ResolvedOptions = {
+export type ResolvedOptions = {
   [K in keyof AGGridUrlSyncConfig]-?: Exclude<AGGridUrlSyncConfig[K], undefined>
 }
 
 /**
  * Configuration for URL parsing and serialization operations that don't require GridApi.
- * Use this type when you only need to parse filters from URLs or serialize filters to URLs
- * without actually applying them to a grid.
  *
- * @example
- * ```typescript
- * // Parse filters without a grid instance
- * const config: ParseConfig = {
- *   ...DEFAULT_CONFIG,
- *   onParseError: (error) => console.error(error)
- * }
- * const filters = parseUrlFilters(url, config)
- * ```
+ * @deprecated The parse and serialize functions take a partial
+ * `AGGridUrlSyncConfig` and fill in the defaults, so you do not need this
+ * type. Use `ResolvedOptions` for a config with every option set. This type
+ * will be removed in v1.0.
  */
 export interface ParseConfig extends ResolvedOptions {
   /** AG Grid API instance - not read by parsing/serialization operations */
@@ -124,6 +121,10 @@ export interface ParseConfig extends ResolvedOptions {
 
 /**
  * Internal configuration with all required fields and runtime dependencies
+ *
+ * @deprecated Give the grid API to `getFilterModel(gridApi, options)` and
+ * `applyFilterModel(filterState, gridApi, options)` as an argument. This type
+ * will be removed in v1.0.
  */
 export interface InternalConfig extends ParseConfig {
   /** AG Grid API instance for filter operations */
@@ -465,14 +466,14 @@ export interface FormatSerializer {
    * maxValueLength and onParseError. JSON and Base64 drop over-length text
    * values and report them through onParseError (see #213, #207).
    */
-  serialize(filterState: FilterState, config?: ParseConfig): string
+  serialize(filterState: FilterState, config?: ResolvedOptions): string
   /**
    * Deserialize string to filter state
    * @param config - Caller's configuration. All serializers honour
    * maxValueLength and onParseError. JSON and Base64 drop over-length text
    * values and report them through onParseError (see #213, #207).
    */
-  deserialize(value: string, config?: ParseConfig): FilterState
+  deserialize(value: string, config?: ResolvedOptions): FilterState
   /** Format identifier */
   format: SerializationFormat
 }

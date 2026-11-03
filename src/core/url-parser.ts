@@ -1,7 +1,8 @@
-import type { FilterState, ParseConfig } from './types.js'
+import type { AGGridUrlSyncConfig, FilterState } from './types.js'
 import { InvalidURLError } from './types.js'
 import { parseFilterParam, parseIndividualParams } from './individual-params.js'
 import { deserializeGrouped } from './serialization/grouped.js'
+import { resolveOptions } from './options.js'
 
 export { parseFilterParam }
 
@@ -81,8 +82,8 @@ function toUrl(input: string): URL {
 
 /**
  * Converts URL search params into a filter state object.
- * This function does not require a GridApi instance: leave `config.gridApi` out
- * (or set it to `null`) when you only need to parse filters without a grid.
+ * This function does not need a grid. An option that the config leaves out
+ * gets its default.
  *
  * Accepts an absolute URL, a relative path, a query string or a raw query
  * string (see {@link toUrl}). A param that is not valid is skipped and reported
@@ -96,24 +97,28 @@ function toUrl(input: string): URL {
  * @throws InvalidURLError if the input is an absolute URL that is not valid,
  *   or a host with no scheme
  */
-export function parseUrlFilters(url: string, config: ParseConfig): FilterState {
+export function parseUrlFilters(
+  url: string,
+  config: AGGridUrlSyncConfig = {}
+): FilterState {
   // Handle empty or whitespace-only URLs gracefully
   if (!url || url.trim() === '') {
     return {}
   }
 
   const urlObj = toUrl(url.trim())
+  const options = resolveOptions(config)
 
   // A non-empty grouped param wins over prefixed params. Only the configured
   // name is read, and it is decoded with the configured format: a host app's
   // own param (for example `filters`) is never taken for grouped filters, and
   // the format is not guessed.
-  const groupedValue = urlObj.searchParams.get(config.groupedParam)
+  const groupedValue = urlObj.searchParams.get(options.groupedParam)
 
   if (groupedValue) {
-    return deserializeGrouped(groupedValue, config.format, config)
+    return deserializeGrouped(groupedValue, options.format, options)
   }
 
   // Handle individual serialization
-  return parseIndividualParams(urlObj.searchParams, config)
+  return parseIndividualParams(urlObj.searchParams, options)
 }

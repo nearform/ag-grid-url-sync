@@ -4,7 +4,9 @@ export { AGGridUrlSync, createUrlSync } from './core/ag-grid-url-sync.js'
 export * from './core/types.js'
 
 // Validation utilities
-export { validateFilterValue, DEFAULT_CONFIG } from './core/validation.js'
+export { validateFilterValue } from './core/validation.js'
+
+export { DEFAULT_CONFIG } from './core/options.js'
 
 // URL parsing utilities
 export { parseUrlFilters, parseFilterParam } from './core/url-parser.js'

@@ -32,12 +32,23 @@ function toAgGridOperation(operation: string): ISimpleFilterModelType | null {
 }
 
 /**
+ * Whether the AG Grid model has a value here. AG Grid leaves a value out, or
+ * sets it to null, while a filter is being edited, and an empty input box can
+ * give an empty string (#260).
+ */
+function hasGridValue(
+  value: string | number | null | undefined
+): value is string | number {
+  return value !== undefined && value !== null && String(value).trim() !== ''
+}
+
+/**
  * A number from the AG Grid model. A number value is what the grid filters
  * on, so it is kept. A string that AG Grid kept from the input box gets the
  * same check as a URL param, and the error names the column (#238).
  */
 function gridNumber(
-  value: string | number | null | undefined,
+  value: string | number,
   column: string
 ): number | InvalidFilterError {
   if (!v.is(v.string(), value)) return Number(value)
@@ -171,10 +182,15 @@ function readGridFilters(
       else if (filter.filterType === 'number') {
         // AG Grid uses the same names for number and date operations, so the
         // lookup key is the filter type and the AG Grid name
-        const internalOperation = operatorFromAgGrid('number', filter.type)?.id
+        const operator = operatorFromAgGrid('number', filter.type)
+        const internalOperation = operator?.id
 
         // If the operation type is not recognized, report the error
-        if (!internalOperation || !isNumberFilterOperation(internalOperation)) {
+        if (
+          !operator ||
+          !internalOperation ||
+          !isNumberFilterOperation(internalOperation)
+        ) {
           options.onParseError(
             new Error(
               `Unknown number filter operation '${filter.type}' for column '${column}'. ` +
@@ -185,15 +201,35 @@ function readGridFilters(
           continue
         }
 
+        // A blank filter has no value. A number filter needs a number, so
+        // this one gets 0, which nothing reads: the URL writer writes `true`
+        // and the grid writer writes null (#260).
+        if (operator.arity === 0) {
+          filters.set(column, {
+            filterType: 'number',
+            type: internalOperation,
+            filter: 0
+          })
+
+          continue
+        }
+
+        // A value that the operation needs is not there yet: the user is
+        // still editing, so there is no filter. Null is not 0 (#260).
+        if (
+          !hasGridValue(filter.filter) ||
+          (operator.arity === 2 && !hasGridValue(filter.filterTo))
+        ) {
+          continue
+        }
+
         const numericValue = gridNumber(filter.filter, column)
 
         // Only inRange uses filterTo, so the other operations ignore it
         const numericTo =
-          internalOperation !== 'inRange' ||
-          filter.filterTo === undefined ||
-          filter.filterTo === null
-            ? undefined
-            : gridNumber(filter.filterTo, column)
+          operator.arity === 2 && hasGridValue(filter.filterTo)
+            ? gridNumber(filter.filterTo, column)
+            : undefined
 
         if (numericValue instanceof InvalidFilterError) {
           options.onParseError(numericValue)
@@ -233,22 +269,47 @@ function readGridFilters(
       else {
         // AG Grid uses generic names for date operations (`lessThan` is
         // `dateBefore`), so the lookup key is the filter type and the name
-        const mappedOperation = operatorFromAgGrid('date', filter.type)?.id
+        const operator = operatorFromAgGrid('date', filter.type)
+        const mappedOperation = operator?.id
 
-        if (mappedOperation && isDateFilterOperation(mappedOperation)) {
+        if (
+          operator &&
+          mappedOperation &&
+          isDateFilterOperation(mappedOperation)
+        ) {
+          // A blank filter has no date
+          if (operator.arity === 0) {
+            filters.set(column, {
+              filterType: 'date',
+              type: mappedOperation,
+              filter: ''
+            })
+
+            continue
+          }
+
           const from = toIsoDateString(
             filter.dateFrom || String(filter.filter || '')
           )
 
-          // Handle date range operations (AG Grid uses dateFrom/dateTo)
+          // Only date ranges use dateTo (AG Grid uses dateFrom/dateTo)
+          const to =
+            operator.arity === 2
+              ? toIsoDateString(filter.dateTo ?? undefined)
+              : ''
+
+          // A date that the operation needs is not there yet: the user is
+          // still editing, so there is no filter (#260)
+          if (!from || (operator.arity === 2 && !to)) continue
+
           filters.set(
             column,
-            mappedOperation === 'dateRange' && filter.dateTo
+            operator.arity === 2
               ? {
                   filterType: 'date',
                   type: mappedOperation,
                   filter: from,
-                  filterTo: toIsoDateString(filter.dateTo)
+                  filterTo: to
                 }
               : { filterType: 'date', type: mappedOperation, filter: from }
           )
@@ -302,6 +363,12 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
 
   if (filter.filterType === 'number') {
     const agGridOperation = toAgGridOperation(filter.type)
+
+    // A blank filter has no value. The 0 in the filter state is only there
+    // because a number filter needs a number (#260).
+    if (filter.type === 'blank' || filter.type === 'notBlank') {
+      return { filterType: 'number', type: agGridOperation, filter: null }
+    }
 
     if (filter.type === 'inRange') {
       const baseFilter = {

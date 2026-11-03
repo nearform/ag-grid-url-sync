@@ -440,39 +440,41 @@ import {
 
 ---
 
-### Error Handling for Grouped Serialization
+### Error Handling
 
-You can provide a custom error handler to gracefully handle malformed grouped parameters or serialization errors. In grouped mode, `onParseError` receives an `InvalidSerializationError` for invalid formats:
+The library never writes to the console. Each problem goes to one callback, and each error has a `code` that you can switch on:
+
+| Code                                                          | Meaning                                                        | Callback                                                |
+| ------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------- |
+| `INVALID_PARAM`                                               | A param name that is not valid, or an unknown operation        | `onParseError`                                          |
+| `INVALID_NUMBER`                                              | A value that is not a number, or that would be rounded         | `onParseError`                                          |
+| `INVALID_DATE`                                                | A date that does not exist, or a date range in the wrong order | `onParseError`                                          |
+| `VALUE_TOO_LONG`                                              | A text value over `maxValueLength`                             | `onParseError`                                          |
+| `INVALID_GROUPED`                                             | A grouped value that does not decode (bad JSON or base64)      | `onParseError`                                          |
+| `TYPE_MISMATCH`                                               | A number or date filter on a column of another type            | `onParseError`                                          |
+| `INVALID_URL`                                                 | A URL that the parser cannot read                              | `onParseError`                                          |
+| `GRID_ERROR`                                                  | The AG Grid API threw                                          | `onParseError` in the core, `onError` in the React hook |
+| `NOT_READY`                                                   | A hook operation called before the grid is ready               | `onError` (React)                                       |
+| `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | A saved view operation that cannot run                         | `onError` (React)                                       |
+| `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | Browser storage for saved views failed                         | `onError` (React)                                       |
+
+The codes in the first seven rows are data issues: a filter that is dropped or is not valid. The library skips that filter and keeps the others. When the library knows the column, it is in `error.column`.
+
+Every error is a `URLSyncError`. The classes from earlier versions (`InvalidFilterError`, `InvalidDateError`, `InvalidURLError`, `InvalidSerializationError`) are subclasses of it, so an `instanceof` check still works.
 
 ```typescript
-import { InvalidSerializationError } from 'ag-grid-url-sync/types'
-
 const urlSync = createUrlSync(gridApi, {
-  serialization: 'grouped',
-  format: 'json',
   onParseError: error => {
-    if (error instanceof InvalidSerializationError) {
-      // Handle grouped serialization error
-      alert('Invalid filter data in URL!')
-    } else {
-      // Handle other errors
-      console.error(error)
+    if (error.code === 'VALUE_TOO_LONG') {
+      showToast(`The link leaves out the filter on ${error.column}`)
     }
   }
 })
 ```
 
+In grouped mode, an error that comes from the grouped URL value is an `InvalidSerializationError`, and the original error is in `error.cause`. When the original error is an issue with one filter (for example a value over `maxValueLength`), the wrapper has the same `code` and `column`. So a check on `error.code` works the same in both modes. `INVALID_GROUPED` means that the grouped value itself does not decode.
+
 In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onParseError`, both when the URL is generated and when it is parsed.
-
-In grouped mode, an error that comes from the grouped URL value is an `InvalidSerializationError`. This includes an error for one bad parameter inside a grouped querystring value, such as a value over `maxValueLength`. The original error is in `error.cause`. In individual mode, the same failure arrives as the original error, with no wrapper. To handle a specific error in both modes, check the error and its cause:
-
-```typescript
-import { InvalidFilterError } from 'ag-grid-url-sync/types'
-
-const isFilterError = (error: Error) =>
-  error instanceof InvalidFilterError ||
-  error.cause instanceof InvalidFilterError
-```
 
 ### Exports
 
@@ -611,7 +613,7 @@ interface UseAGGridUrlSyncOptions {
   // React-specific options
   autoApplyOnMount?: boolean // Default: false
   enabledWhenReady?: boolean // Default: true
-  onError?: (error: Error, context: string) => void // Advanced error handling
+  onError?: (error: Error, context: string) => void // Operation failures (see Error Handling)
 
   // Saved views: setting a key enables the feature and namespaces its storage
   storageKey?: string // Default: undefined (saved views disabled)
@@ -726,8 +728,9 @@ store.saveView('Engineering', gridApi.getFilterModel())
 - **🔄 Automatic State Management**: Tracks grid state and filter changes automatically
 - **⚡ Ready State**: `isReady` indicates when the grid API is available
 - **🎯 Auto-Apply**: `autoApplyOnMount` applies URL filters when component mounts.
-  It is attempted once per grid: a failure is reported through `onError` and
-  `onParseError` and is not retried on later renders
+  It is attempted once per grid: a failure is reported one time (a bad filter
+  through `onParseError`, any other failure through `onError`) and is not
+  retried on later renders
 - **🧹 Cleanup**: Automatically cleans up resources when component unmounts
 - **🛡️ Error Boundaries**: Graceful error handling with configurable callbacks
 - **📊 Filter Status**: `hasFilters` tracks whether any filters are active

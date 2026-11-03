@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
-import { generateUrl } from './url-generator.js'
+import { generateUrl, serializeFilters } from './url-generator.js'
+import { serializeGrouped } from './serialization/grouped.js'
 import { parseUrlFilters } from './url-parser.js'
 import { resolveParamPrefix } from './individual-params.js'
 import { DEFAULT_CONFIG } from './validation.js'
@@ -390,5 +391,32 @@ describe('URL round-trip properties (#216)', () => {
         )
       )
     })
+  })
+})
+
+// Encoding drops a value that it cannot write and reports it. It never throws
+// for a filter value (#220).
+describe('encode never throws (#220)', () => {
+  const anyFilter = fc.oneof(
+    unambiguousFilter,
+    typeLosingFilter,
+    textFilter(fc.string({ unit: hardChar, maxLength: 300 }))
+  )
+
+  it.each(MODES)('$name', ({ config }) => {
+    fc.assert(
+      fc.property(
+        filterState(anyFilter),
+        baseUrl,
+        fc.integer({ min: 0, max: 300 }),
+        (state, base, maxValueLength) => {
+          const options = { ...config, maxValueLength, onParseError: () => {} }
+
+          expect(() => generateUrl(base.url, state, options)).not.toThrow()
+          expect(() => serializeFilters(state, options)).not.toThrow()
+          expect(() => serializeGrouped(state, options)).not.toThrow()
+        }
+      )
+    )
   })
 })

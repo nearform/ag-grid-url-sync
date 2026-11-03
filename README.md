@@ -442,30 +442,32 @@ import {
 
 ### Error Handling
 
-The library never writes to the console. Each problem goes to one callback, and each error has a `code` that you can switch on:
+The library never writes to the console. Each problem goes to one callback, and each error that the library makes has a `code` that you can switch on:
 
-| Code                                                          | Meaning                                                        | Callback                                                |
-| ------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------- |
-| `INVALID_PARAM`                                               | A param name that is not valid, or an unknown operation        | `onParseError`                                          |
-| `INVALID_NUMBER`                                              | A value that is not a number, or that would be rounded         | `onParseError`                                          |
-| `INVALID_DATE`                                                | A date that does not exist, or a date range in the wrong order | `onParseError`                                          |
-| `VALUE_TOO_LONG`                                              | A text value over `maxValueLength`                             | `onParseError`                                          |
-| `INVALID_GROUPED`                                             | A grouped value that does not decode (bad JSON or base64)      | `onParseError`                                          |
-| `TYPE_MISMATCH`                                               | A number or date filter on a column of another type            | `onParseError`                                          |
-| `INVALID_URL`                                                 | A URL that the parser cannot read                              | `onParseError`                                          |
-| `GRID_ERROR`                                                  | The AG Grid API threw                                          | `onParseError` in the core, `onError` in the React hook |
-| `NOT_READY`                                                   | A hook operation called before the grid is ready               | `onError` (React)                                       |
-| `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | A saved view operation that cannot run                         | `onError` (React)                                       |
-| `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | Browser storage for saved views failed                         | `onError` (React)                                       |
+| Code                                                          | Meaning                                                        | Callback                                                                                                 |
+| ------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `INVALID_PARAM`                                               | A param name that is not valid, or an unknown operation        | `onParseError`                                                                                           |
+| `INVALID_NUMBER`                                              | A value that is not a number, or that would be rounded         | `onParseError`                                                                                           |
+| `INVALID_DATE`                                                | A date that does not exist, or a date range in the wrong order | `onParseError`                                                                                           |
+| `VALUE_TOO_LONG`                                              | A text value over `maxValueLength`                             | `onParseError`                                                                                           |
+| `INVALID_GROUPED`                                             | A grouped value that does not decode (bad JSON or base64)      | `onParseError`                                                                                           |
+| `TYPE_MISMATCH`                                               | A number or date filter on a column of another type            | `onParseError`                                                                                           |
+| `INVALID_URL`                                                 | A URL that the parser cannot read                              | Thrown by `parseUrlFilters` and `applyFromUrl`. The React hook catches it and sends it to `onParseError` |
+| `GRID_ERROR`                                                  | The AG Grid API threw                                          | `onParseError` in the core, `onError` in the React hook                                                  |
+| `NOT_READY`                                                   | A hook operation called before the grid is ready               | `onError` (React)                                                                                        |
+| `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | A saved view operation that cannot run                         | `onError` (React)                                                                                        |
+| `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | Browser storage for saved views failed                         | `onError` (React)                                                                                        |
 
-The codes in the first seven rows are data issues: a filter that is dropped or is not valid. The library skips that filter and keeps the others. When the library knows the column, it is in `error.column`.
+The codes in the first seven rows are data issues: a filter that is dropped or is not valid. The library skips that filter and keeps the others. When the library knows the column, it is in `error.column`. `onParseError` is typed with `Error`, so check `instanceof URLSyncError` before you read `code` or `column`.
 
 Every error is a `URLSyncError`. The classes from earlier versions (`InvalidFilterError`, `InvalidDateError`, `InvalidURLError`, `InvalidSerializationError`) are subclasses of it, so an `instanceof` check still works.
 
 ```typescript
+import { createUrlSync, URLSyncError } from 'ag-grid-url-sync'
+
 const urlSync = createUrlSync(gridApi, {
   onParseError: error => {
-    if (error.code === 'VALUE_TOO_LONG') {
+    if (error instanceof URLSyncError && error.code === 'VALUE_TOO_LONG') {
       showToast(`The link leaves out the filter on ${error.column}`)
     }
   }

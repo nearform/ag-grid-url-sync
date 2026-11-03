@@ -70,8 +70,11 @@ export interface AGGridUrlSyncConfig {
    * Optional handler for issues: a filter that is dropped or not valid, in a
    * URL, a value, or the grid model. The filter is skipped and the others are
    * kept. Each error is a `URLSyncError` with a `code` (for example
-   * `VALUE_TOO_LONG`) and, when it is known, a `column`. The library never
-   * writes to the console, so an issue with no handler is silent (#220).
+   * `VALUE_TOO_LONG`) and, when it is known, a `column`. In the core, an error
+   * from the grid API also comes here, as `GRID_ERROR` (the React hook sends it
+   * to `onError`). A URL that cannot be read is thrown as `INVALID_URL`, not
+   * sent here. The library never writes to the console, so an issue with no
+   * handler is silent (#220).
    *
    * In grouped mode, an error that comes from the grouped URL value is an
    * `InvalidSerializationError`, and the original error is in `error.cause`.

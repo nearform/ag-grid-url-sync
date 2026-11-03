@@ -2,6 +2,7 @@
 // this file. Vitest does not run it.
 import { expectTypeOf } from 'vitest'
 import { URLSyncError, type IssueCode } from './types.js'
+import { createUrlSync } from './ag-grid-url-sync.js'
 
 expectTypeOf<URLSyncError['code']>().toEqualTypeOf<IssueCode>()
 
@@ -19,3 +20,16 @@ error.code = 'UNKNOWN'
 export class AppError extends URLSyncError {
   override column = 'fixed'
 }
+
+// README "Error Handling" example
+declare const gridApiForReadme: import('ag-grid-community').GridApi
+
+declare function showToast(message: string): void
+
+export const readmeErrorExample = createUrlSync(gridApiForReadme, {
+  onParseError: error => {
+    if (error instanceof URLSyncError && error.code === 'VALUE_TOO_LONG') {
+      showToast(`The link leaves out the filter on ${error.column}`)
+    }
+  }
+})

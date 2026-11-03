@@ -1,7 +1,7 @@
 import { Component, useEffect, type ReactNode } from 'react'
 import { renderHook, render, act } from '@testing-library/react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { FilterModel } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import type {
   UseAGGridUrlSyncOptions,
@@ -47,6 +47,11 @@ const createGridApi = (initial: FilterModel = {}) => {
   }
 
   return { api, fireFilterChanged, setModel }
+}
+
+/** Props for a hook test where the grid can change or go away */
+interface GridProps {
+  gridApi: GridApi | null
 }
 
 /** Keeps the error that its children throw */
@@ -289,5 +294,64 @@ describe('useAGGridUrlSync issues (#229)', () => {
     })
     expect(caught).toHaveBeenCalledOnce()
     expect(caught.mock.calls[0]?.[0]).toMatchObject({ code: 'INVALID_NUMBER' })
+  })
+  // issues describes the live grid only (#229 review)
+  test('is empty when the grid goes away', async () => {
+    const { api } = createGridApi(longText)
+
+    const { result, rerender } = renderHook<UseAGGridUrlSyncReturn, GridProps>(
+      ({ gridApi }) => useAGGridUrlSync(gridApi),
+      { initialProps: { gridApi: asGridApi(api) } }
+    )
+
+    await waitForEffects()
+
+    expect(result.current.issues).toHaveLength(1)
+
+    rerender({ gridApi: null })
+    await waitForEffects()
+
+    expect(result.current.hasFilters).toBe(false)
+    expect(result.current.issues).toEqual([])
+  })
+
+  test('is empty when the hook is disabled', async () => {
+    const { api } = createGridApi(longText)
+
+    const { result, rerender } = renderHook(
+      ({ enabledWhenReady }) =>
+        useAGGridUrlSync(asGridApi(api), { enabledWhenReady }),
+      { initialProps: { enabledWhenReady: true } }
+    )
+
+    await waitForEffects()
+
+    expect(result.current.issues).toHaveLength(1)
+
+    rerender({ enabledWhenReady: false })
+    await waitForEffects()
+
+    expect(result.current.issues).toEqual([])
+  })
+
+  test('drops the apply issues of a grid that was replaced', async () => {
+    const first = createGridApi()
+    const second = createGridApi()
+
+    const { result, rerender } = renderHook(
+      ({ gridApi }) => useAGGridUrlSync(gridApi),
+      { initialProps: { gridApi: asGridApi(first.api) } }
+    )
+
+    await waitForEffects()
+
+    act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+
+    expect(result.current.issues).toHaveLength(1)
+
+    rerender({ gridApi: asGridApi(second.api) })
+    await waitForEffects()
+
+    expect(result.current.issues).toEqual([])
   })
 })

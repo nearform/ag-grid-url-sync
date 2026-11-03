@@ -450,6 +450,8 @@ export function useAGGridUrlSync(
         // nothing applied. Session marker only - the pointer still records what
         // to restore, and with autoApplyOnMount the re-arm above does restore it.
         commitActiveViewId(null)
+        // Nothing has been applied to the new grid yet
+        setApplyIssues(NO_ISSUES)
       }
 
       // Create new instance if needed
@@ -477,6 +479,7 @@ export function useAGGridUrlSync(
         // As above: no live grid left for the marker to describe. Guarded on
         // urlSyncRef so a first render with a null gridApi touches nothing.
         commitActiveViewId(null)
+        setApplyIssues(NO_ISSUES)
       }
 
       setIsReady(false)
@@ -633,6 +636,8 @@ export function useAGGridUrlSync(
             // Cannot throw itself; it sits in the try only so that a failed
             // write above skips it and the marker is not committed.
             commitActiveViewId(stored.id)
+            // The grid shows the stored view, not an applied URL
+            setApplyIssues(NO_ISSUES)
           } catch (error) {
             // A grid rejecting the stored view's model is not the URL being
             // invalid (the URL made no claim), so it must not reach
@@ -672,6 +677,8 @@ export function useAGGridUrlSync(
     if (!isReady || !urlSyncRef.current || !gridApi) {
       setCurrentUrl('')
       setHasFilters(false)
+      // No live grid, so no URL write to describe (#229)
+      setWriteIssues(NO_ISSUES)
 
       return
     }

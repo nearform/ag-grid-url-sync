@@ -2705,13 +2705,17 @@ describe('useAGGridUrlSync', () => {
       vi.mocked(mockGridApi.setFilterModel).mockClear()
 
       // First render has no key yet, as when it comes from an async tenant id.
+      type Props = { storageKey?: string | undefined }
+
+      const initialProps: Props = { storageKey: undefined }
+
       const { result, rerender } = renderHook(
-        (props: { storageKey?: string }) =>
+        (props: Props) =>
           useAGGridUrlSync(asGridApi(mockGridApi), {
-            ...props,
+            storageKey: props.storageKey,
             autoApplyOnMount: true
           }),
-        { initialProps: {} }
+        { initialProps }
       )
 
       await waitForEffects()
@@ -2941,14 +2945,14 @@ describe('useAGGridUrlSync', () => {
       })
       seed.unmount()
 
-      type Props = { storageKey?: string }
+      type Props = { storageKey?: string | undefined }
 
       const initialProps: Props = { storageKey: 'tenant-b' }
 
       const { rerender } = renderHook(
         (props: Props) =>
           useAGGridUrlSync(asGridApi(mockGridApi), {
-            ...props,
+            storageKey: props.storageKey,
             autoApplyOnMount: true
           }),
         { initialProps }
@@ -2965,7 +2969,7 @@ describe('useAGGridUrlSync', () => {
       // The store disappearing is not a reason to re-run auto-apply: the URL
       // carries no filters, so applying it would wipe what the user is looking
       // at with nothing to restore it from.
-      rerender({})
+      rerender({ storageKey: undefined })
       await waitForEffects()
 
       expect(core.applyFromUrl).not.toHaveBeenCalled()

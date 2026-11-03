@@ -19,7 +19,7 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
    *
    * @example 'employee-grid'
    */
-  storageKey?: string
+  storageKey?: string | undefined
 
   /**
    * Automatically apply URL filters when the component mounts and grid API becomes ready
@@ -34,7 +34,7 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
    *
    * Default: false
    */
-  autoApplyOnMount?: boolean
+  autoApplyOnMount?: boolean | undefined
 
   /**
    * Whether the hook should be enabled when the grid API is ready
@@ -46,13 +46,13 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
    *
    * Default: true
    */
-  enabledWhenReady?: boolean
+  enabledWhenReady?: boolean | undefined
 
   /**
    * Optional error handler for hook-level errors (initialization, URL operations, etc.)
    * This supplements the core onParseError callback for comprehensive error handling
    */
-  onError?: (error: Error, context: string) => void
+  onError?: ((error: Error, context: string) => void) | undefined
 }
 
 /**

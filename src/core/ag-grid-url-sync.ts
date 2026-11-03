@@ -3,6 +3,7 @@ import type {
   AGGridUrlSyncConfig,
   FilterState,
   InternalConfig,
+  ParseConfig,
   SerializationFormat,
   SerializationMode,
   UrlState
@@ -29,11 +30,10 @@ export class AGGridUrlSync {
     // is not set) keep their default. A plain spread would replace the
     // default with undefined.
     // SAFETY: the entries are config's own entries with the undefined ones
-    // removed, so each key keeps the value type that AGGridUrlSyncConfig gives
-    // it and every key stays optional
+    // removed, so each key that is left has a value of its option's type
     const definedConfig = Object.fromEntries(
       Object.entries(config).filter(([, value]) => value !== undefined)
-    ) as AGGridUrlSyncConfig
+    ) as Partial<Omit<ParseConfig, 'gridApi'>>
 
     this.config = {
       gridApi,

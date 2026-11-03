@@ -100,6 +100,18 @@ export interface AGGridUrlSyncConfig {
    * @default 'querystring'
    */
   format?: SerializationFormat | undefined
+
+  /**
+   * Throw an issue instead of reporting it (#229), like TanStack Query's
+   * `throwOnError`. `true` throws every issue, and a function throws the
+   * issues for which it gives `true`. A thrown issue is not sent to
+   * `onParseError`, and the first one stops the call. In the React hook, the
+   * issue is thrown during render, so an error boundary catches it.
+   *
+   * A function that throws makes the library throw that error.
+   * @default false
+   */
+  throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
 }
 
 /**
@@ -111,7 +123,16 @@ export interface AGGridUrlSyncConfig {
  * it keeps the undefined.
  */
 export type ResolvedOptions = {
-  [K in keyof AGGridUrlSyncConfig]-?: Exclude<AGGridUrlSyncConfig[K], undefined>
+  [K in Exclude<keyof AGGridUrlSyncConfig, 'throwOnError'>]-?: Exclude<
+    AGGridUrlSyncConfig[K],
+    undefined
+  >
+} & {
+  /**
+   * Optional, so that ParseConfig and InternalConfig, which extend this type,
+   * get no new required key (#229). resolveOptions always sets it.
+   */
+  throwOnError?: Exclude<AGGridUrlSyncConfig['throwOnError'], undefined>
 }
 
 /**

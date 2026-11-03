@@ -44,10 +44,42 @@ export function toIssue(
   return new URLSyncError(error.message, error, { code, column })
 }
 
-/** Reports one issue to the caller */
+/** The issues that reportIssue threw, so a catch on the way out can let them pass */
+const thrownIssues = new WeakSet<Error>()
+
+/** Whether throwOnError picks the issue (#229) */
+export function shouldThrow(
+  throwOnError: ResolvedOptions['throwOnError'],
+  issue: URLSyncError
+): boolean {
+  if (throwOnError === undefined || throwOnError === false) return false
+
+  if (throwOnError === true) return true
+
+  return throwOnError(issue)
+}
+
+/**
+ * Reports one issue to the caller. An issue that throwOnError picks is thrown
+ * instead, and it does not reach onParseError (#229).
+ */
 export function reportIssue(
   options: ResolvedOptions,
   issue: URLSyncError
 ): void {
+  if (shouldThrow(options.throwOnError, issue)) {
+    thrownIssues.add(issue)
+
+    throw issue
+  }
+
   options.onParseError(issue)
+}
+
+/**
+ * Rethrows an issue that reportIssue threw. A catch that wraps errors calls
+ * this first, so a thrown issue reaches the caller one time, not wrapped again.
+ */
+export function rethrowIfThrown(cause: unknown): void {
+  if (cause instanceof Error && thrownIssues.has(cause)) throw cause
 }

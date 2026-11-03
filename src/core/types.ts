@@ -144,7 +144,7 @@ export type ResolvedOptions = {
  * @deprecated The parse and serialize functions take a partial
  * `AGGridUrlSyncConfig` and fill in the defaults, so you do not need this
  * type. Use `ResolvedOptions` for a config with every option set. This type
- * will be removed in v1.0.
+ * will be removed in 0.6.0.
  */
 export interface ParseConfig extends ResolvedOptions {
   /** AG Grid API instance - not read by parsing/serialization operations */
@@ -156,7 +156,7 @@ export interface ParseConfig extends ResolvedOptions {
  *
  * @deprecated Give the grid API to `getFilterModel(gridApi, options)` and
  * `applyFilterModel(filterState, gridApi, options)` as an argument. This type
- * will be removed in v1.0.
+ * will be removed in 0.6.0.
  */
 export interface InternalConfig extends ParseConfig {
   /** AG Grid API instance for filter operations */
@@ -611,14 +611,14 @@ export interface GroupedDetectionResult {
 
 /**
  * Maps URL operation names to internal operation types
- * @deprecated Derived from the operator table. Will be removed in v1.0.
+ * @deprecated Derived from the operator table. Will be removed in 0.6.0.
  */
 export const OPERATION_MAP: Record<string, FilterOperation> =
   Object.fromEntries(OPERATORS.map(op => [op.url, op.id]))
 
 /**
  * Maps internal operation types to URL operation names
- * @deprecated Derived from the operator table. Will be removed in v1.0.
+ * @deprecated Derived from the operator table. Will be removed in 0.6.0.
  */
 export const INTERNAL_TO_URL_OPERATION_MAP =
   // SAFETY: FilterOperation is OPERATORS[number]['id'], and the map has one
@@ -630,7 +630,7 @@ export const INTERNAL_TO_URL_OPERATION_MAP =
 
 /**
  * Maps internal operation types to AG Grid operation names
- * @deprecated Derived from the operator table. Will be removed in v1.0.
+ * @deprecated Derived from the operator table. Will be removed in 0.6.0.
  */
 export const AG_GRID_OPERATION_NAMES: Record<string, string> =
   Object.fromEntries(OPERATORS.map(op => [op.id, op.agGrid]))
@@ -641,7 +641,7 @@ export const AG_GRID_OPERATION_NAMES: Record<string, string> =
  * AG Grid uses one name for a number and a date operation, so this map is
  * wrong for one of them: `lessThan` gives `dateBefore`. The last row in the
  * operator table wins, as before.
- * @deprecated The key needs the filter type too. Will be removed in v1.0.
+ * @deprecated The key needs the filter type too. Will be removed in 0.6.0.
  */
 export const REVERSE_AG_GRID_OPERATION_NAMES: Record<string, FilterOperation> =
   Object.fromEntries(OPERATORS.map(op => [op.agGrid, op.id]))

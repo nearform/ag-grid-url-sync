@@ -130,6 +130,23 @@ describe('URL Parser', () => {
       })
     })
 
+    // Assignment to `obj['__proto__']` sets the prototype instead of a key
+    it.each(['__proto__', 'constructor', 'prototype'])(
+      'should keep a column named %s as an own key (#253)',
+      column => {
+        const result = parseUrlFilters(
+          `?f_name_contains=a&f_${column}_contains=b`,
+          mockConfig
+        )
+
+        expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
+        expect(Object.entries(result)).toEqual([
+          ['name', { filterType: 'text', type: 'contains', filter: 'a' }],
+          [column, { filterType: 'text', type: 'contains', filter: 'b' }]
+        ])
+      }
+    )
+
     it('should keep a value that only starts with a number as text (#214)', () => {
       expect(parseUrlFilters('?f_name_eq=3M', mockConfig)).toEqual({
         name: { filterType: 'text', type: 'eq', filter: '3M' }

@@ -61,10 +61,14 @@ const hardChar = fc.constantFrom(
   '😀'
 )
 
-const columnId = fc
-  .string({ unit: hardChar, minLength: 1, maxLength: 12 })
-  // A column name that is empty after trim is rejected by the parser
-  .filter(id => id.trim() !== '')
+const columnId = fc.oneof(
+  fc
+    .string({ unit: hardChar, minLength: 1, maxLength: 12 })
+    // A column name that is empty after trim is rejected by the parser
+    .filter(id => id.trim() !== ''),
+  // Names of Object.prototype properties (#253)
+  fc.constantFrom('__proto__', 'constructor', 'prototype')
+)
 
 const textValue = fc.oneof(
   fc.string({ unit: hardChar, minLength: 1, maxLength: 40 }),

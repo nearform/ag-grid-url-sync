@@ -78,15 +78,20 @@ export function detectColumnFilterType(
  */
 export function getFilterModel(config: InternalConfig): FilterState {
   try {
-    const filterState: FilterState = {}
+    // A Map, not a plain object: an assignment to `obj['__proto__']` would
+    // call the prototype setter, and the column would be lost (#253)
+    const filters = new Map<string, ColumnFilter>()
     // AG Grid can hand back null despite the declared return type
-    const model = v.safeParse(JsonObjectSchema, config.gridApi.getFilterModel())
+    const model: unknown = config.gridApi.getFilterModel()
 
-    if (!model.success) {
-      return filterState
+    // Checked, not parsed: Valibot's record output leaves out the keys
+    // `__proto__`, `constructor` and `prototype`, and here each one is a
+    // column name like any other
+    if (!v.is(JsonObjectSchema, model)) {
+      return {}
     }
 
-    for (const [column, entry] of Object.entries(model.output)) {
+    for (const [column, entry] of Object.entries(model)) {
       // Filter types the library does not support (set, multi) are skipped
       const parsed = v.safeParse(AgGridFilterSchema, entry)
 
@@ -100,11 +105,11 @@ export function getFilterModel(config: InternalConfig): FilterState {
         const operator = operatorFromAgGrid('text', filter.type)
 
         if (operator && isTextFilterOperation(operator.id)) {
-          filterState[column] = {
+          filters.set(column, {
             filterType: 'text',
             type: operator.id,
             filter: String(filter.filter || '')
-          }
+          })
         }
       }
       // Handle number filters
@@ -136,7 +141,8 @@ export function getFilterModel(config: InternalConfig): FilterState {
         }
 
         // Handle range operations
-        filterState[column] =
+        filters.set(
+          column,
           internalOperation === 'inRange' && filter.filterTo !== undefined
             ? {
                 filterType: 'number',
@@ -149,6 +155,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
                 type: internalOperation,
                 filter: numericValue
               }
+        )
       }
       // Handle date filters
       else {
@@ -162,7 +169,8 @@ export function getFilterModel(config: InternalConfig): FilterState {
           )
 
           // Handle date range operations (AG Grid uses dateFrom/dateTo)
-          filterState[column] =
+          filters.set(
+            column,
             mappedOperation === 'dateRange' && filter.dateTo
               ? {
                   filterType: 'date',
@@ -171,11 +179,13 @@ export function getFilterModel(config: InternalConfig): FilterState {
                   filterTo: toIsoDateString(filter.dateTo)
                 }
               : { filterType: 'date', type: mappedOperation, filter: from }
+          )
         }
       }
     }
 
-    return filterState
+    // Object.fromEntries creates own keys, so `__proto__` stays a column
+    return Object.fromEntries(filters)
   } catch (error) {
     if (config.onParseError) {
       config.onParseError(toError(error))
@@ -261,7 +271,9 @@ export function applyFilterModel(
   config: InternalConfig
 ): void {
   try {
-    const model: any = {}
+    // A Map, not a plain object: an assignment to `obj['__proto__']` would
+    // call the prototype setter, and the column would be lost (#253)
+    const model = new Map<string, AGGridFilter>()
 
     for (const [column, filter] of Object.entries(filterState)) {
       // A JavaScript caller can pass anything here
@@ -289,12 +301,13 @@ export function applyFilterModel(
       const agGridFilter = convertToAGGridFilter(filter)
 
       if (agGridFilter) {
-        model[column] = agGridFilter
+        model.set(column, agGridFilter)
       }
     }
 
     // Apply the filter model to AG Grid
-    config.gridApi.setFilterModel(model)
+    // Object.fromEntries creates own keys, so `__proto__` stays a column
+    config.gridApi.setFilterModel(Object.fromEntries(model))
   } catch (error) {
     if (config.onParseError) {
       config.onParseError(toError(error))

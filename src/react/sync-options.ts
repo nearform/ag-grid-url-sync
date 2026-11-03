@@ -4,7 +4,7 @@ import type {
   GridUrlSyncOptions,
   IssueEvent
 } from '../core/types.js'
-import { grouped, individual } from '../core/codecs.js'
+import { codecFromOptions } from '../core/codecs.js'
 import { resolveOptions } from '../core/options.js'
 
 // The hook's sync options (#222). The hook takes the old config shape, and
@@ -22,10 +22,9 @@ export function gridUrlSyncOptions(
 ): GridUrlSyncOptions {
   const resolved = resolveOptions(options)
 
-  const codec =
-    resolved.serialization === 'grouped'
-      ? grouped({ param: resolved.groupedParam, format: resolved.format })
-      : individual({ prefix: resolved.paramPrefix })
+  // All four settings, so the URL strips the param names that the app set
+  // for both modes, as the class does (#222 review)
+  const codec = codecFromOptions(resolved)
 
   return {
     api,

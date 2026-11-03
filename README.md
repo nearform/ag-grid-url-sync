@@ -694,7 +694,7 @@ The hook runs on [`createGridUrlSync`](#vanilla-js-creategridurlsync) and reads 
 - **Options can change after mount.** A change to `paramPrefix`, `maxValueLength`, `serialization`, `groupedParam` or `format` makes a new sync. The grid keeps its filters, and `currentUrl` uses the new format. The URL is not applied again. A new options object with the same values, or a new callback, makes no new sync.
 - **The returned object is stable.** It is the same object across renders until a value in it changes.
 - **A grid-read issue goes to `onParseError` one time** while it stays. It is reported again only after it goes away and comes back.
-- **After AG Grid destroys the grid**, `isReady` is `false` and `currentUrl` is `''`, as with no grid. The operations then report `NOT_READY` to `onError`.
+- **After AG Grid destroys the grid**, `isReady` is `false` and `currentUrl` is `''`, as with no grid. `applyUrlFilters`, `clearFilters`, `applyFilters`, `saveView` and `loadView` then report `NOT_READY` to `onError`. `shareUrl`, `getQueryParams` and `getFiltersAsFormat` return their fallback values.
 - **The hook does not write to the address bar.** Use `currentUrl` or `shareUrl()` to update it.
 
 #### Hook Options

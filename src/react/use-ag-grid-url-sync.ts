@@ -525,15 +525,19 @@ export function useAGGridUrlSync(
     const core = urlSyncRef.current
 
     // AG Grid destroyed the grid: the operations take the not-ready path, as
-    // with no grid
-    const stopWatching = sync.subscribe(() => {
+    // with no grid. A sync made on a grid that is already destroyed starts
+    // as destroyed, so check one time now too (#222 review).
+    const leaveIfDestroyed = (): void => {
       if (
         sync?.getSnapshot().status === 'destroyed' &&
         urlSyncRef.current === core
       ) {
         urlSyncRef.current = null
       }
-    })
+    }
+
+    const stopWatching = sync.subscribe(leaveIfDestroyed)
+    leaveIfDestroyed()
 
     holder.set(sync)
 

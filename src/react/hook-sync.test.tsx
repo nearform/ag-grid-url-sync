@@ -33,11 +33,13 @@ const BAD: FilterModel = {
 
 function createGrid(initial: FilterModel = {}) {
   let model = initial
+  let destroyed = false
   const listeners = createGridListeners()
 
   const api = {
     getFilterModel: vi.fn(() => model),
     setFilterModel: vi.fn(),
+    isDestroyed: () => destroyed,
     addEventListener: listeners.addEventListener,
     removeEventListener: listeners.removeEventListener
   }
@@ -50,7 +52,11 @@ function createGrid(initial: FilterModel = {}) {
     },
     fireFilterChanged: () =>
       act(() => listeners.fire('filterChanged', { source: 'api' })),
-    destroyGrid: () => act(() => listeners.fire('gridPreDestroyed'))
+    destroyGrid: () =>
+      act(() => {
+        listeners.fire('gridPreDestroyed')
+        destroyed = true
+      })
   }
 }
 
@@ -342,5 +348,63 @@ describe('getSerializationMode (#222)', () => {
     expect(result.current.getCurrentFormat()).toBe(
       result.current.getSerializationMode()
     )
+  })
+})
+
+// Final review of #222: the sync strips the param names that the app set for
+// both modes, the same as the class (I-1), and a sync made again on a
+// destroyed grid is still not ready (I-2)
+describe('final review (#222)', () => {
+  test('keeps the page params of the other mode in grouped mode', async () => {
+    setPage('?f_section=2&tab=1')
+
+    const { result } = renderSync({
+      grid: createGrid(ANN),
+      options: { serialization: 'grouped', paramPrefix: 'gridf_' }
+    })
+
+    await waitForEffects()
+
+    expect(result.current.currentUrl).toContain('f_section=2')
+    expect(result.current.currentUrl).toBe(result.current.shareUrl())
+  })
+
+  test('keeps the page params of the other mode in individual mode', async () => {
+    setPage('?grid_filters=keep&tab=1')
+
+    const { result } = renderSync({
+      grid: createGrid(ANN),
+      options: { groupedParam: 'gf' }
+    })
+
+    await waitForEffects()
+
+    expect(result.current.currentUrl).toContain('grid_filters=keep')
+    expect(result.current.currentUrl).toBe(result.current.shareUrl())
+  })
+
+  test('reports NOT_READY after an option change on a destroyed grid', async () => {
+    const onError = vi.fn()
+    const grid = createGrid()
+
+    const { result, rerender } = renderSync({
+      grid,
+      options: { paramPrefix: 'f_', onError }
+    })
+
+    await waitForEffects()
+    grid.destroyGrid()
+    rerender({ grid, options: { paramPrefix: 'g_', onError } })
+    await waitForEffects()
+    onError.mockClear()
+
+    act(() => result.current.applyUrlFilters('?g_name_contains=ann'))
+
+    expect(result.current.isReady).toBe(false)
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'NOT_READY' }),
+      'apply-url-filters'
+    )
+    expect(applyFromUrl).not.toHaveBeenCalled()
   })
 })

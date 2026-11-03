@@ -3,131 +3,9 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { FilterModel, GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
-import { parseUrlFilters } from '../core/url-parser.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
 import type { FilterState } from '../core/types.js'
 import { waitForEffects } from '../test-helpers.js'
-
-// Create a shared mock instance that will be used across all tests.
-// vi.hoisted is required: vi.mock factories are hoisted above this file's
-// module scope, so from Vitest 4 on, a plain const is still undefined when the
-// factory below runs.
-const mockInstance = vi.hoisted(() => ({
-  generateUrl: vi.fn(() => 'http://example.com?f_name_contains=test'),
-  getQueryParams: vi.fn(() => '?f_name_contains=test'),
-  getUrlState: vi.fn(() => ({
-    url: 'http://example.com?f_name_contains=test',
-    hasFilters: true
-  })),
-  applyFromUrl: vi.fn(),
-  clearFilters: vi.fn(),
-  applyFilters: vi.fn(),
-  destroy: vi.fn()
-}))
-
-// Mock the core AG Grid URL sync module
-vi.mock('../core/ag-grid-url-sync.js', () => ({
-  // The hook calls `new AGGridUrlSync(...)`, and from Vitest 4 on a vi.fn()
-  // backed by an arrow function is not constructible - it has to be a real
-  // function expression.
-  AGGridUrlSync: vi.fn(function () {
-    return mockInstance
-  }),
-  createUrlSync: vi.fn(() => mockInstance)
-}))
-
-// Mock the URL parser
-vi.mock('../core/url-parser.js', () => ({
-  parseUrlFilters: vi.fn((url: string) => {
-    if (url.includes('f_created_eq=2024-01-15')) {
-      return {
-        created: { filterType: 'date', type: 'eq', filter: '2024-01-15' },
-        deadline: {
-          filterType: 'date',
-          type: 'dateBefore',
-          filter: '2024-12-31'
-        },
-        period: {
-          filterType: 'date',
-          type: 'dateRange',
-          filter: '2024-01-01',
-          filterTo: '2024-12-31'
-        }
-      }
-    }
-
-    if (url.includes('f_salary_gte=50000')) {
-      return {
-        salary: {
-          filterType: 'number',
-          type: 'greaterThanOrEqual',
-          filter: 50000
-        },
-        age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
-      }
-    }
-
-    // A grouped param carries filters only if its value decodes. The real
-    // parser reads only the configured name (grid_filters by default) and
-    // hands back {} for a value it cannot read, such as ?grid_filters=recent,
-    // so the mock has to model that rather than fall through to the default
-    // below. urlHasFilterParams decodes to tell a real payload from a host
-    // app's own param of the same name, and against a mock that always
-    // yielded filters the distinction would be untestable.
-    const grouped = /[?&]grid_filters=([^&]*)/.exec(url)
-
-    if (grouped) {
-      return grouped[1].includes('f_')
-        ? { name: { filterType: 'text', type: 'contains', filter: 'grouped' } }
-        : {}
-    }
-
-    // A prefixed param is not a filter either just for being present. The real
-    // parser wraps each one in a try and continues past the ones that throw, so
-    // an unknown operation or a value over maxValueLength contributes nothing
-    // and a URL carrying only those parses to {}. Verified against the parser:
-    // ?f_name_regex=abc and ?f_name_contains= over 200 chars both do.
-    const prefixed = [...url.matchAll(/[?&](f_[^=&]+)=([^&]*)/g)]
-
-    if (prefixed.length > 0) {
-      const OPERATIONS = [
-        'contains',
-        'notContains',
-        'equals',
-        'notEqual',
-        'startsWith',
-        'endsWith',
-        'blank',
-        'notBlank',
-        'eq',
-        'gte',
-        'lte',
-        'gt',
-        'lt',
-        'inRange',
-        'dateBefore',
-        'dateAfter',
-        'dateRange'
-      ]
-
-      const usable = prefixed.filter(([, key, value]) => {
-        const operation = key.split('_').pop() ?? ''
-
-        return (
-          OPERATIONS.includes(operation) &&
-          decodeURIComponent(value).length <= 200
-        )
-      })
-
-      if (usable.length === 0) return {}
-    }
-
-    // Default text filter response
-    return {
-      name: { filterType: 'text', type: 'contains', filter: 'test' }
-    }
-  })
-}))
 
 // Create proper mock types
 type MockGridApi = Partial<GridApi> &
@@ -149,30 +27,33 @@ const createMockGridApi = (): MockGridApi => ({
 
 describe('useAGGridUrlSync', () => {
   let mockGridApi: MockGridApi
-  let consoleSpy: ReturnType<typeof vi.spyOn>
+
+  // The hook runs on the real core. Spies on the core's prototype record its
+  // calls and run the real method, so a test can check a call or replace one
+  // call (for example to make it throw) without mocking a module.
+  const spyOnCore = () => ({
+    applyFromUrl: vi.spyOn(AGGridUrlSync.prototype, 'applyFromUrl'),
+    applyFilters: vi.spyOn(AGGridUrlSync.prototype, 'applyFilters'),
+    clearFilters: vi.spyOn(AGGridUrlSync.prototype, 'clearFilters'),
+    destroy: vi.spyOn(AGGridUrlSync.prototype, 'destroy'),
+    generateUrl: vi.spyOn(AGGridUrlSync.prototype, 'generateUrl'),
+    getQueryParams: vi.spyOn(AGGridUrlSync.prototype, 'getQueryParams'),
+    getUrlState: vi.spyOn(AGGridUrlSync.prototype, 'getUrlState')
+  })
+
+  let core: ReturnType<typeof spyOnCore>
 
   beforeEach(() => {
     mockGridApi = createMockGridApi()
-    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Quiet the hook's development logging; restored in afterEach
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.clearAllMocks()
-
-    // mockInstance is module-level, and clearAllMocks resets call history but not
-    // implementations. Re-seed it so a test that installs a throwing
-    // implementation cannot leak it into everything that runs afterwards.
-    mockInstance.generateUrl.mockImplementation(
-      () => 'http://example.com?f_name_contains=test'
-    )
-    mockInstance.getQueryParams.mockImplementation(
-      () => '?f_name_contains=test'
-    )
-    mockInstance.getUrlState.mockImplementation(() => ({
-      url: 'http://example.com?f_name_contains=test',
-      hasFilters: true
-    }))
+    core = spyOnCore()
   })
 
   afterEach(() => {
-    consoleSpy.mockRestore()
+    // Puts back the real core methods and console.error
+    vi.restoreAllMocks()
   })
 
   describe('Hook Initialization', () => {
@@ -225,7 +106,7 @@ describe('useAGGridUrlSync', () => {
       // Wait for effects to run
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+      expect(core.applyFromUrl).toHaveBeenCalled()
     })
 
     test('does not apply URL filters when autoApplyOnMount is false', async () => {
@@ -237,12 +118,12 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
     })
 
     test('a failed auto-apply is reported once and not retried on re-render', async () => {
       const failure = new Error('cannot apply')
-      mockInstance.applyFromUrl.mockImplementationOnce(() => {
+      core.applyFromUrl.mockImplementationOnce(() => {
         throw failure
       })
       const onError = vi.fn()
@@ -261,7 +142,7 @@ describe('useAGGridUrlSync', () => {
       rerender()
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+      expect(core.applyFromUrl).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledWith(failure, 'auto-apply-filters')
       expect(onParseError).toHaveBeenCalledTimes(1)
@@ -270,6 +151,10 @@ describe('useAGGridUrlSync', () => {
 
   describe('API Methods', () => {
     test('shareUrl returns generated URL', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => ({
+        name: { filterType: 'text', type: 'contains', filter: 'test' }
+      }))
+
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi)
       )
@@ -277,7 +162,7 @@ describe('useAGGridUrlSync', () => {
       await waitForEffects()
 
       const url = result.current.shareUrl()
-      expect(url).toBe('http://example.com?f_name_contains=test')
+      expect(url).toBe('https://example.com/?f_name_contains=test')
     })
 
     test('shareUrl returns baseUrl when not ready', () => {
@@ -288,6 +173,10 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('getQueryParams returns query string', async () => {
+      mockGridApi.getFilterModel = vi.fn(() => ({
+        name: { filterType: 'text', type: 'contains', filter: 'test' }
+      }))
+
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi)
       )
@@ -309,7 +198,7 @@ describe('useAGGridUrlSync', () => {
         result.current.applyUrlFilters('http://test.com')
       })
 
-      expect(mockInstance.applyFromUrl).toHaveBeenCalledWith('http://test.com')
+      expect(core.applyFromUrl).toHaveBeenCalledWith('http://test.com')
     })
 
     test('clearFilters calls core method', async () => {
@@ -323,7 +212,7 @@ describe('useAGGridUrlSync', () => {
         result.current.clearFilters()
       })
 
-      expect(mockInstance.clearFilters).toHaveBeenCalled()
+      expect(core.clearFilters).toHaveBeenCalled()
     })
 
     test('parseUrlFilters returns parsed filters', async () => {
@@ -409,7 +298,7 @@ describe('useAGGridUrlSync', () => {
         result.current.applyFilters(filters)
       })
 
-      expect(mockInstance.applyFilters).toHaveBeenCalledWith(filters)
+      expect(core.applyFilters).toHaveBeenCalledWith(filters)
     })
 
     test('applyFilters handles date filters', async () => {
@@ -442,7 +331,7 @@ describe('useAGGridUrlSync', () => {
         result.current.applyFilters(dateFilters)
       })
 
-      expect(mockInstance.applyFilters).toHaveBeenCalledWith(dateFilters)
+      expect(core.applyFilters).toHaveBeenCalledWith(dateFilters)
     })
 
     test('applyUrlFilters handles URLs with date filters', async () => {
@@ -459,7 +348,7 @@ describe('useAGGridUrlSync', () => {
         result.current.applyUrlFilters(urlWithDateFilters)
       })
 
-      expect(mockInstance.applyFromUrl).toHaveBeenCalledWith(urlWithDateFilters)
+      expect(core.applyFromUrl).toHaveBeenCalledWith(urlWithDateFilters)
     })
   })
 
@@ -538,23 +427,30 @@ describe('useAGGridUrlSync', () => {
     test('handles initialization errors gracefully', async () => {
       const onError = vi.fn()
 
-      // Temporarily make the AGGridUrlSync constructor throw
-      const MockedAGGridUrlSync = vi.mocked(AGGridUrlSync)
-      MockedAGGridUrlSync.mockImplementationOnce(() => {
-        throw new Error('Initialization failed')
-      })
+      // The real constructor cannot fail for any input, so make the one
+      // Object.fromEntries call inside it throw. Without a storageKey the hook
+      // makes no Object.fromEntries call of its own before the constructor.
+      const fromEntries = vi
+        .spyOn(Object, 'fromEntries')
+        .mockImplementationOnce(() => {
+          throw new Error('Initialization failed')
+        })
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { onError })
       )
 
+      expect(fromEntries).toHaveBeenCalled()
       expect(result.current.isReady).toBe(false)
-      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'initialization')
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Initialization failed' }),
+        'initialization'
+      )
     })
 
     test('handles method errors gracefully', async () => {
       const onError = vi.fn()
-      mockInstance.generateUrl.mockImplementation(() => {
+      core.generateUrl.mockImplementation(() => {
         throw new Error('URL generation failed')
       })
 
@@ -581,13 +477,9 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      const mockedParseUrlFilters = vi.mocked(parseUrlFilters)
-      mockedParseUrlFilters.mockImplementationOnce(() => {
-        throw new Error('Parse error')
-      })
-
+      // `regex` is not an operation, so the real parser reports this param
       act(() => {
-        result.current.parseUrlFilters('invalid-url')
+        result.current.parseUrlFilters('?f_name_regex=abc')
       })
 
       expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
@@ -604,7 +496,7 @@ describe('useAGGridUrlSync', () => {
 
       unmount()
 
-      expect(mockInstance.destroy).toHaveBeenCalled()
+      expect(core.destroy).toHaveBeenCalled()
     })
 
     test('cleans up when gridApi changes', async () => {
@@ -618,7 +510,7 @@ describe('useAGGridUrlSync', () => {
       const newMockGridApi = createMockGridApi()
       rerender({ gridApi: newMockGridApi as GridApi | null })
 
-      expect(mockInstance.destroy).toHaveBeenCalled()
+      expect(core.destroy).toHaveBeenCalled()
     })
   })
 
@@ -637,7 +529,7 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('sets hasFilters to false when the grid has no filters', async () => {
-      mockInstance.getUrlState.mockReturnValue({
+      core.getUrlState.mockReturnValue({
         url: 'http://example.com?tab=1',
         hasFilters: false
       })
@@ -1660,7 +1552,7 @@ describe('useAGGridUrlSync', () => {
       seed.unmount()
 
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -1671,7 +1563,7 @@ describe('useAGGridUrlSync', () => {
       await waitForEffects()
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
     })
 
     test('a grid rejecting the stored view on restore reaches onError only, not onParseError', async () => {
@@ -2035,9 +1927,7 @@ describe('useAGGridUrlSync', () => {
             age
           )
 
-          mockInstance[coreMethod].mockImplementationOnce(() =>
-            setModel(target)
-          )
+          core[coreMethod].mockImplementationOnce(() => setModel(target))
 
           await act(async () => write(result.current))
 
@@ -2047,9 +1937,7 @@ describe('useAGGridUrlSync', () => {
 
       test('a hook write of the view itself keeps it loaded', async () => {
         const { id, result, setModel } = await mountWithPendingRestore()
-        mockInstance.applyFilters.mockImplementationOnce(() =>
-          setModel(savedModel)
-        )
+        core.applyFilters.mockImplementationOnce(() => setModel(savedModel))
 
         await act(async () =>
           result.current.applyFilters(savedModel as FilterState)
@@ -2088,7 +1976,7 @@ describe('useAGGridUrlSync', () => {
           const { id, result, setModel } =
             await mountWithPendingRestore(handBuilt)
 
-          mockInstance[coreMethod].mockImplementationOnce(behaviour)
+          core[coreMethod].mockImplementationOnce(behaviour)
 
           await act(async () => write(result.current))
           expect(result.current.activeViewId).toBe(id)
@@ -2224,7 +2112,7 @@ describe('useAGGridUrlSync', () => {
       // A pagination param, nothing to do with filters.
       setSearch('?page=2')
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2240,7 +2128,7 @@ describe('useAGGridUrlSync', () => {
       // restored, not cleared, and the pointer not wiped.
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBe(id)
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
     })
 
     test('a prefix without a trailing underscore does not match by substring', async () => {
@@ -2290,7 +2178,7 @@ describe('useAGGridUrlSync', () => {
       // filter param and is not one, so the parser skips it and yields nothing.
       setSearch('?f_name_regex=abc')
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2301,7 +2189,7 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBe(id)
       expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
@@ -2324,7 +2212,7 @@ describe('useAGGridUrlSync', () => {
       // shared from a grid configured with a longer maxValueLength would be.
       setSearch(`?f_name_contains=${'x'.repeat(250)}`)
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2335,7 +2223,7 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
       expect(result.current.activeViewId).toBe(id)
     })
 
@@ -2356,7 +2244,7 @@ describe('useAGGridUrlSync', () => {
       // parse rather than on any single param is what makes this hold.
       setSearch('?f_name_regex=abc&f_dept_contains=eng')
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2367,7 +2255,7 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+      expect(core.applyFromUrl).toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBeNull()
     })
@@ -2390,7 +2278,7 @@ describe('useAGGridUrlSync', () => {
       // about this grid.
       setSearch('?grid_filters=recent')
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2404,7 +2292,7 @@ describe('useAGGridUrlSync', () => {
       // Treating it as a claim would apply an empty model over the user's
       // filters and drop the stored pointer for good, neither of which they
       // asked for.
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBe(id)
       // The pointer has to survive the mount, not just this render: it is what
@@ -2430,7 +2318,7 @@ describe('useAGGridUrlSync', () => {
       // the host app's own param and says nothing about this grid.
       setSearch('?filters=f_name_contains%3Dfromurl')
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2441,7 +2329,7 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBe(id)
     })
@@ -2462,7 +2350,7 @@ describe('useAGGridUrlSync', () => {
       // decodability check must not have cost grouped URLs their precedence.
       setSearch('?grid_filters=f_name_contains%3Dfromurl')
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2473,7 +2361,7 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+      expect(core.applyFromUrl).toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBeNull()
     })
@@ -2492,7 +2380,7 @@ describe('useAGGridUrlSync', () => {
       seed.unmount()
 
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2503,7 +2391,7 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+      expect(core.applyFromUrl).toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalledWith(savedModel)
       // The URL won, so nothing is active. Otherwise the UI mislabels a saved
       // view as loaded while showing the URL's filters.
@@ -2663,7 +2551,7 @@ describe('useAGGridUrlSync', () => {
         // The user took no action. Clearing an already-null pointer is not worth
         // a storage write, and "delete a saved view" is nonsense advice here.
         expect(onError).not.toHaveBeenCalled()
-        expect(mockInstance.applyFromUrl).toHaveBeenCalled()
+        expect(core.applyFromUrl).toHaveBeenCalled()
       } finally {
         Storage.prototype.setItem = realSetItem
       }
@@ -2732,7 +2620,7 @@ describe('useAGGridUrlSync', () => {
       })
 
       try {
-        mockInstance.applyFromUrl.mockClear()
+        core.applyFromUrl.mockClear()
 
         const { rerender } = renderHook(() =>
           useAGGridUrlSync(mockGridApi as GridApi, {
@@ -2751,7 +2639,7 @@ describe('useAGGridUrlSync', () => {
         rerender()
         await waitForEffects()
 
-        expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+        expect(core.applyFromUrl).toHaveBeenCalledTimes(1)
       } finally {
         Object.defineProperty(window, 'localStorage', {
           value: original,
@@ -2878,7 +2766,7 @@ describe('useAGGridUrlSync', () => {
         salary: { filterType: 'number', type: 'greaterThan', filter: 120000 }
       }))
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       // The swap re-arms auto-apply, which is the intent: tenant-b's view should
       // get its chance. It just does not have one, and the URL carries no
@@ -2886,7 +2774,7 @@ describe('useAGGridUrlSync', () => {
       rerender({ storageKey: 'tenant-b' })
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
       expect(result.current.views).toEqual([])
       expect(result.current.activeViewId).toBeNull()
@@ -2963,7 +2851,7 @@ describe('useAGGridUrlSync', () => {
       )
 
       await waitForEffects()
-      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+      expect(core.applyFromUrl).toHaveBeenCalledTimes(1)
 
       vi.mocked(mockGridApi.setFilterModel).mockClear()
 
@@ -2972,7 +2860,7 @@ describe('useAGGridUrlSync', () => {
 
       // The link already had its say on this grid, so the user's edits since
       // are not overwritten by it, and tenant-b keeps its remembered view.
-      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+      expect(core.applyFromUrl).toHaveBeenCalledTimes(1)
       expect(createViewStore('tenant-b').getActiveViewId()).toBe(bId)
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBe(bId)
@@ -2991,13 +2879,13 @@ describe('useAGGridUrlSync', () => {
       )
 
       await waitForEffects()
-      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
+      expect(core.applyFromUrl).toHaveBeenCalledTimes(1)
 
       // Nothing has been applied to the new grid yet, so the URL wins there too.
       rerender({ api: createMockGridApi() })
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(2)
+      expect(core.applyFromUrl).toHaveBeenCalledTimes(2)
     })
 
     test('leaves the grid alone when storageKey drops to undefined', async () => {
@@ -3028,7 +2916,7 @@ describe('useAGGridUrlSync', () => {
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
 
       vi.mocked(mockGridApi.setFilterModel).mockClear()
-      mockInstance.applyFromUrl.mockClear()
+      core.applyFromUrl.mockClear()
 
       // Views switched off behind a feature flag, or the key dropped on logout.
       // The store disappearing is not a reason to re-run auto-apply: the URL
@@ -3037,7 +2925,7 @@ describe('useAGGridUrlSync', () => {
       rerender({ storageKey: undefined })
       await waitForEffects()
 
-      expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
+      expect(core.applyFromUrl).not.toHaveBeenCalled()
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
     })
 

@@ -444,12 +444,12 @@ describe('Format Serializers', () => {
 describe('maxValueLength in json and base64 formats (#213)', () => {
   const long = 'x'.repeat(300)
 
-  const state: FilterState = {
+  const state = {
     big: { filterType: 'text', type: 'contains', filter: long },
     ok: { filterType: 'text', type: 'contains', filter: 'short' },
     blank: { filterType: 'text', type: 'blank', filter: '' },
     age: { filterType: 'number', type: 'greaterThan', filter: 25 }
-  }
+  } satisfies FilterState
 
   const decodeRaw = (format: 'json' | 'base64', v: string) =>
     JSON.parse(format === 'base64' ? atob(v) : v)
@@ -464,7 +464,7 @@ describe('maxValueLength in json and base64 formats (#213)', () => {
         expect(raw.big).toBeUndefined()
         expect(Object.keys(raw)).toEqual(['ok', 'blank', 'age'])
         expect(onParseError).toHaveBeenCalledTimes(1)
-        const err = onParseError.mock.calls[0][0]
+        const err = onParseError.mock.calls[0]?.[0]
         expect(err).toBeInstanceOf(InvalidSerializationError)
         expect(err.cause).toBeInstanceOf(InvalidFilterError)
       })
@@ -472,6 +472,8 @@ describe('maxValueLength in json and base64 formats (#213)', () => {
       it('drops and reports over-length values on parse', () => {
         const onParseError = vi.fn()
         const serializer = getFormatSerializer(format)
+
+        if (!serializer) throw new Error(`no ${format} serializer`)
 
         const value = serializer.serialize(
           { big: state.big },
@@ -486,7 +488,7 @@ describe('maxValueLength in json and base64 formats (#213)', () => {
 
         expect(result).toEqual({})
         expect(onParseError).toHaveBeenCalledTimes(1)
-        expect(onParseError.mock.calls[0][0]).toBeInstanceOf(
+        expect(onParseError.mock.calls[0]?.[0]).toBeInstanceOf(
           InvalidSerializationError
         )
       })

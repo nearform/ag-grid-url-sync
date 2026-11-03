@@ -2708,10 +2708,10 @@ describe('useAGGridUrlSync', () => {
       const { result, rerender } = renderHook(
         (props: { storageKey?: string }) =>
           useAGGridUrlSync(asGridApi(mockGridApi), {
-            storageKey: props.storageKey,
+            ...props,
             autoApplyOnMount: true
           }),
-        { initialProps: { storageKey: undefined } }
+        { initialProps: {} }
       )
 
       await waitForEffects()
@@ -2941,13 +2941,17 @@ describe('useAGGridUrlSync', () => {
       })
       seed.unmount()
 
+      type Props = { storageKey?: string }
+
+      const initialProps: Props = { storageKey: 'tenant-b' }
+
       const { rerender } = renderHook(
-        (props: { storageKey?: string }) =>
+        (props: Props) =>
           useAGGridUrlSync(asGridApi(mockGridApi), {
-            storageKey: props.storageKey,
+            ...props,
             autoApplyOnMount: true
           }),
-        { initialProps: { storageKey: 'tenant-b' } }
+        { initialProps }
       )
 
       await waitForEffects()
@@ -2961,7 +2965,7 @@ describe('useAGGridUrlSync', () => {
       // The store disappearing is not a reason to re-run auto-apply: the URL
       // carries no filters, so applying it would wipe what the user is looking
       // at with nothing to restore it from.
-      rerender({ storageKey: undefined })
+      rerender({})
       await waitForEffects()
 
       expect(core.applyFromUrl).not.toHaveBeenCalled()

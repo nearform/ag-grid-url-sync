@@ -332,27 +332,22 @@ describe('Number Filter Operations', () => {
 
       const result = getFilterModel(mockConfig)
 
-      // Verify all filters are preserved (would have been dropped before the fix)
-      expect(Object.keys(result)).toHaveLength(7)
-
-      // Check specific mappings
-      expect(result.gt.type).toBe('greaterThan')
-      expect(result.gte.type).toBe('greaterThanOrEqual')
-      expect(result.lt.type).toBe('lessThan')
-      expect(result.lte.type).toBe('lessThanOrEqual')
-      expect(result.eq.type).toBe('eq') // Special case: 'equals' maps to 'eq'
-      expect(result.ne.type).toBe('notEqual')
-      expect(result.range.type).toBe('inRange')
-
-      // Values should be preserved
-      expect(result.gt.filter).toBe(10)
-      expect(result.gte.filter).toBe(20)
-      expect(result.lt.filter).toBe(30)
-      expect(result.lte.filter).toBe(40)
-      expect(result.eq.filter).toBe(50)
-      expect(result.ne.filter).toBe(60)
-      expect(result.range.filter).toBe(70)
-      expect(result.range).toHaveProperty('filterTo', 80)
+      // Every filter is kept (they were dropped before the fix), and 'equals'
+      // maps to 'eq'
+      expect(result).toEqual({
+        gt: { filterType: 'number', type: 'greaterThan', filter: 10 },
+        gte: { filterType: 'number', type: 'greaterThanOrEqual', filter: 20 },
+        lt: { filterType: 'number', type: 'lessThan', filter: 30 },
+        lte: { filterType: 'number', type: 'lessThanOrEqual', filter: 40 },
+        eq: { filterType: 'number', type: 'eq', filter: 50 },
+        ne: { filterType: 'number', type: 'notEqual', filter: 60 },
+        range: {
+          filterType: 'number',
+          type: 'inRange',
+          filter: 70,
+          filterTo: 80
+        }
+      })
     })
   })
 })

@@ -8,21 +8,7 @@ import { grouped, individual } from '../core/codecs.js'
 import { resolveOptions } from '../core/options.js'
 
 // The hook's sync options (#222). The hook takes the old config shape, and
-// its sync is made from it. A sync is made again only when one of the five
-// URL-format options changes, so the key holds only those.
-
-/** One string for the five URL-format options, after defaults */
-export function syncOptionsKey(options: AGGridUrlSyncConfig): string {
-  const resolved = resolveOptions(options)
-
-  return JSON.stringify([
-    resolved.paramPrefix,
-    resolved.maxValueLength,
-    resolved.serialization,
-    resolved.groupedParam,
-    resolved.format
-  ])
-}
+// its sync is made from it.
 
 /**
  * The createGridUrlSync options for the hook. The hook's sync only reads the

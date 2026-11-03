@@ -424,30 +424,17 @@ describe('useAGGridUrlSync', () => {
     test('handles initialization errors gracefully', async () => {
       const onError = vi.fn()
 
-      // The real constructor cannot fail for any input, so make its read of
-      // an option that is not set throw. The options object has no own
-      // `paramPrefix`, so resolveOptions reads it from Object.prototype. The
-      // hook copies only own keys, so nothing reads it before the constructor.
-      const paramPrefix = vi.fn(() => {
+      // The sync listens to the grid when it is made (#222), so a grid that
+      // cannot take a listener makes the initialization fail
+      vi.mocked(mockGridApi.addEventListener).mockImplementation(() => {
         throw new Error('Initialization failed')
       })
 
-      Object.defineProperty(Object.prototype, 'paramPrefix', {
-        configurable: true,
-        get: paramPrefix
-      })
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), { onError })
+      )
 
-      let result: { current: ReturnType<typeof useAGGridUrlSync> }
-
-      try {
-        ;({ result } = renderHook(() =>
-          useAGGridUrlSync(asGridApi(mockGridApi), { onError })
-        ))
-      } finally {
-        Reflect.deleteProperty(Object.prototype, 'paramPrefix')
-      }
-
-      expect(paramPrefix).toHaveBeenCalled()
+      expect(mockGridApi.addEventListener).toHaveBeenCalled()
       expect(result.current.isReady).toBe(false)
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'Initialization failed' }),
@@ -551,12 +538,6 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('sets hasFilters to false when the grid has no filters', async () => {
-      core.getUrlState.mockReturnValue({
-        url: 'http://example.com?tab=1',
-        hasFilters: false,
-        issues: []
-      })
-
       const { result } = renderHook(() =>
         useAGGridUrlSync(asGridApi(mockGridApi))
       )
@@ -3004,13 +2985,11 @@ describe('useAGGridUrlSync', () => {
   // issues go to onParseError, and operation failures go to onError.
   describe('one callback per failure (#220)', () => {
     const fireFilterChanged = (): void => {
-      const handler = vi
-        .mocked(mockGridApi.addEventListener)
-        .mock.calls.filter(([event]) => event === 'filterChanged')
-        .at(-1)?.[1]
+      if (mockGridApi.count('filterChanged') === 0) {
+        throw new Error('no filterChanged listener registered')
+      }
 
-      if (!handler) throw new Error('no filterChanged listener registered')
-      act(() => handler())
+      act(() => mockGridApi.fire('filterChanged'))
     }
 
     // test-setup.ts gives each test a plain location object

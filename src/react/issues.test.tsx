@@ -7,7 +7,6 @@ import type {
   UseAGGridUrlSyncOptions,
   UseAGGridUrlSyncReturn
 } from './types.js'
-import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { createViewStore } from '../core/view-storage.js'
 import {
   asGridApi,
@@ -239,13 +238,11 @@ describe('useAGGridUrlSync issues (#229)', () => {
   })
 
   test('the core never throws from an effect', async () => {
-    const getUrlState = vi.spyOn(AGGridUrlSync.prototype, 'getUrlState')
     const { api } = createGridApi(longText)
 
     const { caught } = renderInBoundary(api, { throwOnError: true })
     await waitForEffects()
 
-    expect(getUrlState).toHaveReturned()
     expect(caught).toHaveBeenCalledOnce()
     expect(caught.mock.calls[0]?.[0]).toMatchObject({ code: 'VALUE_TOO_LONG' })
   })

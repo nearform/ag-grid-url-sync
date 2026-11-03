@@ -81,9 +81,9 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
     expect(result.current.hasFilters).toBe(false)
   })
 
-  test('reads the grid one time for each filter change', async () => {
-    // An unsupported operation is reported each time the grid is read, so
-    // the count shows how many times updateState read it
+  // The core reports a grid-read issue one time while it stays (#222,
+  // design decision 5)
+  test('reports a grid-read issue one time while it stays', async () => {
     const onParseError = vi.fn()
 
     const { api, fireFilterChanged } = createGridApi({
@@ -93,9 +93,31 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
     renderHook(() => useAGGridUrlSync(asGridApi(api), { onParseError }))
     await waitForEffects()
 
-    onParseError.mockClear()
+    fireFilterChanged()
     fireFilterChanged()
 
     expect(onParseError).toHaveBeenCalledTimes(1)
+  })
+
+  test('reports a read issue again after it went away', async () => {
+    const onParseError = vi.fn()
+
+    const bad: FilterModel = {
+      age: { filterType: 'number', type: 'unknownOperation', filter: 1 }
+    }
+
+    let model = bad
+    const { api, fireFilterChanged } = createGridApi(bad)
+    api.getFilterModel.mockImplementation(() => model)
+
+    renderHook(() => useAGGridUrlSync(asGridApi(api), { onParseError }))
+    await waitForEffects()
+
+    model = {}
+    fireFilterChanged()
+    model = bad
+    fireFilterChanged()
+
+    expect(onParseError).toHaveBeenCalledTimes(2)
   })
 })

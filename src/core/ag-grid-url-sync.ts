@@ -17,6 +17,10 @@ import { serializeGrouped } from './serialization/grouped.js'
 
 /**
  * AGGridUrlSync class for synchronizing AG Grid text filters with URL parameters
+ *
+ * @deprecated Use `createGridUrlSync({ api })`: it also listens to the grid
+ * and can write the address bar (#221). `AGGridUrlSync` and `createUrlSync`
+ * will be removed in 0.6.0.
  */
 export class AGGridUrlSync {
   private readonly gridApi: GridApi
@@ -160,6 +164,8 @@ export class AGGridUrlSync {
  * @param gridApi - AG Grid API instance
  * @param config - Optional configuration options
  * @returns AGGridUrlSync instance
+ * @deprecated Use `createGridUrlSync({ api })` (#221). This function will be
+ * removed in 0.6.0.
  */
 export function createUrlSync(
   gridApi: GridApi,

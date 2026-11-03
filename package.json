@@ -182,7 +182,7 @@
     {
       "name": "dist/index.js (bundled)",
       "path": "./dist/index.js",
-      "limit": "9.8 KiB",
+      "limit": "10.2 KiB",
       "gzip": true
     },
     {

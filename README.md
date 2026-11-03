@@ -145,7 +145,7 @@ The library provides two main entry points:
 
 ```typescript
 // Core functionality - works with any framework
-import { createUrlSync } from 'ag-grid-url-sync'
+import { createGridUrlSync } from 'ag-grid-url-sync'
 
 // React hook - for React applications
 import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
@@ -247,7 +247,49 @@ The config form (`getFilterModel({ ...DEFAULT_CONFIG, gridApi })`) still works, 
 
 **💡 Pro Tip**: Use granular imports in libraries and applications where bundle size matters. All existing import patterns remain fully supported for backward compatibility.
 
-### Basic Example
+### Vanilla JS: `createGridUrlSync`
+
+One call gives full sync. `createGridUrlSync` applies the address bar's filters to the grid, follows the grid's filter changes, can write them to the address bar, and removes its listeners when the grid is destroyed.
+
+```typescript
+import { createGridUrlSync, individual, grouped } from 'ag-grid-url-sync'
+
+const sync = createGridUrlSync({
+  api: gridApi,
+  codec: individual({ prefix: 'f_' }), // or grouped({ param: 'gf', format: 'json' })
+  history: 'replace', // 'none' (default) | 'replace' | 'push' | (url) => router.replace(url)
+  onIssue: ({ issue, source }) => {
+    if (issue.severity === 'warning') showToast(issue.message)
+  }
+})
+
+// The current state: { status, url, hasFilters, issues }
+const { url, hasFilters } = sync.getSnapshot()
+
+// Called after each change of the snapshot. Returns an unsubscribe function.
+const unsubscribe = sync.subscribe(() => render(sync.getSnapshot()))
+
+sync.applyUrl('https://app.com/data?f_name_contains=jo') // { issues }
+sync.getUrl('https://app.com/share') // a share link for the grid's filters
+sync.destroy()
+```
+
+| Option             | Default                   | Meaning                                                                                                                                                                                          |
+| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `api`              | (required)                | The AG Grid API                                                                                                                                                                                  |
+| `codec`            | `individual()`            | How the filters are written in the URL. `individual({ prefix })` writes one param for each filter; `grouped({ param, format })` writes all filters in one param                                  |
+| `maxValueLength`   | `200`                     | The longest text value that is kept                                                                                                                                                              |
+| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL, for a router. The page's other params, the `#hash` and `history.state` stay |
+| `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                         |
+| `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace   |
+| `throwOnError`     | `false`                   | Throw an issue instead of reporting it, in `applyUrl` and `getUrl`. `createGridUrlSync` and its listeners never throw                                                                            |
+| `onIssue`          | none                      | Gets each issue one time, as `{ issue, source }`. `source` is `'url'` (the sync read the address bar), `'grid'` (it read the grid) or `'api'` (a method that the app called)                     |
+
+The snapshot `status` is `'active'` from create, and `'destroyed'` after `destroy()` or after the grid is destroyed. `IDLE_SNAPSHOT` (`status: 'idle'`) is the snapshot for a time when there is no sync yet. `getSnapshot()` returns the same object until something changes, so it works with React's `useSyncExternalStore`. The sync never writes for its own applies, so an apply never adds a history entry. Nothing reads `window` when the module loads, and a sync made with no `window` does nothing to the address bar.
+
+### Basic Example (deprecated `createUrlSync`)
+
+`createUrlSync` and `AGGridUrlSync` will be removed in 0.6.0. Use `createGridUrlSync`.
 
 ```typescript
 import { createUrlSync } from 'ag-grid-url-sync'
@@ -457,6 +499,9 @@ The library never writes to the console. Each problem goes to one callback, and 
 | `NOT_READY`                                                   | A hook operation called before the grid is ready               | `onError` (React)                                                                                        |
 | `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | A saved view operation that cannot run                         | `onError` (React)                                                                                        |
 | `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | Browser storage for saved views failed                         | `onError` (React)                                                                                        |
+| `HISTORY_WRITE_FAILED`                                        | `createGridUrlSync` could not write the address bar            | `onIssue`                                                                                                |
+
+Each error has a `severity`: `'warning'` for the first seven rows, `'error'` for the others. `createGridUrlSync` sends every issue to `onIssue`; the callbacks in the table are for the deprecated API and the React hook.
 
 The codes in the first seven rows are data issues: a filter that is dropped or is not valid. The library skips that filter and keeps the others. When the library knows the column, it is in `error.column`. `onParseError` is typed with `Error`, so check `instanceof URLSyncError` before you read `code` or `column`.
 
@@ -507,7 +552,7 @@ return issues.length > 0 ? (
 
 Like TanStack Query, the library can throw an issue instead of reporting it. Set `throwOnError: true` to throw every issue, or give a function that picks issues. In the core, a thrown issue does not go to `onParseError`, and the first one stops the call. In React, the hook keeps reporting each issue to `onParseError` one time, and then throws the picked issue during render, so an error boundary catches it. The default is `false`.
 
-The library does not change the address bar. Before an error boundary resets, remove the bad param from the URL (or the filter from the grid), or the same issue is thrown again.
+Only `createGridUrlSync` with `history` changes the address bar. Before an error boundary resets, remove the bad param from the URL (or the filter from the grid), or the same issue is thrown again.
 
 ```tsx
 useAGGridUrlSync(gridApi, {
@@ -936,9 +981,13 @@ Parameter structure:
 
 ## API Reference
 
-### `createUrlSync(gridApi, config?)`
+### `createGridUrlSync(options)`
 
-Factory function to create a new AGGridUrlSync instance.
+See [Vanilla JS: `createGridUrlSync`](#vanilla-js-creategridurlsync) for the options. It returns `{ getSnapshot, subscribe, applyUrl, getUrl, destroy }`.
+
+### `createUrlSync(gridApi, config?)` (deprecated)
+
+Factory function to create a new AGGridUrlSync instance. Deprecated: use `createGridUrlSync`. It will be removed in 0.6.0.
 
 ```typescript
 import { createUrlSync } from 'ag-grid-url-sync'
@@ -950,7 +999,9 @@ const urlSync = createUrlSync(gridApi, {
 })
 ```
 
-### `AGGridUrlSync` Class
+### `AGGridUrlSync` Class (deprecated)
+
+Deprecated: use `createGridUrlSync`. It will be removed in 0.6.0.
 
 #### Constructor
 

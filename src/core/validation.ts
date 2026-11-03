@@ -47,7 +47,9 @@ export function validateFilterValue(
 
   if (value.length > maxValueLength) {
     throw new InvalidFilterError(
-      `Filter value exceeds maximum length of ${maxValueLength} characters`
+      `Filter value exceeds maximum length of ${maxValueLength} characters`,
+      undefined,
+      { code: 'VALUE_TOO_LONG' }
     )
   }
 
@@ -160,6 +162,9 @@ function keepsDigits(text: string, number: number): boolean {
   )
 }
 
+/** The details of each error that readNumber gives */
+const NUMBER_ISSUE = { code: 'INVALID_NUMBER' } as const
+
 /**
  * Reads the value as a number, or gives the error that says why it is not
  * one. The one rule for every number in a URL or a grid input (#238): the
@@ -173,31 +178,47 @@ export function readNumber(value: string): number | InvalidFilterError {
   const text = value?.trim() ?? ''
 
   if (!text) {
-    return new InvalidFilterError('Number filter value cannot be empty')
+    return new InvalidFilterError(
+      'Number filter value cannot be empty',
+      undefined,
+      NUMBER_ISSUE
+    )
   }
 
   if (!NUMBER_FORMAT.test(text)) {
-    return new InvalidFilterError(`Invalid number format: ${text}`)
+    return new InvalidFilterError(
+      `Invalid number format: ${text}`,
+      undefined,
+      NUMBER_ISSUE
+    )
   }
 
   const number = parseFloat(text)
   const validation = validateNumberFilter(number)
 
   if (!validation.valid) {
-    return new InvalidFilterError(validation.error || 'Invalid number value')
+    return new InvalidFilterError(
+      validation.error || 'Invalid number value',
+      undefined,
+      NUMBER_ISSUE
+    )
   }
 
   // toPrecision writes at most MAX_PRECISION digits, so a longer text cannot
   // be compared. Nothing is rounded: the text is too long to check.
   if (significantDigits(text).indexOf('e') > MAX_PRECISION) {
     return new InvalidFilterError(
-      `Number value has more than ${MAX_PRECISION} significant digits: ${text}`
+      `Number value has more than ${MAX_PRECISION} significant digits: ${text}`,
+      undefined,
+      NUMBER_ISSUE
     )
   }
 
   if (!keepsDigits(text, number)) {
     return new InvalidFilterError(
-      `Number value ${text} would be rounded to ${number}`
+      `Number value ${text} would be rounded to ${number}`,
+      undefined,
+      NUMBER_ISSUE
     )
   }
 

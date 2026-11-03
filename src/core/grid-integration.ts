@@ -17,7 +17,7 @@ import {
 } from './types.js'
 import { operatorById, operatorFromAgGrid } from './operators.js'
 import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
-import { toError } from './to-error.js'
+import { reportIssue, toIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
 import type { GridApi } from 'ag-grid-community'
@@ -56,7 +56,14 @@ function gridNumber(
   const number = readNumber(value)
 
   return number instanceof InvalidFilterError
-    ? new InvalidFilterError(`${number.message} (column '${column}')`)
+    ? new InvalidFilterError(
+        `${number.message} (column '${column}')`,
+        undefined,
+        {
+          code: 'INVALID_NUMBER',
+          column
+        }
+      )
     : number
 }
 
@@ -191,10 +198,13 @@ function readGridFilters(
           !internalOperation ||
           !isNumberFilterOperation(internalOperation)
         ) {
-          options.onParseError(
-            new Error(
+          reportIssue(
+            options,
+            new InvalidFilterError(
               `Unknown number filter operation '${filter.type}' for column '${column}'. ` +
-                `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`
+                `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`,
+              undefined,
+              { code: 'INVALID_PARAM', column }
             )
           )
 
@@ -232,13 +242,13 @@ function readGridFilters(
             : undefined
 
         if (numericValue instanceof InvalidFilterError) {
-          options.onParseError(numericValue)
+          reportIssue(options, numericValue)
 
           continue
         }
 
         if (numericTo instanceof InvalidFilterError) {
-          options.onParseError(numericTo)
+          reportIssue(options, numericTo)
 
           continue
         }
@@ -320,7 +330,8 @@ function readGridFilters(
     // Object.fromEntries creates own keys, so `__proto__` stays a column
     return Object.fromEntries(filters)
   } catch (error) {
-    options.onParseError(toError(error))
+    // The grid API threw, which is not a problem with a filter
+    reportIssue(options, toIssue(error, 'GRID_ERROR'))
 
     return {}
   }
@@ -485,6 +496,7 @@ function writeGridFilters(
     // Object.fromEntries creates own keys, so `__proto__` stays a column
     gridApi.setFilterModel(Object.fromEntries(model))
   } catch (error) {
-    options.onParseError(toError(error))
+    // The grid API threw, which is not a problem with a filter
+    reportIssue(options, toIssue(error, 'GRID_ERROR'))
   }
 }

@@ -16,6 +16,7 @@ import {
 import { JsonObjectSchema } from '../schemas.js'
 import { toError } from '../to-error.js'
 import { resolveOptions } from '../options.js'
+import { reportIssue } from '../issues.js'
 
 /**
  * Registry of available format serializers
@@ -58,7 +59,7 @@ export function serializeGrouped(
       toError(error)
     )
 
-    options.onParseError(serializationError)
+    reportIssue(options, serializationError)
 
     // Return empty state on error
     return {
@@ -97,7 +98,7 @@ export function deserializeGrouped(
       toError(error)
     )
 
-    options.onParseError(serializationError)
+    reportIssue(options, serializationError)
 
     // Return empty state on error
     return {}

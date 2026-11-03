@@ -13,6 +13,7 @@ import {
 } from '../individual-params.js'
 import { validateFilterValue } from '../validation.js'
 import { DEFAULT_CONFIG, resolveOptions } from '../options.js'
+import { reportIssue, toIssue } from '../issues.js'
 import { ColumnFilterSchema, JsonObjectSchema } from '../schemas.js'
 import { toError } from '../to-error.js'
 
@@ -30,7 +31,7 @@ function dropOverLengthTextValues(
 ): FilterState {
   const cfg = resolveOptions(config)
 
-  const kept = Object.entries(filterState).filter(([, filter]) => {
+  const kept = Object.entries(filterState).filter(([column, filter]) => {
     if (filter.filterType !== 'text') return true
 
     try {
@@ -38,7 +39,8 @@ function dropOverLengthTextValues(
 
       return true
     } catch (error) {
-      cfg.onParseError(new InvalidSerializationError(format, toError(error)))
+      const issue = toIssue(error, 'VALUE_TOO_LONG', column)
+      reportIssue(cfg, new InvalidSerializationError(format, issue))
 
       return false
     }
@@ -113,15 +115,15 @@ export class QueryStringSerializer implements FormatSerializer {
  * changes, and URLs that already exist still parse.
  */
 function innerConfig(config?: AGGridUrlSyncConfig): ResolvedOptions {
-  const { maxValueLength, onParseError } = resolveOptions(config)
+  const outer = resolveOptions(config)
 
   return {
     ...DEFAULT_CONFIG,
-    maxValueLength,
+    maxValueLength: outer.maxValueLength,
     // Errors for parameters inside the grouped value are wrapped like the
     // other grouped serialization errors. The original error is the cause.
     onParseError: error =>
-      onParseError(new InvalidSerializationError('querystring', error))
+      reportIssue(outer, new InvalidSerializationError('querystring', error))
   }
 }
 

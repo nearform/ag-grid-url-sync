@@ -10,6 +10,8 @@ import { resolveParamPrefix } from '../core/individual-params.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
 import { DEFAULT_CONFIG, resolveOptions } from '../core/options.js'
 import { toError } from '../core/to-error.js'
+import { isDataIssue } from '../core/issues.js'
+import { URLSyncError } from '../core/types.js'
 import type {
   FilterState,
   SerializationFormat,
@@ -334,19 +336,54 @@ export function useAGGridUrlSync(
     }
   }, [syncViewsFromStore, viewStore, commitActiveViewId])
 
-  // Helper function to handle errors consistently
-  const handleError = useCallback(
+  // The latest callbacks. The core is made one time per grid, and it reads
+  // them through this ref, so a new callback on a later render is used.
+  const callbacksRef = useRef({
+    onError,
+    onParseError: coreOptions.onParseError
+  })
+
+  useEffect(() => {
+    callbacksRef.current = { onError, onParseError: coreOptions.onParseError }
+  })
+
+  // The hook operation that is calling the core. A grid error that the core
+  // reports gets it as its context.
+  const contextRef = useRef('initialization')
+
+  // Each failure goes to exactly one callback, by its kind (#220). A data issue
+  // (a filter that is dropped or not valid) goes to onParseError. Any other
+  // failure goes to onError with its context. The library never writes to the
+  // console.
+  const reportFailure = useCallback(
     // `cause` is the caught value, which can be anything a callee threw
     (cause: unknown, context: string) => {
-      const errorObj = toError(cause)
+      const error = toError(cause)
+      const callbacks = callbacksRef.current
 
-      if (onError) {
-        onError(errorObj, context)
-      } else if (process.env.NODE_ENV === 'development') {
-        console.error(`AG Grid URL Sync Error [${context}]:`, errorObj)
+      if (isDataIssue(error)) {
+        callbacks.onParseError?.(error)
+      } else {
+        callbacks.onError?.(error, context)
       }
     },
-    [onError]
+    []
+  )
+
+  // A grid that has not resolved yet is a timing problem that the caller wants
+  // to hear about (see the saved view operations below)
+  const reportNotReady = useCallback(
+    (operation: string, context: string): void => {
+      reportFailure(
+        new URLSyncError(
+          `${operation} called while the hook is not ready.`,
+          undefined,
+          { code: 'NOT_READY' }
+        ),
+        context
+      )
+    },
+    [reportFailure]
   )
 
   // Initialize or update URL sync instance when grid API changes
@@ -367,12 +404,15 @@ export function useAGGridUrlSync(
       // Create new instance if needed
       if (!urlSyncRef.current) {
         try {
-          urlSyncRef.current = new AGGridUrlSync(gridApi, coreOptions)
+          urlSyncRef.current = new AGGridUrlSync(gridApi, {
+            ...coreOptions,
+            onParseError: issue => reportFailure(issue, contextRef.current)
+          })
           // oxlint-disable-next-line react/set-state-in-effect -- marks the hook ready once the grid API exists; #222 moves this to useSyncExternalStore
           setIsReady(true)
           lastGridApiRef.current = gridApi
         } catch (error) {
-          handleError(error, 'initialization')
+          reportFailure(error, 'initialization')
           setIsReady(false)
         }
       }
@@ -391,7 +431,13 @@ export function useAGGridUrlSync(
       setIsReady(false)
       lastGridApiRef.current = null
     }
-  }, [gridApi, enabledWhenReady, coreOptions, handleError, commitActiveViewId])
+  }, [
+    gridApi,
+    enabledWhenReady,
+    coreOptions,
+    reportFailure,
+    commitActiveViewId
+  ])
 
   /**
    * Whether the current URL carries any filter parameters.
@@ -492,6 +538,7 @@ export function useAGGridUrlSync(
           !gridApi ||
           (!urlAppliedRef.current && urlHasFilterParams())
         ) {
+          contextRef.current = 'auto-apply-filters'
           urlSyncRef.current.applyFromUrl()
 
           if (viewStore && gridApi) {
@@ -512,7 +559,7 @@ export function useAGGridUrlSync(
           } catch (error) {
             // Storage failing is not the URL failing: applyFromUrl already
             // succeeded, so this must not reach onParseError below.
-            handleError(error, 'auto-apply-filters')
+            reportFailure(error, 'auto-apply-filters')
           }
 
           return
@@ -538,7 +585,7 @@ export function useAGGridUrlSync(
             // A grid rejecting the stored view's model is not the URL being
             // invalid (the URL made no claim), so it must not reach
             // onParseError. Same as loadView: onError only.
-            handleError(error, 'auto-apply-filters')
+            reportFailure(error, 'auto-apply-filters')
           }
         }
 
@@ -551,15 +598,14 @@ export function useAGGridUrlSync(
         // The !viewStore case returned at the branch above and keeps its
         // unconditional apply there.
       } catch (error) {
-        handleError(error, 'auto-apply-filters')
-        coreOptions.onParseError?.(toError(error))
+        reportFailure(error, 'auto-apply-filters')
       }
     }
   }, [
     isReady,
     autoApplyOnMount,
     coreOptions,
-    handleError,
+    reportFailure,
     urlHasFilterParams,
     viewStore,
     gridApi,
@@ -663,7 +709,7 @@ export function useAGGridUrlSync(
         }
       } catch (error) {
         // Only the durable pointer is stale; the marker is already right.
-        handleError(error, 'filter-change')
+        reportFailure(error, 'filter-change')
       }
     }
 
@@ -676,11 +722,12 @@ export function useAGGridUrlSync(
       try {
         // One read of the grid gives both values. hasFilters comes from the
         // filter state: the URL also keeps the page's own params (#215).
+        contextRef.current = 'update-state'
         const { url, hasFilters } = urlSyncRef.current!.getUrlState()
         setCurrentUrl(url)
         setHasFilters(hasFilters)
       } catch (error) {
-        handleError(error, 'update-state')
+        reportFailure(error, 'update-state')
       }
     }
 
@@ -697,7 +744,7 @@ export function useAGGridUrlSync(
     return () => {
       gridApi.removeEventListener('filterChanged', onFilterChanged)
     }
-  }, [isReady, gridApi, handleError, viewStore, commitActiveViewId])
+  }, [isReady, gridApi, reportFailure, viewStore, commitActiveViewId])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -719,16 +766,18 @@ export function useAGGridUrlSync(
       }
 
       try {
+        contextRef.current = 'generate-share-url'
+
         return urlSyncRef.current.generateUrl(baseUrl)
       } catch (error) {
-        handleError(error, 'generate-share-url')
+        reportFailure(error, 'generate-share-url')
 
         return (
           baseUrl ?? (typeof window !== 'undefined' ? window.location.href : '')
         )
       }
     },
-    [handleError]
+    [reportFailure]
   )
 
   const getQueryParams = useCallback((): string => {
@@ -737,53 +786,50 @@ export function useAGGridUrlSync(
     }
 
     try {
+      contextRef.current = 'get-query-params'
+
       return urlSyncRef.current.getQueryParams()
     } catch (error) {
-      handleError(error, 'get-query-params')
+      reportFailure(error, 'get-query-params')
 
       return ''
     }
-  }, [handleError])
+  }, [reportFailure])
 
   const applyUrlFilters = useCallback(
     (url?: string): void => {
       if (!urlSyncRef.current) {
-        const warningMessage =
-          'applyUrlFilters called while the hook is not ready.'
-
-        console.warn(warningMessage)
-        coreOptions.onParseError?.(new Error(warningMessage))
+        reportNotReady('applyUrlFilters', 'apply-url-filters')
 
         return
       }
 
       try {
         const sync = urlSyncRef.current
+        contextRef.current = 'apply-url-filters'
         writeOverPendingView(() => sync.applyFromUrl(url))
       } catch (error) {
-        handleError(error, 'apply-url-filters')
-        coreOptions.onParseError?.(toError(error))
+        reportFailure(error, 'apply-url-filters')
       }
     },
-    [coreOptions, handleError, writeOverPendingView]
+    [reportFailure, reportNotReady, writeOverPendingView]
   )
 
   const clearFilters = useCallback((): void => {
     if (!urlSyncRef.current) {
-      const warningMessage = 'clearFilters called while the hook is not ready.'
-      console.warn(warningMessage)
-      coreOptions.onParseError?.(new Error(warningMessage))
+      reportNotReady('clearFilters', 'clear-filters')
 
       return
     }
 
     try {
       const sync = urlSyncRef.current
+      contextRef.current = 'clear-filters'
       writeOverPendingView(() => sync.clearFilters())
     } catch (error) {
-      handleError(error, 'clear-filters')
+      reportFailure(error, 'clear-filters')
     }
-  }, [handleError, coreOptions, writeOverPendingView])
+  }, [reportFailure, reportNotReady, writeOverPendingView])
 
   const parseUrlFilters = useCallback(
     (url: string): FilterState => {
@@ -795,35 +841,31 @@ export function useAGGridUrlSync(
         // The parser fills in the defaults of the options that are not set
         return parseFilters(url, coreOptions)
       } catch (error) {
-        handleError(error, 'parse-url-filters')
-        coreOptions.onParseError?.(toError(error))
+        reportFailure(error, 'parse-url-filters')
 
         return {}
       }
     },
-    [coreOptions, gridApi, handleError]
+    [coreOptions, gridApi, reportFailure]
   )
 
   const applyFilters = useCallback(
     (filters: FilterState): void => {
       if (!urlSyncRef.current) {
-        const warningMessage =
-          'applyFilters called while the hook is not ready.'
-
-        console.warn(warningMessage)
-        coreOptions.onParseError?.(new Error(warningMessage))
+        reportNotReady('applyFilters', 'apply-filters')
 
         return
       }
 
       try {
         const sync = urlSyncRef.current
+        contextRef.current = 'apply-filters'
         writeOverPendingView(() => sync.applyFilters(filters))
       } catch (error) {
-        handleError(error, 'apply-filters')
+        reportFailure(error, 'apply-filters')
       }
     },
-    [handleError, coreOptions, writeOverPendingView]
+    [reportFailure, reportNotReady, writeOverPendingView]
   )
 
   const getFiltersAsFormat = useCallback(
@@ -833,14 +875,16 @@ export function useAGGridUrlSync(
       }
 
       try {
+        contextRef.current = 'get-filters-as-format'
+
         return urlSyncRef.current.getFiltersAsFormat(format)
       } catch (error) {
-        handleError(error, 'get-filters-as-format')
+        reportFailure(error, 'get-filters-as-format')
 
         return ''
       }
     },
-    [handleError]
+    [reportFailure]
   )
 
   const getCurrentFormat = useCallback((): SerializationMode => {
@@ -851,11 +895,11 @@ export function useAGGridUrlSync(
     try {
       return urlSyncRef.current.getSerializationMode()
     } catch (error) {
-      handleError(error, 'get-current-format')
+      reportFailure(error, 'get-current-format')
 
       return DEFAULT_CONFIG.serialization
     }
-  }, [handleError])
+  }, [reportFailure])
 
   // Saved view operations. All no-op when storageKey is unset, and when the hook
   // is disabled: urlSyncRef is null on the init effect's disabled branch, which
@@ -869,15 +913,6 @@ export function useAGGridUrlSync(
   // want to hear about: without it, clicking Save before the grid resolves does
   // nothing and says nothing, which is why the example had to hand-roll an
   // isReady check.
-  const reportNotReady = useCallback(
-    (operation: string, context: string): void => {
-      handleError(
-        new Error(`${operation} called while the hook is not ready.`),
-        context
-      )
-    },
-    [handleError]
-  )
 
   const saveView = useCallback(
     (name: string): GridView | null => {
@@ -902,7 +937,7 @@ export function useAGGridUrlSync(
 
         return view
       } catch (error) {
-        handleError(error, 'save-view')
+        reportFailure(error, 'save-view')
 
         return null
       }
@@ -910,7 +945,7 @@ export function useAGGridUrlSync(
     [
       viewStore,
       gridApi,
-      handleError,
+      reportFailure,
       syncViewsFromStore,
       reportNotReady,
       enabledWhenReady,
@@ -976,7 +1011,12 @@ export function useAGGridUrlSync(
           // tab may have deleted this view; without a resync its button stays on
           // screen and every click reports the same miss.
           syncViewsFromStore()
-          handleError(new Error(`No saved view with id "${id}"`), 'load-view')
+          reportFailure(
+            new URLSyncError(`No saved view with id "${id}"`, undefined, {
+              code: 'VIEW_NOT_FOUND'
+            }),
+            'load-view'
+          )
 
           return
         }
@@ -999,13 +1039,13 @@ export function useAGGridUrlSync(
           viewStore.persistActiveViewId(view.id)
         }
       } catch (error) {
-        handleError(error, 'load-view')
+        reportFailure(error, 'load-view')
       }
     },
     [
       gridApi,
       viewStore,
-      handleError,
+      reportFailure,
       reportNotReady,
       syncViewsFromStore,
       enabledWhenReady,
@@ -1060,17 +1100,17 @@ export function useAGGridUrlSync(
               gridApi.setFilterModel({})
             }
           } catch (error) {
-            handleError(error, 'delete-view')
+            reportFailure(error, 'delete-view')
           }
         }
       } catch (error) {
-        handleError(error, 'delete-view')
+        reportFailure(error, 'delete-view')
       }
     },
     [
       viewStore,
       gridApi,
-      handleError,
+      reportFailure,
       syncViewsFromStore,
       enabledWhenReady,
       commitActiveViewId

@@ -5,6 +5,7 @@ import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
 import type { FilterState } from '../core/types.js'
+import type { UseAGGridUrlSyncReturn } from './types.js'
 import {
   asGridApi,
   waitForEffects,
@@ -51,7 +52,8 @@ describe('useAGGridUrlSync', () => {
 
   beforeEach(() => {
     mockGridApi = createMockGridApi()
-    // Quiet the hook's development logging; restored in afterEach
+    // The hook never writes to the console (#220). The spy lets a test check
+    // that; restored in afterEach
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.clearAllMocks()
     core = spyOnCore()
@@ -155,7 +157,8 @@ describe('useAGGridUrlSync', () => {
       expect(core.applyFromUrl).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledWith(failure, 'auto-apply-filters')
-      expect(onParseError).toHaveBeenCalledTimes(1)
+      // An operation failure reaches onError only (#220)
+      expect(onParseError).not.toHaveBeenCalled()
     })
   })
 
@@ -363,76 +366,56 @@ describe('useAGGridUrlSync', () => {
   })
 
   describe('Error Handling', () => {
-    test('warns when applyUrlFilters called while not ready', () => {
-      const onParseError = vi.fn()
+    // "Not ready" is an operation failure: it goes to onError only, with no
+    // console output (#220)
+    test.each([
+      [
+        'applyUrlFilters',
+        'apply-url-filters',
+        (r: UseAGGridUrlSyncReturn) =>
+          r.applyUrlFilters('http://test.com?f_name_contains=test')
+      ],
+      [
+        'clearFilters',
+        'clear-filters',
+        (r: UseAGGridUrlSyncReturn) => r.clearFilters()
+      ],
+      [
+        'applyFilters',
+        'apply-filters',
+        (r: UseAGGridUrlSyncReturn) =>
+          r.applyFilters({
+            name: { filterType: 'text', type: 'contains', filter: 'test' }
+          })
+      ]
+    ])(
+      'reports %s called while not ready to onError only',
+      (name, context, call) => {
+        const onParseError = vi.fn()
+        const onError = vi.fn()
 
-      const consoleWarnSpy = vi
-        .spyOn(console, 'warn')
-        .mockImplementation(() => {})
+        const consoleWarn = vi
+          .spyOn(console, 'warn')
+          .mockImplementation(() => {})
 
-      const { result } = renderHook(() =>
-        useAGGridUrlSync(null, { onParseError })
-      )
+        const { result } = renderHook(() =>
+          useAGGridUrlSync(null, { onParseError, onError })
+        )
 
-      act(() => {
-        result.current.applyUrlFilters('http://test.com?f_name_contains=test')
-      })
+        act(() => call(result.current))
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'applyUrlFilters called while the hook is not ready.'
-      )
-      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
-
-      consoleWarnSpy.mockRestore()
-    })
-
-    test('warns when clearFilters called while not ready', () => {
-      const onParseError = vi.fn()
-
-      const consoleWarnSpy = vi
-        .spyOn(console, 'warn')
-        .mockImplementation(() => {})
-
-      const { result } = renderHook(() =>
-        useAGGridUrlSync(null, { onParseError })
-      )
-
-      act(() => {
-        result.current.clearFilters()
-      })
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'clearFilters called while the hook is not ready.'
-      )
-      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
-
-      consoleWarnSpy.mockRestore()
-    })
-
-    test('warns when applyFilters called while not ready', () => {
-      const onParseError = vi.fn()
-
-      const consoleWarnSpy = vi
-        .spyOn(console, 'warn')
-        .mockImplementation(() => {})
-
-      const { result } = renderHook(() =>
-        useAGGridUrlSync(null, { onParseError })
-      )
-
-      act(() => {
-        result.current.applyFilters({
-          name: { filterType: 'text', type: 'contains', filter: 'test' }
-        })
-      })
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'applyFilters called while the hook is not ready.'
-      )
-      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
-
-      consoleWarnSpy.mockRestore()
-    })
+        expect(onError).toHaveBeenCalledOnce()
+        expect(onError).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: 'NOT_READY',
+            message: `${name} called while the hook is not ready.`
+          }),
+          context
+        )
+        expect(onParseError).not.toHaveBeenCalled()
+        expect(consoleWarn).not.toHaveBeenCalled()
+      }
+    )
 
     test('handles initialization errors gracefully', async () => {
       const onError = vi.fn()
@@ -3003,6 +2986,189 @@ describe('useAGGridUrlSync', () => {
 
       expect(gridA.result.current.views).toHaveLength(1)
       expect(gridB.result.current.views).toEqual([])
+    })
+  })
+  // Each failure reaches exactly one callback, by its kind (#220). Data
+  // issues go to onParseError, and operation failures go to onError.
+  describe('one callback per failure (#220)', () => {
+    const fireFilterChanged = (): void => {
+      const handler = vi
+        .mocked(mockGridApi.addEventListener)
+        .mock.calls.filter(([event]) => event === 'filterChanged')
+        .at(-1)?.[1]
+
+      if (!handler) throw new Error('no filterChanged listener registered')
+      act(() => handler())
+    }
+
+    // test-setup.ts gives each test a plain location object
+    const setLocation = (search: string): void => {
+      Object.defineProperty(window.location, 'search', {
+        value: search,
+        configurable: true
+      })
+      Object.defineProperty(window.location, 'href', {
+        value: `https://example.com/${search}`,
+        configurable: true
+      })
+    }
+
+    test('a grid error during a filter change reaches onError one time', async () => {
+      const onParseError = vi.fn()
+      const onError = vi.fn()
+
+      renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), { onParseError, onError })
+      )
+
+      await waitForEffects()
+      onError.mockClear()
+
+      mockGridApi.getFilterModel = vi.fn(() => {
+        throw new Error('grid failed')
+      })
+      fireFilterChanged()
+
+      expect(onError).toHaveBeenCalledOnce()
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'GRID_ERROR' }),
+        'update-state'
+      )
+      expect(onParseError).not.toHaveBeenCalled()
+    })
+
+    test('an unreadable URL in applyUrlFilters reaches onParseError one time', async () => {
+      const onParseError = vi.fn()
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), { onParseError, onError })
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters('example.com?f_a_eq=1'))
+
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'INVALID_URL' })
+      )
+      expect(onError).not.toHaveBeenCalled()
+    })
+
+    test('an unreadable URL in parseUrlFilters reaches onParseError one time', async () => {
+      const onParseError = vi.fn()
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), { onParseError, onError })
+      )
+
+      await waitForEffects()
+
+      expect(result.current.parseUrlFilters('example.com?x')).toEqual({})
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'INVALID_URL' })
+      )
+      expect(onError).not.toHaveBeenCalled()
+    })
+
+    test('a bad URL param in applyUrlFilters reaches onParseError only', async () => {
+      const onParseError = vi.fn()
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), { onParseError, onError })
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'INVALID_NUMBER', column: 'age' })
+      )
+      expect(onError).not.toHaveBeenCalled()
+    })
+
+    test('a bad URL param on auto-apply reaches onParseError only', async () => {
+      const onParseError = vi.fn()
+      const onError = vi.fn()
+      setLocation('?f_age_gt=abc')
+
+      renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), {
+          autoApplyOnMount: true,
+          onParseError,
+          onError
+        })
+      )
+
+      await waitForEffects()
+
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'INVALID_NUMBER' })
+      )
+      expect(onError).not.toHaveBeenCalled()
+    })
+
+    test('no console output when no callback is set', async () => {
+      const consoleError = vi.mocked(console.error)
+      const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const notReady = renderHook(() => useAGGridUrlSync(null))
+      act(() => notReady.result.current.clearFilters())
+
+      renderHook(() => useAGGridUrlSync(asGridApi(mockGridApi)))
+      await waitForEffects()
+
+      mockGridApi.getFilterModel = vi.fn(() => {
+        throw new Error('grid failed')
+      })
+      fireFilterChanged()
+
+      expect(consoleError).not.toHaveBeenCalled()
+      expect(consoleWarn).not.toHaveBeenCalled()
+    })
+
+    test('loadView with an unknown id gives VIEW_NOT_FOUND', async () => {
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), {
+          storageKey: 'codes-test',
+          onError
+        })
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.loadView('missing'))
+
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'VIEW_NOT_FOUND' }),
+        'load-view'
+      )
+    })
+
+    test('saveView before ready gives NOT_READY', () => {
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(null, { storageKey: 'codes-test', onError })
+      )
+
+      act(() => {
+        result.current.saveView('X')
+      })
+
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'NOT_READY' }),
+        'save-view'
+      )
     })
   })
 })

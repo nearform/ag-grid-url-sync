@@ -8,11 +8,10 @@ import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { resolveParamPrefix } from '../core/individual-params.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
-import { DEFAULT_CONFIG } from '../core/validation.js'
+import { DEFAULT_CONFIG, resolveOptions } from '../core/options.js'
 import { toError } from '../core/to-error.js'
 import type {
   FilterState,
-  ParseConfig,
   SerializationFormat,
   SerializationMode
 } from '../core/types.js'
@@ -404,14 +403,19 @@ export function useAGGridUrlSync(
   const urlHasFilterParams = useCallback((): boolean => {
     if (typeof window === 'undefined') return false
 
+    // The same options as the real parse, so the probe decides on the same
+    // terms. No grid is needed, so this stays callable before the grid
+    // resolves.
+    const options = resolveOptions(coreOptions)
+
     // The same prefix the writer and the parser use: an empty string means
     // the default rather than matching everything, and a trailing underscore
     // is added so 'filter' cannot match 'filterMode'. Without it a stray
     // ?page=2 reads as a claim and clears the user's stored view.
-    const prefix = resolveParamPrefix(coreOptions.paramPrefix)
+    const prefix = resolveParamPrefix(options.paramPrefix)
 
     // Only the configured name, the same one the parser reads.
-    const groupedParam = coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam
+    const { groupedParam } = options
 
     const search = window.location.search
     const params = new URLSearchParams(search)
@@ -439,21 +443,11 @@ export function useAGGridUrlSync(
     // Counting any of those as a claim takes the URL-wins branch below, writes
     // an empty model over the user's filters, and clears the stored pointer for
     // good. Only the decode separates a claim from a coincidence.
-    // ParseConfig leaves gridApi out: it is unread on the parsing path, and this
-    // must stay callable before the grid resolves.
-    const probeConfig: ParseConfig = {
-      // Raw rather than normalised, and `??` rather than `||`: AGGridUrlSync
-      // merges by spread (ag-grid-url-sync.ts:27-31) and lets an empty prefix
-      // through. The probe must decide on the same terms as the real parse.
-      paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
-      maxValueLength:
-        coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
+    const probeConfig = {
+      ...options,
       // Silent: applyFromUrl parses again and reports for itself, and a URL this
       // is about to dismiss must not raise.
-      onParseError: () => {},
-      serialization: coreOptions.serialization ?? DEFAULT_CONFIG.serialization,
-      groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
-      format: coreOptions.format ?? DEFAULT_CONFIG.format
+      onParseError: () => {}
     }
 
     try {
@@ -798,19 +792,8 @@ export function useAGGridUrlSync(
       }
 
       try {
-        const config = {
-          gridApi,
-          paramPrefix: coreOptions.paramPrefix ?? DEFAULT_CONFIG.paramPrefix,
-          maxValueLength:
-            coreOptions.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
-          onParseError: coreOptions.onParseError ?? (() => {}),
-          serialization:
-            coreOptions.serialization ?? DEFAULT_CONFIG.serialization,
-          groupedParam: coreOptions.groupedParam ?? DEFAULT_CONFIG.groupedParam,
-          format: coreOptions.format ?? DEFAULT_CONFIG.format
-        }
-
-        return parseFilters(url, config)
+        // The parser fills in the defaults of the options that are not set
+        return parseFilters(url, coreOptions)
       } catch (error) {
         handleError(error, 'parse-url-filters')
         coreOptions.onParseError?.(toError(error))

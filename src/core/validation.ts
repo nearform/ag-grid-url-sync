@@ -1,24 +1,17 @@
 import * as v from 'valibot'
 import type {
-  ParseConfig,
+  AGGridUrlSyncConfig,
   FilterOperation,
   DateFilterOperation,
   ColumnFilter
 } from './types.js'
 import { InvalidFilterError, InvalidDateError } from './types.js'
 import { ColumnFilterSchema } from './schemas.js'
+import { resolveOptions } from './options.js'
 
-/**
- * Default configuration values
- */
-export const DEFAULT_CONFIG = {
-  paramPrefix: 'f_',
-  maxValueLength: 200,
-  serialization: 'individual' as const,
-  groupedParam: 'grid_filters',
-  format: 'querystring' as const,
-  onParseError: () => {}
-} as const
+// The defaults are in options.ts (#219). The `ag-grid-url-sync/validation`
+// entry point still exports them.
+export { DEFAULT_CONFIG } from './options.js'
 
 /**
  * Validation result interface
@@ -34,14 +27,15 @@ export type ValidationResult =
  * Validates a text filter value against configuration constraints
  *
  * @param value - The filter value to validate
- * @param config - Internal configuration with validation rules
+ * @param config - Options with the validation rules. An option that is left
+ *   out gets its default.
  * @param operation - Optional filter operation type. Blank operations (blank/notBlank) bypass value validation
  * @returns The validated filter value (empty string for blank operations)
  * @throws InvalidFilterError if value exceeds maximum length
  */
 export function validateFilterValue(
   value: string,
-  config: ParseConfig,
+  config: AGGridUrlSyncConfig = {},
   operation?: FilterOperation
 ): string {
   // Blank operations don't require value validation
@@ -49,9 +43,11 @@ export function validateFilterValue(
     return ''
   }
 
-  if (value.length > config.maxValueLength) {
+  const { maxValueLength } = resolveOptions(config)
+
+  if (value.length > maxValueLength) {
     throw new InvalidFilterError(
-      `Filter value exceeds maximum length of ${config.maxValueLength} characters`
+      `Filter value exceeds maximum length of ${maxValueLength} characters`
     )
   }
 

@@ -437,20 +437,30 @@ describe('useAGGridUrlSync', () => {
     test('handles initialization errors gracefully', async () => {
       const onError = vi.fn()
 
-      // The real constructor cannot fail for any input, so make the one
-      // Object.fromEntries call inside it throw. Without a storageKey the hook
-      // makes no Object.fromEntries call of its own before the constructor.
-      const fromEntries = vi
-        .spyOn(Object, 'fromEntries')
-        .mockImplementationOnce(() => {
-          throw new Error('Initialization failed')
-        })
+      // The real constructor cannot fail for any input, so make its read of
+      // an option that is not set throw. The options object has no own
+      // `paramPrefix`, so resolveOptions reads it from Object.prototype. The
+      // hook copies only own keys, so nothing reads it before the constructor.
+      const paramPrefix = vi.fn(() => {
+        throw new Error('Initialization failed')
+      })
 
-      const { result } = renderHook(() =>
-        useAGGridUrlSync(asGridApi(mockGridApi), { onError })
-      )
+      Object.defineProperty(Object.prototype, 'paramPrefix', {
+        configurable: true,
+        get: paramPrefix
+      })
 
-      expect(fromEntries).toHaveBeenCalled()
+      let result: { current: ReturnType<typeof useAGGridUrlSync> }
+
+      try {
+        ;({ result } = renderHook(() =>
+          useAGGridUrlSync(asGridApi(mockGridApi), { onError })
+        ))
+      } finally {
+        Reflect.deleteProperty(Object.prototype, 'paramPrefix')
+      }
+
+      expect(paramPrefix).toHaveBeenCalled()
       expect(result.current.isReady).toBe(false)
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'Initialization failed' }),

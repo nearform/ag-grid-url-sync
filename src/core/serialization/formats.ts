@@ -3,14 +3,16 @@ import type {
   FilterState,
   SerializationFormat,
   FormatSerializer,
-  ParseConfig
+  AGGridUrlSyncConfig,
+  ResolvedOptions
 } from '../types.js'
 import { InvalidSerializationError } from '../types.js'
 import {
   parseIndividualParams,
   serializeFilters
 } from '../individual-params.js'
-import { DEFAULT_CONFIG, validateFilterValue } from '../validation.js'
+import { validateFilterValue } from '../validation.js'
+import { DEFAULT_CONFIG, resolveOptions } from '../options.js'
 import { ColumnFilterSchema, JsonObjectSchema } from '../schemas.js'
 import { toError } from '../to-error.js'
 
@@ -23,10 +25,10 @@ import { toError } from '../to-error.js'
  */
 function dropOverLengthTextValues(
   filterState: FilterState,
-  config: ParseConfig | undefined,
+  config: AGGridUrlSyncConfig | undefined,
   format: SerializationFormat
 ): FilterState {
-  const cfg = config ?? DEFAULT_CONFIG
+  const cfg = resolveOptions(config)
 
   const kept = Object.entries(filterState).filter(([, filter]) => {
     if (filter.filterType !== 'text') return true
@@ -36,7 +38,7 @@ function dropOverLengthTextValues(
 
       return true
     } catch (error) {
-      cfg.onParseError?.(new InvalidSerializationError(format, toError(error)))
+      cfg.onParseError(new InvalidSerializationError(format, toError(error)))
 
       return false
     }
@@ -91,11 +93,11 @@ function parseAndValidateJson(value: string): FilterState {
 export class QueryStringSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'querystring'
 
-  serialize(filterState: FilterState, config?: ParseConfig): string {
+  serialize(filterState: FilterState, config?: AGGridUrlSyncConfig): string {
     return serializeFilters(filterState, innerConfig(config)).toString()
   }
 
-  deserialize(value: string, config?: ParseConfig): FilterState {
+  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterState {
     return parseIndividualParams(
       new URLSearchParams(value),
       innerConfig(config)
@@ -110,15 +112,12 @@ export class QueryStringSerializer implements FormatSerializer {
  * parameter prefix, so grouped URLs do not change when the caller's prefix
  * changes, and URLs that already exist still parse.
  */
-function innerConfig(config?: ParseConfig): ParseConfig {
-  if (!config) return DEFAULT_CONFIG
-  // `??` keeps the defaults when a JS caller or a partial config leaves a
-  // field out
-  const onParseError = config.onParseError ?? DEFAULT_CONFIG.onParseError
+function innerConfig(config?: AGGridUrlSyncConfig): ResolvedOptions {
+  const { maxValueLength, onParseError } = resolveOptions(config)
 
   return {
     ...DEFAULT_CONFIG,
-    maxValueLength: config.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
+    maxValueLength,
     // Errors for parameters inside the grouped value are wrapped like the
     // other grouped serialization errors. The original error is the cause.
     onParseError: error =>
@@ -133,11 +132,11 @@ function innerConfig(config?: ParseConfig): ParseConfig {
 export class JsonSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'json'
 
-  serialize(filterState: FilterState, config?: ParseConfig): string {
+  serialize(filterState: FilterState, config?: AGGridUrlSyncConfig): string {
     return JSON.stringify(dropOverLengthTextValues(filterState, config, 'json'))
   }
 
-  deserialize(value: string, config?: ParseConfig): FilterState {
+  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterState {
     return dropOverLengthTextValues(parseAndValidateJson(value), config, 'json')
   }
 }
@@ -149,13 +148,13 @@ export class JsonSerializer implements FormatSerializer {
 export class Base64Serializer implements FormatSerializer {
   readonly format: SerializationFormat = 'base64'
 
-  serialize(filterState: FilterState, config?: ParseConfig): string {
+  serialize(filterState: FilterState, config?: AGGridUrlSyncConfig): string {
     const filtered = dropOverLengthTextValues(filterState, config, 'base64')
 
     return btoa(escapeNonAscii(JSON.stringify(filtered)))
   }
 
-  deserialize(value: string, config?: ParseConfig): FilterState {
+  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterState {
     try {
       const decoded = atob(value)
 

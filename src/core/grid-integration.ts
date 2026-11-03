@@ -1,7 +1,9 @@
 import * as v from 'valibot'
 import type {
+  AGGridUrlSyncConfig,
   FilterState,
   InternalConfig,
+  ResolvedOptions,
   ColumnFilter,
   AGGridFilter
 } from './types.js'
@@ -17,6 +19,7 @@ import { operatorById, operatorFromAgGrid } from './operators.js'
 import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
 import { toError } from './to-error.js'
 import { readNumber } from './validation.js'
+import { resolveOptions } from './options.js'
 import type { GridApi } from 'ag-grid-community'
 
 /**
@@ -94,15 +97,47 @@ export function detectColumnFilterType(
 }
 
 /**
- * Gets the current filter model from AG Grid
+ * Gets the current filter model from AG Grid as a filter state. Filter types
+ * that the library does not support are skipped, and a filter that is not
+ * valid is reported through `options.onParseError`.
+ *
+ * @param gridApi - AG Grid API instance
+ * @param options - Optional options. Only `onParseError` is read.
  */
-export function getFilterModel(config: InternalConfig): FilterState {
+export function getFilterModel(
+  gridApi: GridApi,
+  options?: AGGridUrlSyncConfig
+): FilterState
+/**
+ * Gets the current filter model from AG Grid
+ *
+ * @deprecated Give the grid API as an argument:
+ * `getFilterModel(gridApi, options)`. This form will be removed in v1.0.
+ */
+export function getFilterModel(config: InternalConfig): FilterState
+export function getFilterModel(
+  source: GridApi | InternalConfig,
+  options?: AGGridUrlSyncConfig
+): FilterState {
+  // The deprecated form has the grid in its config object. A GridApi has no
+  // `gridApi` key.
+  if ('gridApi' in source) {
+    return readGridFilters(source.gridApi, resolveOptions(source))
+  }
+
+  return readGridFilters(source, resolveOptions(options))
+}
+
+function readGridFilters(
+  gridApi: GridApi,
+  options: ResolvedOptions
+): FilterState {
   try {
     // A Map, not a plain object: an assignment to `obj['__proto__']` would
     // call the prototype setter, and the column would be lost (#253)
     const filters = new Map<string, ColumnFilter>()
     // AG Grid can hand back null despite the declared return type
-    const model: unknown = config.gridApi.getFilterModel()
+    const model: unknown = gridApi.getFilterModel()
 
     // Checked, not parsed: Valibot's record output leaves out the keys
     // `__proto__`, `constructor` and `prototype`, and here each one is a
@@ -140,14 +175,12 @@ export function getFilterModel(config: InternalConfig): FilterState {
 
         // If the operation type is not recognized, report the error
         if (!internalOperation || !isNumberFilterOperation(internalOperation)) {
-          if (config.onParseError) {
-            config.onParseError(
-              new Error(
-                `Unknown number filter operation '${filter.type}' for column '${column}'. ` +
-                  `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`
-              )
+          options.onParseError(
+            new Error(
+              `Unknown number filter operation '${filter.type}' for column '${column}'. ` +
+                `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`
             )
-          }
+          )
 
           continue
         }
@@ -163,13 +196,13 @@ export function getFilterModel(config: InternalConfig): FilterState {
             : gridNumber(filter.filterTo, column)
 
         if (numericValue instanceof InvalidFilterError) {
-          if (config.onParseError) config.onParseError(numericValue)
+          options.onParseError(numericValue)
 
           continue
         }
 
         if (numericTo instanceof InvalidFilterError) {
-          if (config.onParseError) config.onParseError(numericTo)
+          options.onParseError(numericTo)
 
           continue
         }
@@ -226,9 +259,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
     // Object.fromEntries creates own keys, so `__proto__` stays a column
     return Object.fromEntries(filters)
   } catch (error) {
-    if (config.onParseError) {
-      config.onParseError(toError(error))
-    }
+    options.onParseError(toError(error))
 
     return {}
   }
@@ -303,11 +334,50 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
 }
 
 /**
+ * Applies a filter state to AG Grid. A filter whose type does not match the
+ * column is skipped with a warning. An error from the grid is reported
+ * through `options.onParseError`.
+ *
+ * @param filterState - Filter state to apply
+ * @param gridApi - AG Grid API instance
+ * @param options - Optional options. Only `onParseError` is read.
+ */
+export function applyFilterModel(
+  filterState: FilterState,
+  gridApi: GridApi,
+  options?: AGGridUrlSyncConfig
+): void
+/**
  * Applies a filter state to AG Grid
+ *
+ * @deprecated Give the grid API as an argument:
+ * `applyFilterModel(filterState, gridApi, options)`. This form will be
+ * removed in v1.0.
  */
 export function applyFilterModel(
   filterState: FilterState,
   config: InternalConfig
+): void
+export function applyFilterModel(
+  filterState: FilterState,
+  target: GridApi | InternalConfig,
+  options?: AGGridUrlSyncConfig
+): void {
+  // The deprecated form has the grid in its config object. A GridApi has no
+  // `gridApi` key.
+  if ('gridApi' in target) {
+    writeGridFilters(filterState, target.gridApi, resolveOptions(target))
+
+    return
+  }
+
+  writeGridFilters(filterState, target, resolveOptions(options))
+}
+
+function writeGridFilters(
+  filterState: FilterState,
+  gridApi: GridApi,
+  options: ResolvedOptions
 ): void {
   try {
     // A Map, not a plain object: an assignment to `obj['__proto__']` would
@@ -319,7 +389,7 @@ export function applyFilterModel(
       if (!v.is(JsonObjectSchema, filter)) continue
 
       // Detect expected filter type for this column
-      const expectedType = detectColumnFilterType(config.gridApi, column)
+      const expectedType = detectColumnFilterType(gridApi, column)
 
       // Validate filter type compatibility
       if (filter.filterType === 'date' && expectedType !== 'date') {
@@ -346,10 +416,8 @@ export function applyFilterModel(
 
     // Apply the filter model to AG Grid
     // Object.fromEntries creates own keys, so `__proto__` stays a column
-    config.gridApi.setFilterModel(Object.fromEntries(model))
+    gridApi.setFilterModel(Object.fromEntries(model))
   } catch (error) {
-    if (config.onParseError) {
-      config.onParseError(toError(error))
-    }
+    options.onParseError(toError(error))
   }
 }

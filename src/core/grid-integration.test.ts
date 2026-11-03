@@ -485,7 +485,7 @@ describe('Grid Integration', () => {
       })
     })
 
-    it('should warn on filter type mismatch - date filter on non-date column', () => {
+    it('should report a type mismatch - date filter on non-date column', () => {
       const filterState: FilterState = {
         name: { filterType: 'date', type: 'eq', filter: '2024-01-15' }
       }
@@ -496,15 +496,21 @@ describe('Grid Integration', () => {
 
       applyFilterModel(filterState, mockConfig)
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Column 'name' expects a text filter but received a date filter"
-        )
+      expect(consoleSpy).not.toHaveBeenCalled()
+      expect(mockConfig.onParseError).toHaveBeenCalledOnce()
+      expect(mockConfig.onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'TYPE_MISMATCH',
+          column: 'name',
+          message: expect.stringContaining(
+            "Column 'name' expects a text filter but received a date filter"
+          )
+        })
       )
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
     })
 
-    it('should warn on filter type mismatch - number filter on non-number column', () => {
+    it('should report a type mismatch - number filter on non-number column', () => {
       const filterState: FilterState = {
         name: { filterType: 'number', type: 'eq', filter: 25 }
       }
@@ -515,10 +521,16 @@ describe('Grid Integration', () => {
 
       applyFilterModel(filterState, mockConfig)
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Column 'name' expects a text filter but received a number filter"
-        )
+      expect(consoleSpy).not.toHaveBeenCalled()
+      expect(mockConfig.onParseError).toHaveBeenCalledOnce()
+      expect(mockConfig.onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'TYPE_MISMATCH',
+          column: 'name',
+          message: expect.stringContaining(
+            "Column 'name' expects a text filter but received a number filter"
+          )
+        })
       )
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
     })

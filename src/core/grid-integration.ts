@@ -471,15 +471,25 @@ function writeGridFilters(
 
       // Validate filter type compatibility
       if (filter.filterType === 'date' && expectedType !== 'date') {
-        console.warn(
-          `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`
+        reportIssue(
+          options,
+          new InvalidFilterError(
+            `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`,
+            undefined,
+            { code: 'TYPE_MISMATCH', column }
+          )
         )
         continue
       }
 
       if (filter.filterType === 'number' && expectedType !== 'number') {
-        console.warn(
-          `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`
+        reportIssue(
+          options,
+          new InvalidFilterError(
+            `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`,
+            undefined,
+            { code: 'TYPE_MISMATCH', column }
+          )
         )
         continue
       }

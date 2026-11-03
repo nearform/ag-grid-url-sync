@@ -143,9 +143,9 @@ export function detectGroupedSerialization(
     }
 
     return { isGrouped: false }
-  } catch (error) {
-    console.error(`Error detecting grouped serialization: ${error}`)
-
+  } catch {
+    // A URL that cannot be read has no grouped filters. The library does not
+    // write to the console (#220).
     return { isGrouped: false }
   }
 }

@@ -841,4 +841,49 @@ describe('Grid Integration', () => {
       })
     })
   })
+
+  // A handler that throws gets its own error back. The library does not catch
+  // it and report it again as GRID_ERROR (#220 review).
+  describe('a throwing onParseError', () => {
+    const handlerError = new Error('handler failed')
+
+    const throwingHandler = () =>
+      vi.fn(() => {
+        throw handlerError
+      })
+
+    it('reaches the caller of applyFilterModel and is reported one time', () => {
+      const onParseError = throwingHandler()
+      mockGridApi.getColumn.mockReturnValue({
+        getColDef: () => ({ filter: 'agTextColumnFilter' })
+      })
+
+      expect(() =>
+        applyFilterModel(
+          { name: { filterType: 'number', type: 'eq', filter: 1 } },
+          asGridApi(mockGridApi),
+          { onParseError }
+        )
+      ).toThrow(handlerError)
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'TYPE_MISMATCH' })
+      )
+    })
+
+    it('reaches the caller of getFilterModel and is reported one time', () => {
+      const onParseError = throwingHandler()
+      mockGridApi.getFilterModel.mockReturnValue({
+        n: { filterType: 'number', type: 'foo', filter: 1 }
+      })
+
+      expect(() =>
+        getFilterModel(asGridApi(mockGridApi), { onParseError })
+      ).toThrow(handlerError)
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'INVALID_PARAM' })
+      )
+    })
+  })
 })

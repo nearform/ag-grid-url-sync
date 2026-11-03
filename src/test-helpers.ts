@@ -1,6 +1,16 @@
 import { act } from '@testing-library/react'
 import { vi } from 'vitest'
-import type { ColDef, FilterModel, GridApi } from 'ag-grid-community'
+import type {
+  ColDef,
+  FilterModel,
+  GridApi,
+  GridOptions
+} from 'ag-grid-community'
+import {
+  createGrid,
+  ModuleRegistry,
+  AllCommunityModule
+} from 'ag-grid-community'
 import { setTimeout } from 'timers/promises'
 
 /**
@@ -91,3 +101,45 @@ export const createGridApiSpies = () => ({
   setFilterModel: vi.fn<(model: FilterModel | null) => void>(),
   getColumn: vi.fn<(colId: string) => ColumnFake | null>()
 })
+
+// ============================================================================
+// Real grid and real location (#221)
+// ============================================================================
+
+const realLocation = window.location
+
+/**
+ * Puts back jsdom's real `window.location` for one test. test-setup.ts mocks
+ * it with a plain object, and `history.pushState` and `popstate` need the
+ * real one. Call it in a `beforeEach`, then set the page with
+ * `history.replaceState`.
+ */
+export function useRealLocation(path = '/'): void {
+  Object.defineProperty(window, 'location', {
+    value: realLocation,
+    writable: true,
+    configurable: true
+  })
+  window.history.replaceState(null, '', path)
+}
+
+/** A real AG Grid in jsdom with a text column `name` and a number column `age` */
+export function createRealGrid(
+  gridOptions: Partial<GridOptions> = {}
+): GridApi {
+  ModuleRegistry.registerModules([AllCommunityModule])
+  const div = document.createElement('div')
+  document.body.append(div)
+
+  return createGrid(div, {
+    columnDefs: [
+      { field: 'name', filter: 'agTextColumnFilter' },
+      { field: 'age', filter: 'agNumberColumnFilter' }
+    ],
+    rowData: [
+      { name: 'john', age: 30 },
+      { name: 'jane', age: 40 }
+    ],
+    ...gridOptions
+  })
+}

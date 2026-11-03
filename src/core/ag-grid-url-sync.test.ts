@@ -237,6 +237,22 @@ describe('AGGridUrlSync', () => {
       expect(sync.getUrlState('https://example.com/').issues).toHaveLength(1)
     })
 
+    // A subclass that overrides applyFilters still sees URL applies (#229 review)
+    it('applyFromUrl goes through applyFilters and joins the issues', () => {
+      const { sync } = createSync()
+      const applyFilters = vi.spyOn(sync, 'applyFilters')
+
+      const { issues } = sync.applyFromUrl('?f_age_gt=abc&f_n_gt=5')
+
+      expect(applyFilters).toHaveBeenCalledOnce()
+      // The parse issue comes first, then the apply issue (a number filter on
+      // a text column)
+      expect(issues.map(issue => issue.code)).toEqual([
+        'INVALID_NUMBER',
+        'TYPE_MISMATCH'
+      ])
+    })
+
     it('an issue that throwOnError throws is not in the list', () => {
       const api = createGridApiSpies()
       api.getFilterModel.mockReturnValue({})

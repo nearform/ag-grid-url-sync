@@ -72,3 +72,16 @@ export const resolvedUndefined: ParseConfig = {
   // @ts-expect-error undefined is not a format
   format: undefined
 }
+
+// README "Dropped Filters in the Result" and "throwOnError" examples (#229)
+export function ReadmeIssuesExample({
+  gridApi
+}: {
+  gridApi: import('ag-grid-community').GridApi
+}) {
+  const { issues } = useAGGridUrlSync(gridApi, {
+    throwOnError: issue => issue.code === 'VALUE_TOO_LONG'
+  })
+
+  return issues.length > 0 ? 'The link leaves out a filter' : null
+}

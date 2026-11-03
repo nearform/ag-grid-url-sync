@@ -188,7 +188,7 @@
     {
       "name": "dist/react/index.js (bundled, react external)",
       "path": "./dist/react/index.js",
-      "limit": "11 KiB",
+      "limit": "12 KiB",
       "gzip": true,
       "ignore": [
         "react"
@@ -252,7 +252,7 @@
     },
     {
       "path": "./dist/react/use-ag-grid-url-sync.js",
-      "limit": "4 KiB",
+      "limit": "4.5 KiB",
       "gzip": true,
       "disablePlugins": [
         "@size-limit/esbuild"

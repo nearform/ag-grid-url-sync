@@ -1,39 +1,33 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createUrlSync } from '../ag-grid-url-sync.js'
 import type { FilterState } from '../types.js'
+import { asGridApi } from '../../test-helpers.js'
 
 // Mock AG Grid API with multi-type filters to test the fix
-const createMockGridApi = () =>
-  ({
-    setFilterModel: vi.fn(),
-    getFilterModel: vi.fn().mockReturnValue({
-      // AG Grid format - gets converted to our internal format
-      name: { filterType: 'text', type: 'contains', filter: 'john' },
-      age: { filterType: 'number', type: 'greaterThan', filter: 25 },
-      created: { filterType: 'date', type: 'greaterThan', filter: '2024-01-01' }
-    }),
-    onFilterChanged: vi.fn(),
-    getColumnDefs: vi.fn().mockReturnValue([
+const createMockGridApi = () => ({
+  setFilterModel: vi.fn(),
+  getFilterModel: vi.fn().mockReturnValue({
+    // AG Grid format - gets converted to our internal format
+    name: { filterType: 'text', type: 'contains', filter: 'john' },
+    age: { filterType: 'number', type: 'greaterThan', filter: 25 },
+    created: { filterType: 'date', type: 'greaterThan', filter: '2024-01-01' }
+  }),
+  getColumn: vi.fn().mockImplementation((columnId: string) => {
+    const columnDefs = [
       { field: 'name', filter: 'agTextColumnFilter' },
       { field: 'age', filter: 'agNumberColumnFilter' },
       { field: 'created', filter: 'agDateColumnFilter' }
-    ]),
-    getColumn: vi.fn().mockImplementation((columnId: string) => {
-      const columnDefs = [
-        { field: 'name', filter: 'agTextColumnFilter' },
-        { field: 'age', filter: 'agNumberColumnFilter' },
-        { field: 'created', filter: 'agDateColumnFilter' }
-      ]
+    ]
 
-      const colDef = columnDefs.find(def => def.field === columnId)
+    const colDef = columnDefs.find(def => def.field === columnId)
 
-      return colDef
-        ? {
-            getColDef: () => colDef
-          }
-        : null
-    })
-  }) as any
+    return colDef
+      ? {
+          getColDef: () => colDef
+        }
+      : null
+  })
+})
 
 // Expected internal format after conversion
 const sampleFilterState: FilterState = {
@@ -75,7 +69,7 @@ const expectedAgGridFormat = {
 }
 
 describe('AGGridUrlSync - Grouped Serialization Integration', () => {
-  let mockGridApi: any
+  let mockGridApi: ReturnType<typeof createMockGridApi>
 
   beforeEach(() => {
     mockGridApi = createMockGridApi()
@@ -89,7 +83,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
 
   describe('Backward Compatibility', () => {
     it('should default to individual serialization mode', () => {
-      const urlSync = createUrlSync(mockGridApi)
+      const urlSync = createUrlSync(asGridApi(mockGridApi))
 
       expect(urlSync.getSerializationMode()).toBe('individual')
 
@@ -100,7 +94,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
     })
 
     it('should work with existing configuration options', () => {
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         paramPrefix: 'filter_',
         maxValueLength: 500
       })
@@ -116,7 +110,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
 
   describe('Grouped Serialization - QueryString Format', () => {
     it('should generate URLs with grouped querystring format', () => {
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'grouped',
         format: 'querystring'
       })
@@ -132,7 +126,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
     })
 
     it('should parse URLs with grouped querystring format', () => {
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'grouped',
         format: 'querystring'
       })
@@ -143,7 +137,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       urlSync.applyFromUrl(url)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalled()
-      const appliedFilters = mockGridApi.setFilterModel.mock.calls[0][0]
+      const appliedFilters = mockGridApi.setFilterModel.mock.calls[0]?.[0]
       expect(appliedFilters.name).toEqual({
         filterType: 'text',
         type: 'contains',
@@ -165,7 +159,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
 
   describe('Grouped Serialization - JSON Format', () => {
     it('should generate URLs with grouped JSON format', () => {
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'grouped',
         format: 'json',
         groupedParam: 'filters'
@@ -185,7 +179,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
     })
 
     it('should parse URLs with grouped JSON format', () => {
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'grouped',
         format: 'json',
         groupedParam: 'filters'
@@ -197,14 +191,14 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       urlSync.applyFromUrl(url)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalled()
-      const appliedFilters = mockGridApi.setFilterModel.mock.calls[0][0]
+      const appliedFilters = mockGridApi.setFilterModel.mock.calls[0]?.[0]
       expect(appliedFilters).toEqual(expectedAgGridFormat)
     })
   })
 
   describe('Grouped Serialization - Base64 Format', () => {
     it('should generate URLs with grouped base64 format', () => {
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'grouped',
         format: 'base64'
       })
@@ -228,7 +222,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
     })
 
     it('should parse URLs with grouped base64 format', () => {
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'grouped',
         format: 'base64'
       })
@@ -239,7 +233,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       urlSync.applyFromUrl(url)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalled()
-      const appliedFilters = mockGridApi.setFilterModel.mock.calls[0][0]
+      const appliedFilters = mockGridApi.setFilterModel.mock.calls[0]?.[0]
       expect(appliedFilters).toEqual(expectedAgGridFormat)
     })
 
@@ -250,7 +244,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
 
       mockGridApi.getFilterModel.mockReturnValue(filterModel)
 
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'grouped',
         format: 'base64'
       })
@@ -265,7 +259,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
 
   describe('Utility Methods', () => {
     it('should provide getFiltersAsFormat method', () => {
-      const urlSync = createUrlSync(mockGridApi, {
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'individual' // Test that utility works regardless of current mode
       })
 
@@ -282,13 +276,13 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
     })
 
     it('should provide serialization mode and format getters', () => {
-      const individualSync = createUrlSync(mockGridApi, {
+      const individualSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'individual'
       })
 
       expect(individualSync.getSerializationMode()).toBe('individual')
 
-      const groupedSync = createUrlSync(mockGridApi, {
+      const groupedSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'grouped',
         format: 'base64'
       })
@@ -307,7 +301,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       ]
 
       formats.forEach(format => {
-        const urlSync = createUrlSync(mockGridApi, {
+        const urlSync = createUrlSync(asGridApi(mockGridApi), {
           serialization: 'grouped',
           format
         })
@@ -320,7 +314,7 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
         urlSync.applyFromUrl(url)
 
         expect(mockGridApi.setFilterModel).toHaveBeenCalled()
-        const appliedFilters = mockGridApi.setFilterModel.mock.calls[0][0]
+        const appliedFilters = mockGridApi.setFilterModel.mock.calls[0]?.[0]
         expect(appliedFilters).toEqual(expectedAgGridFormat)
       })
     })

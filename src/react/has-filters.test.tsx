@@ -1,13 +1,15 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, test, expect, vi } from 'vitest'
-import type { FilterModel, GridApi } from 'ag-grid-community'
+import type { FilterModel } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
-import { waitForEffects } from '../test-helpers.js'
+import {
+  asGridApi,
+  waitForEffects,
+  type FilterChangedListener
+} from '../test-helpers.js'
 
 // These tests use the real core (no module mocks), because the bug is in how
 // the hook reads the URL that the core makes (#215).
-
-type FilterChangedListener = (event?: { source?: string }) => void
 
 const setPageUrl = (url: string) => {
   const parsed = new URL(url)
@@ -38,9 +40,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
     setPageUrl('https://example.com/?tab=1')
     const { api } = createGridApi({})
 
-    const { result } = renderHook(() =>
-      useAGGridUrlSync(api as unknown as GridApi)
-    )
+    const { result } = renderHook(() => useAGGridUrlSync(asGridApi(api)))
 
     await waitForEffects()
 
@@ -55,9 +55,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
       name: { filterType: 'text', type: 'contains', filter: 'john' }
     })
 
-    const { result } = renderHook(() =>
-      useAGGridUrlSync(api as unknown as GridApi)
-    )
+    const { result } = renderHook(() => useAGGridUrlSync(asGridApi(api)))
 
     await waitForEffects()
 
@@ -73,9 +71,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
 
     const { api, fireFilterChanged } = createGridApi(model)
 
-    const { result } = renderHook(() =>
-      useAGGridUrlSync(api as unknown as GridApi)
-    )
+    const { result } = renderHook(() => useAGGridUrlSync(asGridApi(api)))
 
     await waitForEffects()
     expect(result.current.hasFilters).toBe(true)
@@ -95,9 +91,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
       age: { filterType: 'number', type: 'unknownOperation', filter: 1 }
     })
 
-    renderHook(() =>
-      useAGGridUrlSync(api as unknown as GridApi, { onParseError })
-    )
+    renderHook(() => useAGGridUrlSync(asGridApi(api), { onParseError }))
     await waitForEffects()
 
     onParseError.mockClear()

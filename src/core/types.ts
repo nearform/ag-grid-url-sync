@@ -512,9 +512,13 @@ export const OPERATION_MAP: Record<string, FilterOperation> =
  * Maps internal operation types to URL operation names
  * @deprecated Derived from the operator table. Will be removed in v1.0.
  */
-export const INTERNAL_TO_URL_OPERATION_MAP = Object.fromEntries(
-  OPERATORS.map(op => [op.id, op.url])
-) as Record<FilterOperation, string>
+export const INTERNAL_TO_URL_OPERATION_MAP =
+  // SAFETY: FilterOperation is OPERATORS[number]['id'], and the map has one
+  // entry for each row of OPERATORS, so it has a key for each operation
+  Object.fromEntries(OPERATORS.map(op => [op.id, op.url])) as Record<
+    FilterOperation,
+    string
+  >
 
 /**
  * Maps internal operation types to AG Grid operation names

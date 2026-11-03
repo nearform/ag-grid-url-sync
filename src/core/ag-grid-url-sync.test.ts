@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { AGGridUrlSync } from './ag-grid-url-sync.js'
-import type { GridApi } from 'ag-grid-community'
 import type { AGGridUrlSyncConfig, FilterState } from './types.js'
+import { asGridApi } from '../test-helpers.js'
 
 describe('AGGridUrlSync', () => {
   // Mock GridApi
@@ -13,21 +13,30 @@ describe('AGGridUrlSync', () => {
     }
   }
 
-  const mockGridApi = {
+  const mockGridApi = asGridApi({
     getFilterModel: vi.fn().mockReturnValue(mockFilterModel),
     setFilterModel: vi.fn()
-  } as unknown as GridApi
+  })
 
   describe('config defaults', () => {
     // A caller can forward an optional prop, for example
     // `format: props.format`, so a key can be present with the value undefined.
-    const undefinedConfig = {
+    // The config as a caller without exactOptionalPropertyTypes sees it
+    type LooseConfig = {
+      [K in keyof AGGridUrlSyncConfig]?: AGGridUrlSyncConfig[K] | undefined
+    }
+
+    const looseConfig: LooseConfig = {
       paramPrefix: undefined,
       maxValueLength: undefined,
       serialization: undefined,
       groupedParam: undefined,
       format: undefined
-    } as unknown as AGGridUrlSyncConfig
+    }
+
+    // SAFETY: the constructor drops the keys set to undefined (the case under
+    // test), so each one keeps its default
+    const undefinedConfig = looseConfig as AGGridUrlSyncConfig
 
     it('should use the defaults for keys set to undefined', () => {
       const urlSync = new AGGridUrlSync(mockGridApi, undefinedConfig)
@@ -42,10 +51,10 @@ describe('AGGridUrlSync', () => {
       const setFilterModel = vi.fn()
       const onParseError = vi.fn()
 
-      const gridApi = {
+      const gridApi = asGridApi({
         getFilterModel: vi.fn().mockReturnValue({}),
         setFilterModel
-      } as unknown as GridApi
+      })
 
       const urlSync = new AGGridUrlSync(gridApi, {
         ...undefinedConfig,
@@ -95,10 +104,10 @@ describe('AGGridUrlSync', () => {
     })
 
     it('should give hasFilters false when only the page has params (#215)', () => {
-      const api = {
+      const api = asGridApi({
         getFilterModel: vi.fn().mockReturnValue({}),
         setFilterModel: vi.fn()
-      } as unknown as GridApi
+      })
 
       const urlSync = new AGGridUrlSync(api)
       expect(urlSync.getUrlState('https://example.com/?tab=1')).toEqual({

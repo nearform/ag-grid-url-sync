@@ -70,10 +70,20 @@ type IdsWhere<Ops extends readonly unknown[], Match> = Ops extends readonly [
     : IdsWhere<Rest, Match>
   : []
 
+/**
+ * The tuples for each filter type, in a map. A generic `T` then indexes
+ * concrete tuples, so TypeScript can compare the generic type with a list of
+ * ids.
+ */
+type OnlyForTuples = {
+  [K in OperatorFilterType]: Readonly<
+    IdsWhere<typeof OPERATORS, { types: readonly [K] }>
+  >
+}
+
 /** Ids of the operations that only one filter type supports, as a tuple */
-export type OperationsOnlyForTuple<T extends OperatorFilterType> = Readonly<
-  IdsWhere<typeof OPERATORS, { types: readonly [T] }>
->
+export type OperationsOnlyForTuple<T extends OperatorFilterType> =
+  OnlyForTuples[T]
 
 /** Ids of the operations that every filter type supports, as a tuple */
 export type SharedOperationsTuple = Readonly<
@@ -84,10 +94,12 @@ export type SharedOperationsTuple = Readonly<
  * Ids of the operations that a filter type supports, as a tuple: its own
  * operations first, then the shared ones
  */
-export type OperationsForTuple<T extends OperatorFilterType> =
-  OperationsOnlyForTuple<T> extends infer Own extends readonly unknown[]
-    ? readonly [...Own, ...SharedOperationsTuple]
-    : never
+export type OperationsForTuple<T extends OperatorFilterType> = {
+  [K in OperatorFilterType]: readonly [
+    ...OnlyForTuples[K],
+    ...SharedOperationsTuple
+  ]
+}[T]
 
 /** Ids of the operations that a filter type supports, shared ones included */
 export type OperationsFor<T extends OperatorFilterType> =
@@ -102,23 +114,34 @@ export type SharedOperationId = SharedOperationsTuple[number]
 
 const isShared = (op: Operator): boolean => op.types.length === ALL_TYPES.length
 
-const supports = (op: Operator, type: OperatorFilterType): boolean =>
-  (op.types as readonly OperatorFilterType[]).includes(type)
+// `type` is a string, because AG Grid gives any filter type name
+const supports = (op: Operator, type: string | undefined): boolean =>
+  op.types.some(own => own === type)
 
 /** The operations that only `type` supports, in table order */
 export function operationsOnlyFor<T extends OperatorFilterType>(
   type: T
 ): OperationsOnlyForTuple<T> {
-  return OPERATORS.flatMap(op =>
+  const ids: readonly OperatorId[] = OPERATORS.flatMap(op =>
     !isShared(op) && supports(op, type) ? [op.id] : []
-  ) as unknown as OperationsOnlyForTuple<T>
+  )
+
+  // SAFETY: OperationsOnlyForTuple<T> takes the same rows of OPERATORS, in
+  // the same order, with the same test. operators.test.ts checks the values
+  // and operators.test-d.ts checks the types, for each filter type.
+  return ids as OperationsOnlyForTuple<T>
 }
 
 /** The operations that every filter type supports, in table order */
 export function sharedOperations(): SharedOperationsTuple {
-  return OPERATORS.flatMap(op =>
+  const ids: readonly OperatorId[] = OPERATORS.flatMap(op =>
     isShared(op) ? [op.id] : []
-  ) as unknown as SharedOperationsTuple
+  )
+
+  // SAFETY: SharedOperationsTuple takes the same rows of OPERATORS, in the
+  // same order, with the same test. operators.test.ts checks the values and
+  // operators.test-d.ts checks the type.
+  return ids as SharedOperationsTuple
 }
 
 /**
@@ -128,9 +151,12 @@ export function sharedOperations(): SharedOperationsTuple {
 export function operationsFor<T extends OperatorFilterType>(
   type: T
 ): OperationsForTuple<T> {
-  const own = operationsOnlyFor(type) as unknown as readonly string[]
+  const own: readonly OperatorId[] = operationsOnlyFor(type)
+  const ids: readonly OperatorId[] = [...own, ...sharedOperations()]
 
-  return [...own, ...sharedOperations()] as unknown as OperationsForTuple<T>
+  // SAFETY: OperationsForTuple<T> is OperationsOnlyForTuple<T> followed by
+  // SharedOperationsTuple, the two lists joined here
+  return ids as OperationsForTuple<T>
 }
 
 const BY_ID = new Map<string, Operator>(OPERATORS.map(op => [op.id, op]))
@@ -157,30 +183,32 @@ export function operatorFromAgGrid(
   agGridName: string | undefined
 ): Operator | undefined {
   return OPERATORS.find(
-    op =>
-      op.agGrid === agGridName && supports(op, filterType as OperatorFilterType)
+    op => op.agGrid === agGridName && supports(op, filterType)
   )
 }
 
 /** Whether `id` is an operation that only `type` supports */
-export function isOperationOnlyFor(
+export function isOperationOnlyFor<T extends OperatorFilterType>(
   id: string,
-  type: OperatorFilterType
-): boolean {
+  type: T
+): id is OperationsOnlyFor<T> {
   const op = operatorById(id)
 
   return op !== undefined && !isShared(op) && supports(op, type)
 }
 
 /** Whether `id` is an operation that every filter type supports */
-export function isSharedOperation(id: string): boolean {
+export function isSharedOperation(id: string): id is SharedOperationId {
   const op = operatorById(id)
 
   return op !== undefined && isShared(op)
 }
 
 /** Whether `id` is an operation that `type` supports */
-export function isOperationFor(id: string, type: OperatorFilterType): boolean {
+export function isOperationFor<T extends OperatorFilterType>(
+  id: string,
+  type: T
+): id is OperationsFor<T> {
   const op = operatorById(id)
 
   return op !== undefined && supports(op, type)

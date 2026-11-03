@@ -197,7 +197,7 @@ const typeLosingFilter: fc.Arbitrary<ColumnFilter> = fc.oneof(
 )
 
 const filterState = (filter: fc.Arbitrary<ColumnFilter>) =>
-  fc.dictionary(columnId, filter, { maxKeys: 5 }) as fc.Arbitrary<FilterState>
+  fc.dictionary(columnId, filter, { maxKeys: 5 })
 
 /** Host params that do not use the filter prefix or the grouped param name */
 const hostParams = fc.array(

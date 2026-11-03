@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { parseFilterParam, parseUrlFilters } from './url-parser.js'
 import { InvalidFilterError, InvalidURLError } from './types.js'
 import type { InternalConfig } from './types.js'
+import { asGridApi } from '../test-helpers.js'
 
 describe('URL Parser', () => {
   const mockConfig: InternalConfig = {
-    gridApi: {} as any,
+    gridApi: asGridApi({}),
     paramPrefix: 'f_',
     maxValueLength: 200,
     onParseError: vi.fn(),
@@ -340,7 +341,7 @@ describe('URL Parser', () => {
         }
 
         expect(caught).toBeInstanceOf(InvalidURLError)
-        expect((caught as InvalidURLError).cause).toBeInstanceOf(TypeError)
+        expect(caught).toHaveProperty('cause', expect.any(TypeError))
       })
     })
 

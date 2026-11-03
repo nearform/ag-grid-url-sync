@@ -3,20 +3,27 @@ import type {
   FilterState,
   InternalConfig,
   ColumnFilter,
-  TextFilterOperation,
-  NumberFilterOperation,
-  DateFilterOperation,
   AGGridFilter
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
-import { NUMBER_FILTER_OPERATIONS } from './types.js'
+import {
+  NUMBER_FILTER_OPERATIONS,
+  isDateFilterOperation,
+  isNumberFilterOperation,
+  isTextFilterOperation
+} from './types.js'
 import { operatorById, operatorFromAgGrid } from './operators.js'
 import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
+import { toError } from './to-error.js'
 import type { GridApi } from 'ag-grid-community'
 
-/** The AG Grid name of an internal operation */
-function toAgGridOperation(operation: string): ISimpleFilterModelType {
-  return operatorById(operation)?.agGrid as ISimpleFilterModelType
+/**
+ * The AG Grid name of an internal operation. Null (no operation, in AG Grid's
+ * model types) for an id that is not in the operator table, which only
+ * untyped input can give.
+ */
+function toAgGridOperation(operation: string): ISimpleFilterModelType | null {
+  return operatorById(operation)?.agGrid ?? null
 }
 
 /**
@@ -92,10 +99,10 @@ export function getFilterModel(config: InternalConfig): FilterState {
         // The lookup key is the filter type and the AG Grid name
         const operator = operatorFromAgGrid('text', filter.type)
 
-        if (operator) {
+        if (operator && isTextFilterOperation(operator.id)) {
           filterState[column] = {
             filterType: 'text',
-            type: operator.id as TextFilterOperation,
+            type: operator.id,
             filter: String(filter.filter || '')
           }
         }
@@ -104,11 +111,10 @@ export function getFilterModel(config: InternalConfig): FilterState {
       else if (filter.filterType === 'number') {
         // AG Grid uses the same names for number and date operations, so the
         // lookup key is the filter type and the AG Grid name
-        const internalOperation = operatorFromAgGrid('number', filter.type)
-          ?.id as NumberFilterOperation | undefined
+        const internalOperation = operatorFromAgGrid('number', filter.type)?.id
 
         // If the operation type is not recognized, report the error
-        if (!internalOperation) {
+        if (!internalOperation || !isNumberFilterOperation(internalOperation)) {
           if (config.onParseError) {
             config.onParseError(
               new Error(
@@ -148,11 +154,9 @@ export function getFilterModel(config: InternalConfig): FilterState {
       else {
         // AG Grid uses generic names for date operations (`lessThan` is
         // `dateBefore`), so the lookup key is the filter type and the name
-        const mappedOperation = operatorFromAgGrid('date', filter.type)?.id as
-          | DateFilterOperation
-          | undefined
+        const mappedOperation = operatorFromAgGrid('date', filter.type)?.id
 
-        if (mappedOperation) {
+        if (mappedOperation && isDateFilterOperation(mappedOperation)) {
           const from = toIsoDateString(
             filter.dateFrom || String(filter.filter || '')
           )
@@ -174,7 +178,7 @@ export function getFilterModel(config: InternalConfig): FilterState {
     return filterState
   } catch (error) {
     if (config.onParseError) {
-      config.onParseError(error as Error)
+      config.onParseError(toError(error))
     }
 
     return {}
@@ -190,7 +194,7 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
     if (filter.type === 'dateRange') {
       return {
         filterType: 'date',
-        type: 'inRange' as ISimpleFilterModelType, // AG Grid uses 'inRange' for date ranges
+        type: 'inRange', // AG Grid uses 'inRange' for date ranges
         dateFrom: filter.filter,
         dateTo: filter.filterTo || null
       }
@@ -200,7 +204,7 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
     if (filter.type === 'blank' || filter.type === 'notBlank') {
       return {
         filterType: 'date',
-        type: filter.type as ISimpleFilterModelType,
+        type: filter.type,
         dateFrom: null,
         dateTo: null
       }
@@ -293,7 +297,7 @@ export function applyFilterModel(
     config.gridApi.setFilterModel(model)
   } catch (error) {
     if (config.onParseError) {
-      config.onParseError(error as Error)
+      config.onParseError(toError(error))
     }
   }
 }

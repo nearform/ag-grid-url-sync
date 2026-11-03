@@ -15,6 +15,7 @@ import {
   validateDateFilter,
   DEFAULT_CONFIG
 } from './validation.js'
+import { toError } from './to-error.js'
 
 // Individual (prefixed) URL parameter serialization and parsing.
 //
@@ -122,7 +123,7 @@ export function serializeFilters(
         }
       } catch (error) {
         // Skip this filter and keep the others, the same as parsing does
-        config.onParseError?.(error as Error)
+        config.onParseError?.(toError(error))
         continue
       }
     }
@@ -268,7 +269,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
       return {
         filterType: 'date',
-        type: filterOp as any,
+        type: filterOp,
         filter: startDate,
         filterTo: endDate
       }
@@ -302,7 +303,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
     return {
       filterType: 'number',
-      type: filterOp as any,
+      type: filterOp,
       filter: min,
       filterTo: max
     }
@@ -312,7 +313,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
   if (isOperationOnlyFor(filterOp, 'date')) {
     try {
       const dateValue = validateAndParseDate(value)
-      const validation = validateDateFilter(dateValue, filterOp as any)
+      const validation = validateDateFilter(dateValue, filterOp)
 
       if (!validation.valid) {
         throw new InvalidFilterError(validation.error || 'Invalid date filter')
@@ -320,7 +321,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
       return {
         filterType: 'date',
-        type: filterOp as any,
+        type: filterOp,
         filter: dateValue
       }
     } catch (error) {
@@ -336,7 +337,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
     return {
       filterType: 'number',
-      type: filterOp as any,
+      type: filterOp,
       filter: numValue
     }
   }
@@ -351,7 +352,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
         return {
           filterType: 'date',
-          type: filterOp as any,
+          type: filterOp,
           filter: dateValue
         }
       } catch {
@@ -365,7 +366,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
       if (numValue !== null) {
         return {
           filterType: 'number',
-          type: filterOp as any,
+          type: filterOp,
           filter: numValue
         }
       }
@@ -374,7 +375,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
     // Handle as text filter (default for shared operations)
     return {
       filterType: 'text',
-      type: filterOp as any,
+      type: filterOp,
       filter: filterOp === 'blank' || filterOp === 'notBlank' ? '' : value || ''
     }
   }
@@ -382,7 +383,7 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
   // Handle text-specific operations (existing logic)
   return {
     filterType: 'text',
-    type: filterOp as any,
+    type: filterOp,
     filter: value || ''
   }
 }
@@ -429,7 +430,7 @@ export function parseIndividualParams(
       }
     } catch (error) {
       // Log parsing errors through the configured error handler
-      config.onParseError?.(error as Error)
+      config.onParseError?.(toError(error))
       // Continue processing other parameters instead of failing completely
       continue
     }

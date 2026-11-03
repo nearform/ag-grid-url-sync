@@ -12,6 +12,7 @@ import {
 } from '../individual-params.js'
 import { DEFAULT_CONFIG, validateFilterValue } from '../validation.js'
 import { ColumnFilterSchema, JsonObjectSchema } from '../schemas.js'
+import { toError } from '../to-error.js'
 
 /**
  * Returns a copy of the filter state with every text value over
@@ -35,7 +36,7 @@ function dropOverLengthTextValues(
 
       return true
     } catch (error) {
-      cfg.onParseError?.(new InvalidSerializationError(format, error as Error))
+      cfg.onParseError?.(new InvalidSerializationError(format, toError(error)))
 
       return false
     }
@@ -79,7 +80,7 @@ function parseAndValidateJson(value: string): FilterState {
     // prototype setter instead.
     return Object.fromEntries(entries)
   } catch (error) {
-    throw new Error(`JSON parsing failed: ${(error as Error).message}`)
+    throw new Error(`JSON parsing failed: ${toError(error).message}`)
   }
 }
 
@@ -164,7 +165,7 @@ export class Base64Serializer implements FormatSerializer {
         'base64'
       )
     } catch (error) {
-      throw new Error(`Base64 decoding failed: ${(error as Error).message}`)
+      throw new Error(`Base64 decoding failed: ${toError(error).message}`)
     }
   }
 }

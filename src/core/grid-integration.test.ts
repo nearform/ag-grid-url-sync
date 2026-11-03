@@ -6,21 +6,18 @@ import {
 } from './grid-integration.js'
 
 import type { InternalConfig, FilterState } from './types.js'
+import { asGridApi, createGridApiSpies } from '../test-helpers.js'
 
 describe('Grid Integration', () => {
-  let mockGridApi: any
+  let mockGridApi: ReturnType<typeof createGridApiSpies>
   let mockConfig: InternalConfig
   let consoleSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    mockGridApi = {
-      getFilterModel: vi.fn(),
-      setFilterModel: vi.fn(),
-      getColumn: vi.fn()
-    }
+    mockGridApi = createGridApiSpies()
     mockConfig = {
-      gridApi: mockGridApi,
+      gridApi: asGridApi(mockGridApi),
       paramPrefix: 'f_',
       maxValueLength: 200,
       onParseError: vi.fn(),
@@ -41,7 +38,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agNumberColumnFilter' })
       })
 
-      const result = detectColumnFilterType(mockGridApi, 'age')
+      const result = detectColumnFilterType(asGridApi(mockGridApi), 'age')
       expect(result).toBe('number')
     })
 
@@ -50,7 +47,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agDateColumnFilter' })
       })
 
-      const result = detectColumnFilterType(mockGridApi, 'created')
+      const result = detectColumnFilterType(asGridApi(mockGridApi), 'created')
       expect(result).toBe('date')
     })
 
@@ -59,14 +56,18 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agTextColumnFilter' })
       })
 
-      const result = detectColumnFilterType(mockGridApi, 'name')
+      const result = detectColumnFilterType(asGridApi(mockGridApi), 'name')
       expect(result).toBe('text')
     })
 
     it('should handle missing column', () => {
       mockGridApi.getColumn.mockReturnValue(null)
 
-      const result = detectColumnFilterType(mockGridApi, 'nonexistent')
+      const result = detectColumnFilterType(
+        asGridApi(mockGridApi),
+        'nonexistent'
+      )
+
       expect(result).toBe('text')
     })
 
@@ -75,7 +76,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({})
       })
 
-      const result = detectColumnFilterType(mockGridApi, 'nofilter')
+      const result = detectColumnFilterType(asGridApi(mockGridApi), 'nofilter')
       expect(result).toBe('text')
     })
   })
@@ -233,7 +234,7 @@ describe('Grid Integration', () => {
           type: 'inRange',
           filter: 50000,
           filterTo: 100000
-        } as any
+        }
       }
 
       mockGridApi.getColumn.mockReturnValue({
@@ -266,7 +267,7 @@ describe('Grid Integration', () => {
           type: 'dateRange',
           filter: '2024-01-01',
           filterTo: '2024-12-31'
-        } as any
+        }
       }
 
       mockGridApi.getColumn.mockReturnValue({
@@ -327,7 +328,7 @@ describe('Grid Integration', () => {
 
     it('should handle number range without filterTo', () => {
       const filterState: FilterState = {
-        age: { filterType: 'number', type: 'inRange', filter: 25 } as any
+        age: { filterType: 'number', type: 'inRange', filter: 25 }
       }
 
       mockGridApi.getColumn.mockReturnValue({
@@ -380,6 +381,8 @@ describe('Grid Integration', () => {
     })
 
     it('should skip invalid filter objects', () => {
+      // SAFETY: applyFilterModel skips an entry that is not a filter object
+      // (the case under test), as a JavaScript caller can give one
       const filterState: FilterState = {
         valid: { filterType: 'text', type: 'contains', filter: 'john' },
         invalid: null as any,

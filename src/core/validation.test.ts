@@ -12,12 +12,13 @@ import {
 } from './validation.js'
 import { InvalidFilterError, InvalidDateError } from './types.js'
 import type { InternalConfig } from './types.js'
+import { asGridApi } from '../test-helpers.js'
 
 describe('Validation Functions', () => {
   describe('validateFilterValue', () => {
     const mockConfig: InternalConfig = {
       ...DEFAULT_CONFIG,
-      gridApi: {} as InternalConfig['gridApi'],
+      gridApi: asGridApi({}),
       paramPrefix: 'f_',
       maxValueLength: 10,
       onParseError: () => {}

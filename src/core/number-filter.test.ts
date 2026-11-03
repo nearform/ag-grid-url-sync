@@ -1,21 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { getFilterModel, applyFilterModel } from './grid-integration.js'
 import type { InternalConfig, FilterState } from './types.js'
+import { asGridApi, createGridApiSpies } from '../test-helpers.js'
 
 describe('Number Filter Operations', () => {
-  let mockGridApi: any
+  let mockGridApi: ReturnType<typeof createGridApiSpies>
   let mockConfig: InternalConfig
   let consoleSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    mockGridApi = {
-      getFilterModel: vi.fn(),
-      setFilterModel: vi.fn(),
-      getColumn: vi.fn()
-    }
+    mockGridApi = createGridApiSpies()
     mockConfig = {
-      gridApi: mockGridApi,
+      gridApi: asGridApi(mockGridApi),
       paramPrefix: 'f_',
       maxValueLength: 200,
       onParseError: vi.fn(),
@@ -355,8 +352,7 @@ describe('Number Filter Operations', () => {
       expect(result.eq.filter).toBe(50)
       expect(result.ne.filter).toBe(60)
       expect(result.range.filter).toBe(70)
-      // For range operations, we need to cast to access filterTo
-      expect((result.range as any).filterTo).toBe(80)
+      expect(result.range).toHaveProperty('filterTo', 80)
     })
   })
 })

@@ -28,6 +28,9 @@ export class AGGridUrlSync {
     // Keys set to undefined (for example `format: props.format` when the prop
     // is not set) keep their default. A plain spread would replace the
     // default with undefined.
+    // SAFETY: the entries are config's own entries with the undefined ones
+    // removed, so each key keeps the value type that AGGridUrlSyncConfig gives
+    // it and every key stays optional
     const definedConfig = Object.fromEntries(
       Object.entries(config).filter(([, value]) => value !== undefined)
     ) as AGGridUrlSyncConfig

@@ -85,6 +85,12 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   let url = ''
   let applyIssues: readonly URLSyncError[] = NO_ISSUES
   let readIssues: readonly URLSyncError[] = NO_ISSUES
+  let writeIssues: readonly URLSyncError[] = NO_ISSUES
+  const historyMode = options.history ?? 'none'
+  // The filters of the sync's own latest apply, as a key. The filterChanged
+  // that the apply causes comes later, and the app's own setFilterModel uses
+  // the same event source, so the key tells the two apart.
+  let pendingApplied: string | null = null
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
 
   function emit(issue: URLSyncError, source: IssueSource): void {
@@ -124,7 +130,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
   /** Builds a new snapshot, and tells the listeners, when something changed */
   function publish(): void {
-    const issues = [...applyIssues, ...readIssues]
+    const issues = [...applyIssues, ...readIssues, ...writeIssues]
     const hasFilters = Object.keys(state).length > 0
 
     if (
@@ -206,6 +212,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     if (filters && !(onCreate && Object.keys(filters).length === 0)) {
       try {
         applyFilterModel(filters, api, call.options)
+        pendingApplied = filtersKey(filters)
       } catch (cause) {
         fail(call, cause, 'GRID_ERROR')
       }
@@ -218,10 +225,72 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     return { issues: call.issues }
   }
 
+  /**
+   * A key for a filter state that does not depend on the order of the
+   * filters or of the page's params
+   */
+  function filtersKey(filters: FilterState): string {
+    const sorted = Object.fromEntries(
+      Object.entries(filters).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    )
+
+    return generateUrl(
+      'http://key.invalid/',
+      sorted,
+      startCall('grid', 'collect').options
+    )
+  }
+
+  /** Writes the snapshot's URL to the address bar, or gives it to the router */
+  function write(source: IssueSource, replace: boolean): void {
+    try {
+      if (historyMode instanceof Function) {
+        historyMode(url)
+      } else if (replace || historyMode === 'replace') {
+        window.history.replaceState(window.history.state, '', url)
+      } else {
+        window.history.pushState(window.history.state, '', url)
+      }
+
+      writeIssues = NO_ISSUES
+    } catch (cause) {
+      const issue = toIssue(cause, 'HISTORY_WRITE_FAILED')
+      writeIssues = [issue]
+      emit(issue, source)
+    }
+  }
+
+  /**
+   * Writes a filter change, unless the sync's own apply caused it or the
+   * address bar already has the same filters
+   */
+  function writeChange(): void {
+    if (historyMode === 'none' || !hasWindow()) return
+
+    const key = filtersKey(state)
+
+    if (pendingApplied !== null) {
+      const own = key === pendingApplied
+      pendingApplied = null
+
+      if (own) return
+    }
+
+    const current = parseUrlFilters(
+      window.location.href,
+      startCall('grid', 'collect').options
+    )
+
+    if (key === filtersKey(current)) return
+
+    write('grid', false)
+  }
+
   function onFilterChanged(): void {
     if (status !== 'active') return
 
     readGrid()
+    writeChange()
     publish()
   }
 
@@ -301,6 +370,17 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
   if (options.applyUrlOnCreate !== false && hasWindow()) {
     apply(window.location.href, 'url', 'report', true)
+
+    // The URL gave no filters, so the grid's own filters stay: show them in
+    // the address bar too, with no new history entry
+    if (
+      pendingApplied === null &&
+      historyMode !== 'none' &&
+      Object.keys(state).length > 0
+    ) {
+      write('url', true)
+      publish()
+    }
   } else {
     readGrid()
     publish()

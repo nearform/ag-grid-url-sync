@@ -1625,7 +1625,11 @@ describe('useAGGridUrlSync', () => {
 
       await waitForEffects()
 
-      expect(onError).toHaveBeenCalledWith(failure, 'auto-apply-filters')
+      // A grid error is a GRID_ERROR with the grid's error as its cause (#220)
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'GRID_ERROR', cause: failure }),
+        'auto-apply-filters'
+      )
       // The URL made no claim, so this is not a parse failure.
       expect(onParseError).not.toHaveBeenCalled()
       // The failed write must not leave a view marked as active.
@@ -3151,6 +3155,66 @@ describe('useAGGridUrlSync', () => {
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ code: 'VIEW_NOT_FOUND' }),
         'load-view'
+      )
+    })
+
+    // The hook's own grid calls give GRID_ERROR too, with the grid's error as
+    // the cause, also when the grid throws a value that is not an Error
+    test('a grid that throws in loadView gives GRID_ERROR', async () => {
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), {
+          storageKey: 'codes-grid',
+          onError
+        })
+      )
+
+      await waitForEffects()
+
+      let id = ''
+      act(() => {
+        id = result.current.saveView('A')?.id ?? ''
+      })
+      mockGridApi.setFilterModel = vi.fn(() => {
+        throw new String('grid failed')
+      })
+
+      act(() => result.current.loadView(id))
+
+      expect(onError).toHaveBeenCalledOnce()
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'GRID_ERROR',
+          cause: expect.objectContaining({ message: 'grid failed' })
+        }),
+        'load-view'
+      )
+    })
+
+    test('a grid that throws in saveView gives GRID_ERROR', async () => {
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), {
+          storageKey: 'codes-grid',
+          onError
+        })
+      )
+
+      await waitForEffects()
+      mockGridApi.getFilterModel = vi.fn(() => {
+        throw new Error('grid failed')
+      })
+
+      act(() => {
+        result.current.saveView('A')
+      })
+
+      expect(onError).toHaveBeenCalledOnce()
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'GRID_ERROR' }),
+        'save-view'
       )
     })
 

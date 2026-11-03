@@ -10,7 +10,7 @@ import { resolveParamPrefix } from '../core/individual-params.js'
 import { createViewStore, type GridView } from '../core/view-storage.js'
 import { DEFAULT_CONFIG, resolveOptions } from '../core/options.js'
 import { toError } from '../core/to-error.js'
-import { isDataIssue } from '../core/issues.js'
+import { isDataIssue, toIssue } from '../core/issues.js'
 import { URLSyncError } from '../core/types.js'
 import type {
   FilterState,
@@ -47,6 +47,18 @@ function sameFilterModel(a: FilterModel, b: FilterModel): boolean {
     keys.length === Object.keys(b).length &&
     keys.every(key => JSON.stringify(a[key]) === JSON.stringify(b[key]))
   )
+}
+
+/**
+ * Runs one grid API call. An error from the grid becomes a GRID_ERROR issue,
+ * with the grid's error as its cause, so onError gets a code for it (#220).
+ */
+function callGrid<T>(call: () => T): T {
+  try {
+    return call()
+  } catch (cause) {
+    throw toIssue(cause, 'GRID_ERROR')
+  }
 }
 
 /**
@@ -183,7 +195,7 @@ export function useAGGridUrlSync(
       writingRef.current = true
 
       try {
-        api.setFilterModel(model)
+        callGrid(() => api.setFilterModel(model))
       } catch (error) {
         pendingWriteRef.current = null
         throw error
@@ -928,7 +940,11 @@ export function useAGGridUrlSync(
 
       try {
         // saveView records the new view as active inside the store.
-        const view = viewStore.saveView(name, gridApi.getFilterModel())
+        const view = viewStore.saveView(
+          name,
+          callGrid(() => gridApi.getFilterModel())
+        )
+
         syncViewsFromStore()
         // The grid holds exactly these filters, in its own form.
         commitActiveViewId(view.id)
@@ -1094,10 +1110,10 @@ export function useAGGridUrlSync(
         // and can return null despite its type.
         if (wasActive && applied !== undefined && gridApi !== null) {
           try {
-            const current = gridApi.getFilterModel()
+            const current = callGrid(() => gridApi.getFilterModel())
 
             if (current && sameFilterModel(current, applied)) {
-              gridApi.setFilterModel({})
+              callGrid(() => gridApi.setFilterModel({}))
             }
           } catch (error) {
             reportFailure(error, 'delete-view')

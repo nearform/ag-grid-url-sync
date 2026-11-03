@@ -91,6 +91,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   // that the apply causes comes later, and the app's own setFilterModel uses
   // the same event source, so the key tells the two apart.
   let pendingApplied: string | null = null
+  const listensToPopstate = options.popstate ?? historyMode === 'push'
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
 
   function emit(issue: URLSyncError, source: IssueSource): void {
@@ -294,10 +295,22 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     publish()
   }
 
+  /** The back or forward button: apply the new address bar */
+  function onPopstate(): void {
+    if (status !== 'active') return
+
+    apply(window.location.href, 'url', 'report', false)
+  }
+
   function destroy(): void {
     if (status === 'destroyed') return
 
     status = 'destroyed'
+
+    if (listensToPopstate && hasWindow()) {
+      window.removeEventListener('popstate', onPopstate)
+    }
+
     api.removeEventListener('filterChanged', onFilterChanged)
     api.removeEventListener('gridPreDestroyed', destroy)
     publish()
@@ -367,6 +380,10 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
   api.addEventListener('filterChanged', onFilterChanged)
   api.addEventListener('gridPreDestroyed', destroy)
+
+  if (listensToPopstate && hasWindow()) {
+    window.addEventListener('popstate', onPopstate)
+  }
 
   if (options.applyUrlOnCreate !== false && hasWindow()) {
     apply(window.location.href, 'url', 'report', true)

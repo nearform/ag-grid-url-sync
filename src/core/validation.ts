@@ -114,8 +114,10 @@ const NUMBER_FORMAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 /**
  * A space between the `e` and the exponent digits. URLSearchParams reads a
  * raw `+` as a space, so "1e+21" in a hand-typed URL arrives as "1e 21".
+ * Only validateAndParseNumber reads it as a sign: in the eq type guess, a text
+ * value such as "2E 5" must stay text.
  */
-const EXPONENT_SPACE = /(?<=\d[eE]) (?=\d+$)/
+const EXPONENT_SPACE = /(?<=[\d.][eE]) (?=\d+$)/
 
 /** The most significant digits that toPrecision writes */
 const MAX_PRECISION = 100
@@ -154,9 +156,6 @@ function significantDigits(text: string): string {
 function keepsDigits(text: string, number: number): boolean {
   const key = significantDigits(text)
   const precision = Math.max(1, key.indexOf('e'))
-
-  if (precision > MAX_PRECISION) return false
-
   const magnitude = Math.abs(number)
 
   return (
@@ -171,11 +170,11 @@ function keepsDigits(text: string, number: number): boolean {
  * whole value must be a number, it must be finite, and it must not be rounded
  * when it is stored as a double.
  *
- * The form does not matter: "1e21", "1E+21", "1e 21" (a raw `+`) and
- * "1000000000000000000000" are all 1e21, and "1.50" and "007" are 1.5 and 7.
+ * The form does not matter: "1e21", "1E+21" and "1000000000000000000000" are
+ * all 1e21, and "1.50" and "007" are 1.5 and 7.
  */
 export function readNumber(value: string): number | InvalidFilterError {
-  const text = (value?.trim() ?? '').replace(EXPONENT_SPACE, '+')
+  const text = value?.trim() ?? ''
 
   if (!text) {
     return new InvalidFilterError('Number filter value cannot be empty')
@@ -190,6 +189,14 @@ export function readNumber(value: string): number | InvalidFilterError {
 
   if (!validation.valid) {
     return new InvalidFilterError(validation.error || 'Invalid number value')
+  }
+
+  // toPrecision writes at most MAX_PRECISION digits, so a longer text cannot
+  // be compared. Nothing is rounded: the text is too long to check.
+  if (significantDigits(text).indexOf('e') > MAX_PRECISION) {
+    return new InvalidFilterError(
+      `Number value has more than ${MAX_PRECISION} significant digits: ${text}`
+    )
   }
 
   if (!keepsDigits(text, number)) {
@@ -218,7 +225,9 @@ export function parseExactNumber(value: string): number | null {
  * @returns Parsed number or throws InvalidFilterError
  */
 export function validateAndParseNumber(value: string): number {
-  const number = readNumber(value)
+  // A number-only operation has no text fallback, so a space here can only
+  // be the exponent sign
+  const number = readNumber((value?.trim() ?? '').replace(EXPONENT_SPACE, '+'))
 
   if (number instanceof InvalidFilterError) throw number
 

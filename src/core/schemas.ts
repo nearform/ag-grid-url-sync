@@ -98,7 +98,8 @@ export const AgGridFilterSchema = v.variant('filterType', [
     filterType: v.literal('number'),
     type: agGridOperation,
     filter: agGridValue,
-    filterTo: v.fallback(v.optional(v.number()), undefined)
+    // A string that AG Grid kept from the input box is read with readNumber
+    filterTo: agGridValue
   }),
   v.looseObject({
     filterType: v.literal('date'),

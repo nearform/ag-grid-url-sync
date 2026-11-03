@@ -58,7 +58,10 @@ const hardChar = fc.constantFrom(
   'é',
   'ß',
   '日',
-  '😀'
+  '😀',
+  // With digits and a space, a text value can look like an exponent (#238)
+  'e',
+  'E'
 )
 
 const columnId = fc.oneof(
@@ -77,11 +80,20 @@ const textValue = fc.oneof(
     unit: fc.constantFrom('a', ' ', '=', '&', ',', 'é', '日'),
     minLength: DEFAULT_CONFIG.maxValueLength,
     maxLength: DEFAULT_CONFIG.maxValueLength
-  })
+  }),
+  // Text shaped like a number with a space, such as a part code "2E 5". The
+  // URL writes the space as `+`, so it must not come back as an exponent (#238)
+  fc.stringMatching(/^[+-]?\d{1,3}(\.\d{0,2})?[eE] \d{1,3}$/)
 )
 
-const STRICT_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * A number as the URL format defines it. This is an oracle written apart
+ * from the parser on purpose: a filter that called the parser would also
+ * remove the values that show a parser bug, such as "2E 5" read as a number.
+ */
+const STRICT_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 
 /** A text value that the parser cannot take as a number or a date */
 const unambiguousTextValue = textValue.filter(

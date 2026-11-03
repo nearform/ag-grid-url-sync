@@ -166,11 +166,41 @@ describe('Grid Integration', () => {
       expect(mockConfig.onParseError).toHaveBeenCalledWith(
         expect.objectContaining({
           message:
-            'Number value 12345678901234567890 would be rounded to 12345678901234567000'
+            "Number value 12345678901234567890 would be rounded to 12345678901234567000 (column 'id')"
         })
       )
       expect(mockConfig.onParseError).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Invalid number format: abc' })
+        expect.objectContaining({
+          message: "Invalid number format: abc (column 'name')"
+        })
+      )
+    })
+
+    it('should read a string filterTo from AG Grid as an exact number (#238)', () => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        p: {
+          filterType: 'number',
+          type: 'inRange',
+          filter: '5',
+          filterTo: '10'
+        },
+        q: {
+          filterType: 'number',
+          type: 'inRange',
+          filter: 5,
+          filterTo: '12345678901234567890'
+        }
+      })
+
+      expect(getFilterModel(mockConfig)).toEqual({
+        p: { filterType: 'number', type: 'inRange', filter: 5, filterTo: 10 }
+      })
+      expect(mockConfig.onParseError).toHaveBeenCalledOnce()
+      expect(mockConfig.onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message:
+            "Number value 12345678901234567890 would be rounded to 12345678901234567000 (column 'q')"
+        })
       )
     })
 

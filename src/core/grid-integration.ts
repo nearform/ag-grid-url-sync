@@ -29,6 +29,24 @@ function toAgGridOperation(operation: string): ISimpleFilterModelType | null {
 }
 
 /**
+ * A number from the AG Grid model. A number value is what the grid filters
+ * on, so it is kept. A string that AG Grid kept from the input box gets the
+ * same check as a URL param, and the error names the column (#238).
+ */
+function gridNumber(
+  value: string | number | null | undefined,
+  column: string
+): number | InvalidFilterError {
+  if (!v.is(v.string(), value)) return Number(value)
+
+  const number = readNumber(value)
+
+  return number instanceof InvalidFilterError
+    ? new InvalidFilterError(`${number.message} (column '${column}')`)
+    : number
+}
+
+/**
  * Converts a date string to ISO format (YYYY-MM-DD)
  * Handles both date strings and undefined values
  * Returns an empty string if the input is undefined or invalid
@@ -134,15 +152,21 @@ export function getFilterModel(config: InternalConfig): FilterState {
           continue
         }
 
-        // A number value is what the grid filters on, so it is kept. A string
-        // that AG Grid kept from the input box gets the same check as a URL
-        // param (#238).
-        const numericValue = v.is(v.string(), filter.filter)
-          ? readNumber(filter.filter)
-          : Number(filter.filter)
+        const numericValue = gridNumber(filter.filter, column)
+
+        const numericTo =
+          filter.filterTo === undefined || filter.filterTo === null
+            ? undefined
+            : gridNumber(filter.filterTo, column)
 
         if (numericValue instanceof InvalidFilterError) {
           if (config.onParseError) config.onParseError(numericValue)
+
+          continue
+        }
+
+        if (numericTo instanceof InvalidFilterError) {
+          if (config.onParseError) config.onParseError(numericTo)
 
           continue
         }
@@ -155,12 +179,12 @@ export function getFilterModel(config: InternalConfig): FilterState {
         // Handle range operations
         filters.set(
           column,
-          internalOperation === 'inRange' && filter.filterTo !== undefined
+          internalOperation === 'inRange' && numericTo !== undefined
             ? {
                 filterType: 'number',
                 type: internalOperation,
                 filter: numericValue,
-                filterTo: filter.filterTo
+                filterTo: numericTo
               }
             : {
                 filterType: 'number',

@@ -133,6 +133,25 @@ describe('Validation Functions', () => {
       )
     })
 
+    // URLSearchParams reads a raw `+` as a space. In a number-only operation
+    // the space can only be an exponent sign.
+    it.each([
+      ['1e 21', 1e21],
+      ['1.5E 21', 1.5e21],
+      ['1.e 5', 1e5]
+    ])('should read %s as %s (#238)', (value, expected) => {
+      expect(validateAndParseNumber(value)).toBe(expected)
+    })
+
+    it('should give its own message for more than 100 significant digits', () => {
+      // The exact value of the double 1e-22, 104 significant digits
+      expect(() =>
+        validateAndParseNumber(
+          '0.00000000000000000000010000000000000000485967743265708723529783189783450120951502847720104849571498561999760568141937255859375'
+        )
+      ).toThrow('Number value has more than 100 significant digits')
+    })
+
     it('should quote the trimmed value in every message', () => {
       expect(() => validateAndParseNumber(' 42abc ')).toThrow(
         'Invalid number format: 42abc'
@@ -174,10 +193,7 @@ describe('Validation Functions', () => {
       // The double is exactly ...248.25, a tie at 17 digits: String(n)
       // writes .2 and toPrecision(17) writes .3
       ['2194262264886248.2', 2194262264886248.25],
-      ['2194262264886248.3', 2194262264886248.25],
-      // A raw `+` in a hand-typed URL arrives as a space
-      ['1e 21', 1e21],
-      ['1.5E 21', 1.5e21]
+      ['2194262264886248.3', 2194262264886248.25]
     ])('should parse %s as %s', (value, expected) => {
       expect(parseExactNumber(value)).toBe(expected)
     })
@@ -191,6 +207,11 @@ describe('Validation Functions', () => {
       '0.12345678901234567891',
       '1234567890.12345678901234',
       '3.14159265358979323846',
+      // At 17 digits, only the nearest text to the double is kept: these
+      // also parse to 19.99, but 19.99 written with 17 digits is
+      // 19.989999999999998
+      '19.989999999999999',
+      '19.989999999999997',
       // Rounded to the nearest subnormal
       '4e-324',
       // Too small or too large for a double
@@ -200,6 +221,8 @@ describe('Validation Functions', () => {
       '',
       'abc',
       '42abc',
+      // The space for a raw `+` is read only in number-only operations
+      '1e 21',
       '1 e21',
       '1e  21',
       '1 21'

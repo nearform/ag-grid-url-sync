@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { parseFilterParam, parseUrlFilters } from './url-parser.js'
+import { generateUrl } from './url-generator.js'
 import { InvalidFilterError, InvalidURLError } from './types.js'
-import type { InternalConfig } from './types.js'
+import type { FilterState, InternalConfig } from './types.js'
 import { asGridApi } from '../test-helpers.js'
 
 describe('URL Parser', () => {
@@ -234,14 +235,31 @@ describe('URL Parser', () => {
     })
 
     // URLSearchParams reads a raw `+` as a space
-    it('should read an exponent with a raw + in a hand-typed URL (#238)', () => {
-      expect(parseUrlFilters('?f_a_gt=1e+21&f_b_eq=1e+21', mockConfig)).toEqual(
-        {
-          a: { filterType: 'number', type: 'greaterThan', filter: 1e21 },
-          b: { filterType: 'number', type: 'eq', filter: 1e21 }
-        }
-      )
+    // In a number-only operation, the space can only be an exponent sign. In
+    // the eq type guess it stays text, so a text value such as "2E 5" (which
+    // generateUrl writes as 2E+5) round-trips.
+    it('should read an exponent with a raw + in a number-only operation (#238)', () => {
+      expect(
+        parseUrlFilters('?f_a_gt=1e+21&f_b_lt=1.e+5&f_c_eq=1e+21', mockConfig)
+      ).toEqual({
+        a: { filterType: 'number', type: 'greaterThan', filter: 1e21 },
+        b: { filterType: 'number', type: 'lessThan', filter: 1e5 },
+        c: { filterType: 'text', type: 'eq', filter: '1e 21' }
+      })
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
+    it('should round-trip a text value shaped like a number with a space (#238)', () => {
+      const state: FilterState = {
+        code: { filterType: 'text', type: 'eq', filter: '2E 5' }
+      }
+
+      expect(
+        parseUrlFilters(
+          generateUrl('https://x.test/', state, mockConfig),
+          mockConfig
+        )
+      ).toEqual(state)
     })
 
     it('should keep a value that only starts with a number as text (#214)', () => {

@@ -111,8 +111,10 @@ describe('Grouped Serialization', () => {
   describe('deserializeGrouped', () => {
     it('should deserialize querystring format', () => {
       const config = createTestConfig()
+
       const serialized =
         'f_name_contains=john&f_age_gt=25&f_created_after=2024-01-01'
+
       const result = deserializeGrouped(serialized, 'querystring', config)
 
       expect(result.name).toEqual({
@@ -186,6 +188,7 @@ describe('Grouped Serialization', () => {
     it('should detect querystring format', () => {
       const url =
         'http://example.com?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25'
+
       const result = detectGroupedSerialization(url, ['grid_filters'])
 
       expect(result.isGrouped).toBe(true)
@@ -223,6 +226,7 @@ describe('Grouped Serialization', () => {
 
     it('should check multiple possible parameter names', () => {
       const url = 'http://example.com?filters=f_name_contains%3Djohn'
+
       const result = detectGroupedSerialization(url, [
         'grid_filters',
         'filters'
@@ -322,6 +326,7 @@ describe('Format Serializers', () => {
       const state: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: text }
       }
+
       expect(serializer.deserialize(serializer.serialize(state))).toEqual(state)
     })
 
@@ -335,6 +340,7 @@ describe('Format Serializers', () => {
       const state: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: 'café ñ ©' }
       }
+
       const oldLink = btoa(JSON.stringify(state))
       expect(serializer.deserialize(oldLink)).toEqual(state)
     })
@@ -344,6 +350,7 @@ describe('Format Serializers', () => {
       const state: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: 'Ã©' }
       }
+
       const oldLink = btoa(JSON.stringify(state))
       expect(serializer.deserialize(oldLink)).toEqual(state)
     })
@@ -352,6 +359,7 @@ describe('Format Serializers', () => {
       const state: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: '日本 😀 é' }
       }
+
       expect(JSON.parse(atob(serializer.serialize(state)))).toEqual(state)
     })
   })
@@ -377,12 +385,14 @@ describe('Format Serializers', () => {
 
 describe('maxValueLength in json and base64 formats (#213)', () => {
   const long = 'x'.repeat(300)
+
   const state: FilterState = {
     big: { filterType: 'text', type: 'contains', filter: long },
     ok: { filterType: 'text', type: 'contains', filter: 'short' },
     blank: { filterType: 'text', type: 'blank', filter: '' },
     age: { filterType: 'number', type: 'greaterThan', filter: 25 }
   }
+
   const decodeRaw = (format: 'json' | 'base64', v: string) =>
     JSON.parse(format === 'base64' ? atob(v) : v)
 
@@ -404,15 +414,18 @@ describe('maxValueLength in json and base64 formats (#213)', () => {
       it('drops and reports over-length values on parse', () => {
         const onParseError = vi.fn()
         const serializer = getFormatSerializer(format)
+
         const value = serializer.serialize(
           { big: state.big },
           createTestConfig({ maxValueLength: 500 })
         )
+
         const result = deserializeGrouped(
           value,
           format,
           createTestConfig({ format, onParseError })
         )
+
         expect(result).toEqual({})
         expect(onParseError).toHaveBeenCalledTimes(1)
         expect(onParseError.mock.calls[0][0]).toBeInstanceOf(
@@ -435,11 +448,13 @@ describe('maxValueLength in json and base64 formats (#213)', () => {
 
       it('keeps long values when maxValueLength is higher', () => {
         const onParseError = vi.fn()
+
         const config = createTestConfig({
           format,
           maxValueLength: 500,
           onParseError
         })
+
         const { value } = serializeGrouped({ big: state.big }, config)
         expect(deserializeGrouped(value, format, config)).toEqual({
           big: state.big

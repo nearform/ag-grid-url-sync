@@ -216,7 +216,9 @@ const hostParams = fc.array(
 
 const baseUrl = hostParams.map(params => {
   const url = new URL('https://example.com/page')
+
   for (const [key, value] of params) url.searchParams.append(key, value)
+
   return { url: url.toString(), params }
 })
 
@@ -287,9 +289,11 @@ describe('URL round-trip properties (#216)', () => {
       fc.assert(
         fc.property(filterState(unambiguousFilter), baseUrl, (state, base) => {
           const url = new URL(generateUrl(base.url, state, config))
+
           const kept = [...url.searchParams].filter(
             ([key]) => !isFilterParam(key, config)
           )
+
           expect(kept).toEqual(base.params)
         })
       )
@@ -320,6 +324,7 @@ describe('URL round-trip properties (#216)', () => {
           const state: FilterState = {
             [id]: { filterType: 'number', type: 'greaterThan', filter: n }
           }
+
           expect(roundTrip(state, base.url, config)).toEqual(state)
         })
       )

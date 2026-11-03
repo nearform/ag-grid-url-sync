@@ -30,6 +30,7 @@ function withThrowingGridApi(config: ParseConfig): ParseConfig {
       throw new Error('gridApi must not be read on the parse/serialize path')
     }
   })
+
   return guarded
 }
 
@@ -126,6 +127,7 @@ describe('grouped querystring serialization with caller config (#201)', () => {
 
   it("keeps the other filters when one is over the caller's maxValueLength", () => {
     const config = createGroupedConfig({ maxValueLength: 5 })
+
     const age: FilterState = {
       age: { filterType: 'number', type: 'greaterThan', filter: 25 }
     }
@@ -142,6 +144,7 @@ describe('grouped querystring serialization with caller config (#201)', () => {
 
   it("reports a value over the caller's maxValueLength when parsing", () => {
     const config = createGroupedConfig({ maxValueLength: 5 })
+
     const grouped = new URLSearchParams({
       grid_filters: 'f_name_contains=john+smith&f_age_gt=25'
     })
@@ -179,6 +182,7 @@ describe('grouped querystring serialization with caller config (#201)', () => {
 
   it('reports an invalid parameter in the grouped value to onParseError', () => {
     const config = createGroupedConfig()
+
     const grouped = new URLSearchParams({
       grid_filters: 'f_name_contains=john&f_age_gt=abc'
     })

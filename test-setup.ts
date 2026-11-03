@@ -18,6 +18,7 @@ beforeEach(() => {
     replace: vi.fn(),
     reload: vi.fn()
   }
+
   Object.defineProperty(window, 'location', {
     value: mockLocation,
     writable: true,

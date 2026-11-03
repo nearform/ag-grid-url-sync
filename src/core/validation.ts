@@ -60,6 +60,7 @@ export function validateFilterValue(
       `Filter value exceeds maximum length of ${config.maxValueLength} characters`
     )
   }
+
   return value
 }
 
@@ -95,9 +96,11 @@ export function validateNumberRange(
   max: number
 ): ValidationResult {
   const minResult = validateNumberFilter(min)
+
   if (!minResult.valid) return minResult
 
   const maxResult = validateNumberFilter(max)
+
   if (!maxResult.valid) return maxResult
 
   if (min > max) {
@@ -118,6 +121,7 @@ export function validateNumberRange(
  */
 export function validateAndParseNumber(value: string): number {
   const trimmedValue = value?.trim()
+
   if (!trimmedValue) {
     throw new InvalidFilterError('Number filter value cannot be empty')
   }
@@ -125,16 +129,19 @@ export function validateAndParseNumber(value: string): number {
   // Use a regex to validate proper number format before parsing
   // This prevents parseFloat from accepting partial numbers like "42abc" -> 42
   const numberRegex = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
+
   if (!numberRegex.test(trimmedValue)) {
     throw new InvalidFilterError(`Invalid number format: ${value}`)
   }
 
   const numValue = parseFloat(trimmedValue)
+
   if (isNaN(numValue)) {
     throw new InvalidFilterError(`Invalid number format: ${value}`)
   }
 
   const validation = validateNumberFilter(numValue)
+
   if (!validation.valid) {
     throw new InvalidFilterError(validation.error || 'Invalid number value')
   }
@@ -151,12 +158,14 @@ export function validateAndParseNumber(value: string): number {
  */
 export function validateAndParseDate(value: string): string {
   const trimmedValue = value?.trim()
+
   if (!trimmedValue) {
     throw new InvalidDateError('Date filter value cannot be empty')
   }
 
   // Validate ISO date format (YYYY-MM-DD)
   const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/
+
   if (!isoDateRegex.test(trimmedValue)) {
     throw new InvalidDateError(
       `Invalid date format '${value}'. Expected ISO format YYYY-MM-DD (e.g., 2024-01-15)`
@@ -165,6 +174,7 @@ export function validateAndParseDate(value: string): string {
 
   // Validate that it's a real date by parsing
   const date = new Date(trimmedValue + 'T00:00:00.000Z') // Force UTC to avoid timezone issues
+
   if (isNaN(date.getTime())) {
     throw new InvalidDateError(
       `Invalid date '${value}'. Date does not exist in the calendar`
@@ -174,6 +184,7 @@ export function validateAndParseDate(value: string): string {
   // Additional validation: ensure the parsed date matches the input
   // This catches edge cases like February 30th that might parse differently
   const [year, month, day] = trimmedValue.split('-').map(Number)
+
   if (
     date.getUTCFullYear() !== year ||
     date.getUTCMonth() + 1 !== month ||
@@ -205,6 +216,7 @@ export function validateDateFilter(
 
   try {
     validateAndParseDate(value)
+
     return { valid: true }
   } catch (error) {
     return {
@@ -256,11 +268,13 @@ export function validateAndParseDateRange(
   rangeValue: string
 ): [string, string] {
   const trimmedValue = rangeValue?.trim()
+
   if (!trimmedValue) {
     throw new InvalidDateError('Date range value cannot be empty')
   }
 
   const rangeParts = trimmedValue.split(',')
+
   if (rangeParts.length !== 2) {
     throw new InvalidDateError(
       'Date range must contain exactly two dates separated by comma (e.g., "2024-01-01,2024-12-31")'
@@ -271,6 +285,7 @@ export function validateAndParseDateRange(
   const endDate = validateAndParseDate(rangeParts[1]?.trim() ?? '')
 
   const rangeValidation = validateDateRange(startDate, endDate)
+
   if (!rangeValidation.valid) {
     throw new InvalidDateError(rangeValidation.error ?? 'Invalid date range')
   }

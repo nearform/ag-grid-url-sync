@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, test, expect, vi } from 'vitest'
-import type { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import { waitForEffects } from '../test-helpers.js'
 
@@ -15,8 +15,9 @@ const setPageUrl = (url: string) => {
   window.location.search = parsed.search
 }
 
-const createGridApi = (model: Record<string, unknown>) => {
+const createGridApi = (model: FilterModel) => {
   let listener: FilterChangedListener | undefined
+
   const api = {
     getFilterModel: vi.fn(() => model),
     setFilterModel: vi.fn(),
@@ -26,7 +27,9 @@ const createGridApi = (model: Record<string, unknown>) => {
     }),
     removeEventListener: vi.fn()
   }
+
   const fireFilterChanged = () => act(() => listener?.({ source: 'api' }))
+
   return { api, fireFilterChanged }
 }
 
@@ -38,6 +41,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
     const { result } = renderHook(() =>
       useAGGridUrlSync(api as unknown as GridApi)
     )
+
     await waitForEffects()
 
     expect(result.current.currentUrl).toContain('tab=1')
@@ -46,6 +50,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
 
   test('is true when the grid has a filter', async () => {
     setPageUrl('https://example.com/?tab=1')
+
     const { api } = createGridApi({
       name: { filterType: 'text', type: 'contains', filter: 'john' }
     })
@@ -53,6 +58,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
     const { result } = renderHook(() =>
       useAGGridUrlSync(api as unknown as GridApi)
     )
+
     await waitForEffects()
 
     expect(result.current.hasFilters).toBe(true)
@@ -60,14 +66,17 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
 
   test('goes back to false when the filters are cleared', async () => {
     setPageUrl('https://example.com/?tab=1')
-    const model: Record<string, unknown> = {
+
+    const model: FilterModel = {
       name: { filterType: 'text', type: 'contains', filter: 'john' }
     }
+
     const { api, fireFilterChanged } = createGridApi(model)
 
     const { result } = renderHook(() =>
       useAGGridUrlSync(api as unknown as GridApi)
     )
+
     await waitForEffects()
     expect(result.current.hasFilters).toBe(true)
 
@@ -81,6 +90,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
     // An unsupported operation is reported each time the grid is read, so
     // the count shows how many times updateState read it
     const onParseError = vi.fn()
+
     const { api, fireFilterChanged } = createGridApi({
       age: { filterType: 'number', type: 'unknownOperation', filter: 1 }
     })

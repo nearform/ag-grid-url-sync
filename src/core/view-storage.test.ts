@@ -83,6 +83,7 @@ describe('createViewStore', () => {
     it('overwrites in place when the name already exists', () => {
       const store = createViewStore('test-grid')
       const first = store.saveView('Same', filters())
+
       const second = store.saveView('Same', {
         age: { filterType: 'number', type: 'equals', filter: 30 }
       })
@@ -180,6 +181,7 @@ describe('createViewStore', () => {
       const store = createViewStore('test-grid')
 
       vi.stubGlobal('window', undefined)
+
       try {
         // Reading during a server render must not throw. That is deliberate.
         expect(store.listViews()).toEqual([])

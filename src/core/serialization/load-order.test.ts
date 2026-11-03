@@ -11,6 +11,7 @@ describe('serialization module load order', () => {
 
     const { QueryStringSerializer } = await import('./formats.js')
     const serializer = new QueryStringSerializer()
+
     const filterState = {
       name: { filterType: 'text', type: 'contains', filter: 'john' }
     } as const

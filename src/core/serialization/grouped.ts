@@ -3,6 +3,7 @@ import type {
   SerializationFormat,
   FormatSerializer,
   GroupedSerializationResult,
+  GroupedDetectionResult,
   ParseConfig
 } from '../types.js'
 import { InvalidSerializationError } from '../types.js'
@@ -33,6 +34,7 @@ export function serializeGrouped(
 ): GroupedSerializationResult {
   try {
     const serializer = FORMAT_SERIALIZERS[config.format]
+
     if (!serializer) {
       throw new Error(`Unknown serialization format: ${config.format}`)
     }
@@ -48,6 +50,7 @@ export function serializeGrouped(
       config.format,
       error as Error
     )
+
     config.onParseError?.(serializationError)
 
     // Return empty state on error
@@ -72,6 +75,7 @@ export function deserializeGrouped(
 ): FilterState {
   try {
     const serializer = FORMAT_SERIALIZERS[format]
+
     if (!serializer) {
       throw new Error(`Unknown serialization format: ${format}`)
     }
@@ -82,6 +86,7 @@ export function deserializeGrouped(
       format,
       error as Error
     )
+
     config.onParseError?.(serializationError)
 
     // Return empty state on error
@@ -103,21 +108,18 @@ export function deserializeGrouped(
 export function detectGroupedSerialization(
   url: string,
   possibleParams: string[]
-): {
-  isGrouped: boolean
-  paramName?: string
-  format?: SerializationFormat
-  value?: string
-} {
+): GroupedDetectionResult {
   try {
     const urlObj = new URL(url)
 
     // Check each possible parameter name
     for (const paramName of possibleParams) {
       const value = urlObj.searchParams.get(paramName)
+
       if (value) {
         // Try to detect format by attempting to parse
         const format = detectFormat(value)
+
         if (format) {
           return {
             isGrouped: true,
@@ -132,6 +134,7 @@ export function detectGroupedSerialization(
     return { isGrouped: false }
   } catch (error) {
     console.error(`Error detecting grouped serialization: ${error}`)
+
     return { isGrouped: false }
   }
 }
@@ -162,6 +165,7 @@ function isBase64Format(value: string): boolean {
   try {
     // Base64 pattern check
     const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/
+
     if (!base64Pattern.test(value)) {
       return false
     }
@@ -169,6 +173,7 @@ function isBase64Format(value: string): boolean {
     // Try to decode and parse as JSON
     const decoded = atob(value)
     JSON.parse(decoded)
+
     return true
   } catch {
     return false
@@ -181,6 +186,7 @@ function isBase64Format(value: string): boolean {
 function isJsonFormat(value: string): boolean {
   try {
     const parsed = JSON.parse(value)
+
     return typeof parsed === 'object' && parsed !== null
   } catch {
     return false

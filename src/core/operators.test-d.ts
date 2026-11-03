@@ -22,6 +22,7 @@ import type {
 } from './types.js'
 
 type TextOnly = readonly ['contains', 'notContains', 'startsWith', 'endsWith']
+
 type NumberOnly = readonly [
   'lessThan',
   'lessThanOrEqual',
@@ -29,6 +30,7 @@ type NumberOnly = readonly [
   'greaterThanOrEqual',
   'inRange'
 ]
+
 type DateOnly = readonly [
   'dateBefore',
   'dateBeforeOrEqual',
@@ -36,19 +38,26 @@ type DateOnly = readonly [
   'dateAfterOrEqual',
   'dateRange'
 ]
+
 type Shared = readonly ['eq', 'notEqual', 'blank', 'notBlank']
 
 // The lists are readonly tuples, with a literal type at each index
 expectTypeOf(TEXT_ONLY_OPERATIONS).toEqualTypeOf<TextOnly>()
+
 expectTypeOf(NUMBER_ONLY_OPERATIONS).toEqualTypeOf<NumberOnly>()
+
 expectTypeOf(DATE_ONLY_OPERATIONS).toEqualTypeOf<DateOnly>()
+
 expectTypeOf(SHARED_OPERATIONS).toEqualTypeOf<Shared>()
+
 expectTypeOf(TEXT_FILTER_OPERATIONS).toEqualTypeOf<
   readonly [...TextOnly, ...Shared]
 >()
+
 expectTypeOf(NUMBER_FILTER_OPERATIONS).toEqualTypeOf<
   readonly [...NumberOnly, ...Shared]
 >()
+
 expectTypeOf(DATE_FILTER_OPERATIONS).toEqualTypeOf<
   readonly [...DateOnly, ...Shared]
 >()
@@ -57,14 +66,19 @@ expectTypeOf(DATE_FILTER_OPERATIONS).toEqualTypeOf<
 expectTypeOf<TextFilterOperation>().toEqualTypeOf<
   TextOnly[number] | Shared[number]
 >()
+
 expectTypeOf<NumberFilterOperation>().toEqualTypeOf<
   NumberOnly[number] | Shared[number]
 >()
+
 expectTypeOf<DateFilterOperation>().toEqualTypeOf<
   DateOnly[number] | Shared[number]
 >()
+
 expectTypeOf<FilterOperation>().toEqualTypeOf<
   TextOnly[number] | NumberOnly[number] | DateOnly[number] | Shared[number]
 >()
+
 expectTypeOf<RangeOperation>().toEqualTypeOf<'inRange' | 'dateRange'>()
+
 expectTypeOf<BlankOperation>().toEqualTypeOf<'blank' | 'notBlank'>()

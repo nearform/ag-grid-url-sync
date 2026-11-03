@@ -13,9 +13,13 @@ import type { FilterState, InternalConfig, ParseConfig } from './types.js'
 
 // The grid-free functions take ParseConfig, not InternalConfig
 expectTypeOf(parseUrlFilters).parameter(1).toEqualTypeOf<ParseConfig>()
+
 expectTypeOf(serializeFilters).parameter(1).toEqualTypeOf<ParseConfig>()
+
 expectTypeOf(generateUrl).parameter(2).toEqualTypeOf<ParseConfig>()
+
 expectTypeOf(serializeGrouped).parameter(1).toEqualTypeOf<ParseConfig>()
+
 expectTypeOf(deserializeGrouped).parameter(2).toEqualTypeOf<ParseConfig>()
 
 // gridApi can be left out or set to null

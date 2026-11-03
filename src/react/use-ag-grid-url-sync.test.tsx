@@ -1,10 +1,10 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { parseUrlFilters } from '../core/url-parser.js'
-import { createViewStore } from '../core/view-storage.js'
+import { createViewStore, type GridView } from '../core/view-storage.js'
 import type { FilterState } from '../core/types.js'
 import { waitForEffects } from '../test-helpers.js'
 
@@ -55,6 +55,7 @@ vi.mock('../core/url-parser.js', () => ({
         }
       }
     }
+
     if (url.includes('f_salary_gte=50000')) {
       return {
         salary: {
@@ -65,6 +66,7 @@ vi.mock('../core/url-parser.js', () => ({
         age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
       }
     }
+
     // A grouped param carries filters only if its value decodes. The real
     // parser reads only the configured name (grid_filters by default) and
     // hands back {} for a value it cannot read, such as ?grid_filters=recent,
@@ -73,17 +75,20 @@ vi.mock('../core/url-parser.js', () => ({
     // app's own param of the same name, and against a mock that always
     // yielded filters the distinction would be untestable.
     const grouped = /[?&]grid_filters=([^&]*)/.exec(url)
+
     if (grouped) {
       return grouped[1].includes('f_')
         ? { name: { filterType: 'text', type: 'contains', filter: 'grouped' } }
         : {}
     }
+
     // A prefixed param is not a filter either just for being present. The real
     // parser wraps each one in a try and continues past the ones that throw, so
     // an unknown operation or a value over maxValueLength contributes nothing
     // and a URL carrying only those parses to {}. Verified against the parser:
     // ?f_name_regex=abc and ?f_name_contains= over 200 chars both do.
     const prefixed = [...url.matchAll(/[?&](f_[^=&]+)=([^&]*)/g)]
+
     if (prefixed.length > 0) {
       const OPERATIONS = [
         'contains',
@@ -104,15 +109,19 @@ vi.mock('../core/url-parser.js', () => ({
         'dateAfter',
         'dateRange'
       ]
+
       const usable = prefixed.filter(([, key, value]) => {
         const operation = key.split('_').pop() ?? ''
+
         return (
           OPERATIONS.includes(operation) &&
           decodeURIComponent(value).length <= 200
         )
       })
+
       if (usable.length === 0) return {}
     }
+
     // Default text filter response
     return {
       name: { filterType: 'text', type: 'contains', filter: 'test' }
@@ -246,6 +255,7 @@ describe('useAGGridUrlSync', () => {
           onParseError
         })
       )
+
       await waitForEffects()
       rerender()
       rerender()
@@ -326,6 +336,7 @@ describe('useAGGridUrlSync', () => {
       const filters = result.current.parseUrlFilters(
         'http://test.com?f_name_contains=test'
       )
+
       expect(filters).toEqual({
         name: { filterType: 'text', type: 'contains', filter: 'test' }
       })
@@ -393,6 +404,7 @@ describe('useAGGridUrlSync', () => {
           filter: 'test'
         }
       }
+
       act(() => {
         result.current.applyFilters(filters)
       })
@@ -454,6 +466,7 @@ describe('useAGGridUrlSync', () => {
   describe('Error Handling', () => {
     test('warns when applyUrlFilters called while not ready', () => {
       const onParseError = vi.fn()
+
       const consoleWarnSpy = vi
         .spyOn(console, 'warn')
         .mockImplementation(() => {})
@@ -476,6 +489,7 @@ describe('useAGGridUrlSync', () => {
 
     test('warns when clearFilters called while not ready', () => {
       const onParseError = vi.fn()
+
       const consoleWarnSpy = vi
         .spyOn(console, 'warn')
         .mockImplementation(() => {})
@@ -498,6 +512,7 @@ describe('useAGGridUrlSync', () => {
 
     test('warns when applyFilters called while not ready', () => {
       const onParseError = vi.fn()
+
       const consoleWarnSpy = vi
         .spyOn(console, 'warn')
         .mockImplementation(() => {})
@@ -559,6 +574,7 @@ describe('useAGGridUrlSync', () => {
 
     test('calls onParseError callback', async () => {
       const onParseError = vi.fn()
+
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { onParseError })
       )
@@ -664,6 +680,7 @@ describe('useAGGridUrlSync', () => {
 
   describe('Saved Views', () => {
     const STORAGE_KEY = 'view-test-grid'
+
     const savedModel = {
       department: { filterType: 'text', type: 'equals', filter: 'Engineering' }
     }
@@ -697,6 +714,7 @@ describe('useAGGridUrlSync', () => {
         .mocked(mockGridApi.addEventListener)
         .mock.calls.filter(([event]) => event === 'filterChanged')
         .at(-1)?.[1] as ((event?: { source?: string }) => void) | undefined
+
       if (!handler) throw new Error('no filterChanged listener registered')
       handler(source ? { source } : undefined)
     }
@@ -751,6 +769,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Seeded')!.id
@@ -766,9 +785,11 @@ describe('useAGGridUrlSync', () => {
 
       // Deleting touches only localStorage, so a missing grid must not stop it.
       expect(onError).not.toHaveBeenCalled()
+
       const after = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       expect(after.result.current.views).toEqual([])
     })
 
@@ -779,6 +800,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Seeded')!.id
@@ -786,6 +808,7 @@ describe('useAGGridUrlSync', () => {
       seed.unmount()
 
       const onError = vi.fn()
+
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, {
           storageKey: STORAGE_KEY,
@@ -814,6 +837,7 @@ describe('useAGGridUrlSync', () => {
       const after = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       expect(after.result.current.views.map(view => view.name)).toEqual([
         'Seeded'
       ])
@@ -873,6 +897,7 @@ describe('useAGGridUrlSync', () => {
       const updatedModel = {
         age: { filterType: 'number', type: 'equals', filter: 30 }
       }
+
       mockGridApi.getFilterModel = vi.fn(() => updatedModel)
 
       let secondId = ''
@@ -888,7 +913,7 @@ describe('useAGGridUrlSync', () => {
 
     test('a view saved from a null filter model survives a re-read', () => {
       // AG Grid can hand back null despite the declared return type.
-      mockGridApi.getFilterModel = vi.fn(() => null as unknown as object)
+      mockGridApi.getFilterModel = vi.fn(() => null as unknown as FilterModel)
 
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
@@ -909,6 +934,7 @@ describe('useAGGridUrlSync', () => {
       const remount = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       expect(remount.result.current.views).toHaveLength(1)
     })
 
@@ -923,7 +949,7 @@ describe('useAGGridUrlSync', () => {
         })
       )
 
-      let saved: unknown = 'unset'
+      let saved: GridView | null | 'unset' = 'unset'
       act(() => {
         saved = result.current.saveView('   ')
       })
@@ -1226,7 +1252,7 @@ describe('useAGGridUrlSync', () => {
       act(() => result.current.loadView(id))
 
       // AG Grid can hand back null despite the declared return type.
-      mockGridApi.getFilterModel = vi.fn(() => null as unknown as object)
+      mockGridApi.getFilterModel = vi.fn(() => null as unknown as FilterModel)
 
       act(() => result.current.deleteView(id))
 
@@ -1302,6 +1328,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = result.current.saveView('Engineering')!.id
@@ -1327,6 +1354,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = result.current.saveView('Engineering')!.id
@@ -1350,6 +1378,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = result.current.saveView('Engineering')!.id
@@ -1373,6 +1402,7 @@ describe('useAGGridUrlSync', () => {
           useAGGridUrlSync(props.api as GridApi, { storageKey: STORAGE_KEY }),
         { initialProps: { api: mockGridApi } }
       )
+
       let id = ''
       act(() => {
         id = result.current.saveView('Engineering')!.id
@@ -1400,6 +1430,7 @@ describe('useAGGridUrlSync', () => {
           onError
         })
       )
+
       let aId = ''
       act(() => {
         aId = result.current.saveView('A')!.id
@@ -1435,6 +1466,7 @@ describe('useAGGridUrlSync', () => {
           onError
         })
       )
+
       let id = ''
       act(() => {
         id = result.current.saveView('Engineering')!.id
@@ -1463,6 +1495,7 @@ describe('useAGGridUrlSync', () => {
           onError
         })
       )
+
       let aId = ''
       act(() => {
         aId = result.current.saveView('A')!.id
@@ -1478,6 +1511,7 @@ describe('useAGGridUrlSync', () => {
       Storage.prototype.setItem = () => {
         throw new DOMException('quota', 'QuotaExceededError')
       }
+
       try {
         act(() => result.current.loadView(bId))
       } finally {
@@ -1497,6 +1531,7 @@ describe('useAGGridUrlSync', () => {
       // A grid that announces synchronously and hands back something other than
       // what it was given, as when a view names a column the grid no longer has.
       const listeners: Array<() => void> = []
+
       const liveGrid: MockGridApi = {
         setFilterModel: vi.fn(() => {
           listeners.forEach(fire => fire())
@@ -1507,6 +1542,7 @@ describe('useAGGridUrlSync', () => {
         }),
         removeEventListener: vi.fn((_event: string, fire: () => void) => {
           const at = listeners.indexOf(fire)
+
           if (at >= 0) listeners.splice(at, 1)
         })
       } as unknown as MockGridApi
@@ -1547,9 +1583,10 @@ describe('useAGGridUrlSync', () => {
       // AG Grid fires filterChanged from inside setFilterModel, so this grid
       // announces its own change the way a real one does.
       const listeners: Array<() => void> = []
-      let model: Record<string, unknown> = {}
+      let model: FilterModel = {}
+
       const liveGrid: MockGridApi = {
-        setFilterModel: vi.fn((next: Record<string, unknown>) => {
+        setFilterModel: vi.fn((next: FilterModel) => {
           model = next ?? {}
           listeners.forEach(fire => fire())
         }),
@@ -1559,11 +1596,13 @@ describe('useAGGridUrlSync', () => {
         }),
         removeEventListener: vi.fn((_event: string, fire: () => void) => {
           const at = listeners.indexOf(fire)
+
           if (at >= 0) listeners.splice(at, 1)
         })
       } as unknown as MockGridApi
 
       const onError = vi.fn()
+
       const { result } = renderHook(() =>
         useAGGridUrlSync(liveGrid as GridApi, {
           storageKey: STORAGE_KEY,
@@ -1614,6 +1653,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       act(() => {
         seed.result.current.saveView('Engineering')
       })
@@ -1641,6 +1681,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       act(() => {
         seed.result.current.saveView('Engineering')
       })
@@ -1661,6 +1702,7 @@ describe('useAGGridUrlSync', () => {
           onParseError
         })
       )
+
       await waitForEffects()
 
       expect(onError).toHaveBeenCalledWith(failure, 'auto-apply-filters')
@@ -1672,15 +1714,19 @@ describe('useAGGridUrlSync', () => {
 
     test('restoring a view the grid normalises keeps the view and its pointer', async () => {
       setSearch('')
+
       // Saved when the grid still had a salary column.
       const withDroppedColumn = {
         ...savedModel,
         salary: { filterType: 'number', type: 'greaterThan', filter: 1 }
       }
+
       mockGridApi.getFilterModel = vi.fn(() => withDroppedColumn)
+
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -1699,6 +1745,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
       await fireFilterChanged()
 
@@ -1714,7 +1761,7 @@ describe('useAGGridUrlSync', () => {
 
       // AG Grid queues setFilterModel until column data types are inferred, so
       // the grid still reports its old model when the listener first runs.
-      let model: Record<string, unknown> = {}
+      let model: FilterModel = {}
       mockGridApi.getFilterModel = vi.fn(() => model)
 
       const { result } = renderHook(() =>
@@ -1723,6 +1770,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       expect(result.current.activeViewId).toBe(id)
@@ -1754,6 +1802,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
       expect(result.current.activeViewId).toBe(id)
 
@@ -1770,9 +1819,11 @@ describe('useAGGridUrlSync', () => {
     test('a restore the grid read back in another form keeps the view until edited', async () => {
       setSearch('')
       const id = seedActiveView()
+
       const normalised = {
         name: { filterType: 'text', type: 'contains', filter: 'x' }
       }
+
       mockGridApi.getFilterModel = vi
         .fn()
         .mockReturnValueOnce({})
@@ -1784,6 +1835,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
       await fireFilterChanged()
       expect(result.current.activeViewId).toBe(id)
@@ -1799,6 +1851,7 @@ describe('useAGGridUrlSync', () => {
       const handBuilt = {
         created: { filterType: 'date', type: 'equals', dateFrom: '2024-01-01' }
       }
+
       const normalised = {
         created: {
           dateFrom: '2024-01-01 00:00:00',
@@ -1812,7 +1865,7 @@ describe('useAGGridUrlSync', () => {
         const id = createViewStore(STORAGE_KEY).saveView('Dated', handBuilt).id
         createViewStore(STORAGE_KEY).persistActiveViewId(null)
 
-        let model: Record<string, unknown> = {}
+        let model: FilterModel = {}
         mockGridApi.getFilterModel = vi.fn(() => model)
         // A ready grid applies at once and fires from inside the call.
         mockGridApi.setFilterModel = vi.fn(() => {
@@ -1823,6 +1876,7 @@ describe('useAGGridUrlSync', () => {
         const { result } = renderHook(() =>
           useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
         )
+
         await waitForEffects()
         act(() => result.current.loadView(id))
 
@@ -1838,7 +1892,7 @@ describe('useAGGridUrlSync', () => {
       test('stays loaded when a deferred restore lands', async () => {
         const id = createViewStore(STORAGE_KEY).saveView('Dated', handBuilt).id
 
-        let model: Record<string, unknown> = {}
+        let model: FilterModel = {}
         mockGridApi.getFilterModel = vi.fn(() => model)
         // Column types are still being inferred, so the grid queues the write.
         mockGridApi.setFilterModel = vi.fn()
@@ -1849,6 +1903,7 @@ describe('useAGGridUrlSync', () => {
             autoApplyOnMount: true
           })
         )
+
         await waitForEffects()
         expect(result.current.activeViewId).toBe(id)
 
@@ -1867,7 +1922,7 @@ describe('useAGGridUrlSync', () => {
       test('unloads on a user edit over a restore the grid never applied', async () => {
         const id = createViewStore(STORAGE_KEY).saveView('Dated', handBuilt).id
 
-        let model: Record<string, unknown> = {}
+        let model: FilterModel = {}
         mockGridApi.getFilterModel = vi.fn(() => model)
         mockGridApi.setFilterModel = vi.fn()
 
@@ -1877,6 +1932,7 @@ describe('useAGGridUrlSync', () => {
             autoApplyOnMount: true
           })
         )
+
         await waitForEffects()
         expect(result.current.activeViewId).toBe(id)
 
@@ -1891,13 +1947,17 @@ describe('useAGGridUrlSync', () => {
 
     describe('a filter write while a restore is pending', () => {
       type Hook = ReturnType<typeof useAGGridUrlSync>
+
       const john = {
         name: { filterType: 'text', type: 'contains', filter: 'John' }
       }
+
       const age = { age: { filterType: 'number', type: 'equals', filter: 30 } }
+
       const handBuilt = {
         created: { filterType: 'date', type: 'equals', dateFrom: '2024-01-01' }
       }
+
       const normalised = {
         created: {
           dateFrom: '2024-01-01 00:00:00',
@@ -1911,18 +1971,20 @@ describe('useAGGridUrlSync', () => {
       // ignored the view or has not applied it yet. `initial` is what it shows
       // meanwhile.
       const mountWithPendingRestore = async (
-        view: Record<string, unknown> = savedModel,
-        initial: Record<string, unknown> = {}
+        view: FilterModel = savedModel,
+        initial: FilterModel = {}
       ) => {
         setSearch('')
         const id = createViewStore(STORAGE_KEY).saveView('Pending', view).id
         let model = initial
         mockGridApi.getFilterModel = vi.fn(() => model)
         mockGridApi.setFilterModel = vi.fn()
+
         // As AG Grid does: an event only when the model actually changed.
-        const setModel = (next: Record<string, unknown>): void => {
+        const setModel = (next: FilterModel): void => {
           const changed = JSON.stringify(next) !== JSON.stringify(model)
           model = next
+
           if (changed) emitFilterChanged('api')
         }
 
@@ -1932,8 +1994,10 @@ describe('useAGGridUrlSync', () => {
             autoApplyOnMount: true
           })
         )
+
         await waitForEffects()
         expect(result.current.activeViewId).toBe(id)
+
         return { id, result, setModel, unmount }
       }
 
@@ -1970,6 +2034,7 @@ describe('useAGGridUrlSync', () => {
             savedModel,
             age
           )
+
           mockInstance[coreMethod].mockImplementationOnce(() =>
             setModel(target)
           )
@@ -2022,6 +2087,7 @@ describe('useAGGridUrlSync', () => {
         async (_name, coreMethod, write, behaviour) => {
           const { id, result, setModel } =
             await mountWithPendingRestore(handBuilt)
+
           mockInstance[coreMethod].mockImplementationOnce(behaviour)
 
           await act(async () => write(result.current))
@@ -2122,18 +2188,22 @@ describe('useAGGridUrlSync', () => {
 
     test('reconciling a filter change does not read storage', async () => {
       const id = seedActiveView()
+
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       act(() => result.current.loadView(id))
 
       const getItem = vi.spyOn(Storage.prototype, 'getItem')
+
       try {
         await fireFilterChanged()
         expect(getItem).not.toHaveBeenCalled()
       } finally {
         getItem.mockRestore()
       }
+
       expect(result.current.activeViewId).toBe(id)
     })
 
@@ -2144,6 +2214,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -2162,6 +2233,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       // The URL makes no claim about filters, so the stored view must be
@@ -2177,6 +2249,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -2194,6 +2267,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       expect(result.current.activeViewId).toBe(id)
@@ -2205,6 +2279,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -2223,6 +2298,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
@@ -2237,6 +2313,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -2255,6 +2332,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
@@ -2267,6 +2345,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       act(() => {
         seed.result.current.saveView('Engineering')
       })
@@ -2285,6 +2364,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       expect(mockInstance.applyFromUrl).toHaveBeenCalled()
@@ -2298,6 +2378,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -2317,6 +2398,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       // Treating it as a claim would apply an empty model over the user's
@@ -2336,6 +2418,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -2355,6 +2438,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       expect(mockInstance.applyFromUrl).not.toHaveBeenCalled()
@@ -2368,6 +2452,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       act(() => {
         seed.result.current.saveView('Engineering')
       })
@@ -2385,6 +2470,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       expect(mockInstance.applyFromUrl).toHaveBeenCalled()
@@ -2399,6 +2485,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       act(() => {
         seed.result.current.saveView('Engineering')
       })
@@ -2413,6 +2500,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       expect(mockInstance.applyFromUrl).toHaveBeenCalled()
@@ -2429,6 +2517,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -2441,6 +2530,7 @@ describe('useAGGridUrlSync', () => {
           autoApplyOnMount: true
         })
       )
+
       await waitForEffects()
 
       vi.mocked(mockGridApi.setFilterModel).mockClear()
@@ -2479,7 +2569,7 @@ describe('useAGGridUrlSync', () => {
           })
         )
 
-        let saved: unknown = 'unset'
+        let saved: GridView | null | 'unset' = 'unset'
         act(() => {
           saved = result.current.saveView('Too big')
         })
@@ -2507,6 +2597,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       act(() => {
         seed.result.current.saveView('Engineering')
       })
@@ -2519,6 +2610,7 @@ describe('useAGGridUrlSync', () => {
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       await waitForEffects()
 
       expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
@@ -2534,14 +2626,17 @@ describe('useAGGridUrlSync', () => {
      */
     const seedActiveView = (): string => {
       mockGridApi.getFilterModel = vi.fn(() => savedModel)
+
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: STORAGE_KEY })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Seeded')!.id
       })
       seed.unmount()
+
       return id
     }
 
@@ -2622,6 +2717,7 @@ describe('useAGGridUrlSync', () => {
         ],
         activeId: 'seeded'
       })
+
       const original = window.localStorage
       Object.defineProperty(window, 'localStorage', {
         value: {
@@ -2645,6 +2741,7 @@ describe('useAGGridUrlSync', () => {
             onError
           })
         )
+
         await waitForEffects()
 
         // Each render re-creates the effect's dependencies, so a guard that is
@@ -2671,6 +2768,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-b' })
       )
+
       let id = ''
       act(() => {
         id = seed.result.current.saveView('Engineering')!.id
@@ -2686,8 +2784,9 @@ describe('useAGGridUrlSync', () => {
             storageKey: props.storageKey,
             autoApplyOnMount: true
           }),
-        { initialProps: { storageKey: undefined } as { storageKey?: string } }
+        { initialProps: { storageKey: undefined } }
       )
+
       await waitForEffects()
 
       expect(result.current.activeViewId).toBeNull()
@@ -2710,6 +2809,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'key-b' })
       )
+
       let seededId = ''
       act(() => {
         seededId = seed.result.current.saveView('Belongs to B')!.id
@@ -2754,6 +2854,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-a' })
       )
+
       act(() => {
         seed.result.current.saveView('Engineering')
       })
@@ -2767,6 +2868,7 @@ describe('useAGGridUrlSync', () => {
           }),
         { initialProps: { storageKey: 'tenant-a' } }
       )
+
       await waitForEffects()
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
 
@@ -2798,6 +2900,7 @@ describe('useAGGridUrlSync', () => {
       const seedB = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-b' })
       )
+
       let bId = ''
       act(() => {
         bId = seedB.result.current.saveView('Belongs to B')!.id
@@ -2807,6 +2910,7 @@ describe('useAGGridUrlSync', () => {
       const seedA = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-a' })
       )
+
       act(() => {
         seedA.result.current.saveView('Belongs to A')
       })
@@ -2820,6 +2924,7 @@ describe('useAGGridUrlSync', () => {
           }),
         { initialProps: { storageKey: 'tenant-a' } }
       )
+
       await waitForEffects()
 
       vi.mocked(mockGridApi.setFilterModel).mockClear()
@@ -2841,6 +2946,7 @@ describe('useAGGridUrlSync', () => {
       const seedB = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-b' })
       )
+
       let bId = ''
       act(() => {
         bId = seedB.result.current.saveView('Belongs to B')!.id
@@ -2855,6 +2961,7 @@ describe('useAGGridUrlSync', () => {
           }),
         { initialProps: { storageKey: 'tenant-a' } }
       )
+
       await waitForEffects()
       expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
 
@@ -2882,6 +2989,7 @@ describe('useAGGridUrlSync', () => {
           }),
         { initialProps: { api: mockGridApi } }
       )
+
       await waitForEffects()
       expect(mockInstance.applyFromUrl).toHaveBeenCalledTimes(1)
 
@@ -2900,6 +3008,7 @@ describe('useAGGridUrlSync', () => {
       const seed = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'tenant-b' })
       )
+
       act(() => {
         seed.result.current.saveView('Engineering')
       })
@@ -2911,8 +3020,9 @@ describe('useAGGridUrlSync', () => {
             storageKey: props.storageKey,
             autoApplyOnMount: true
           }),
-        { initialProps: { storageKey: 'tenant-b' } as { storageKey?: string } }
+        { initialProps: { storageKey: 'tenant-b' } }
       )
+
       await waitForEffects()
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
@@ -2937,6 +3047,7 @@ describe('useAGGridUrlSync', () => {
       const gridA = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi, { storageKey: 'grid-a' })
       )
+
       act(() => {
         gridA.result.current.saveView('Only in A')
       })

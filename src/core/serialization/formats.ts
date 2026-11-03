@@ -29,6 +29,7 @@ function dropOverLengthTextValues(
 ): FilterState {
   const cfg = config ?? DEFAULT_CONFIG
   const result: FilterState = {}
+
   for (const [column, filter] of Object.entries(filterState)) {
     if (filter.filterType === 'text') {
       try {
@@ -40,8 +41,10 @@ function dropOverLengthTextValues(
         continue
       }
     }
+
     result[column] = filter
   }
+
   return result
 }
 
@@ -99,6 +102,7 @@ function innerConfig(config?: ParseConfig): ParseConfig {
   // `??` keeps the defaults when a JS caller or a partial config leaves a
   // field out
   const onParseError = config.onParseError ?? DEFAULT_CONFIG.onParseError
+
   return {
     ...DEFAULT_CONFIG,
     maxValueLength: config.maxValueLength ?? DEFAULT_CONFIG.maxValueLength,
@@ -134,12 +138,14 @@ export class Base64Serializer implements FormatSerializer {
 
   serialize(filterState: FilterState, config?: ParseConfig): string {
     const filtered = dropOverLengthTextValues(filterState, config, 'base64')
+
     return btoa(escapeNonAscii(JSON.stringify(filtered)))
   }
 
   deserialize(value: string, config?: ParseConfig): FilterState {
     try {
       const decoded = atob(value)
+
       return dropOverLengthTextValues(
         parseAndValidateJson(decoded),
         config,

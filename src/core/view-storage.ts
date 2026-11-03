@@ -32,7 +32,7 @@ export interface GridView {
   filterModel: FilterModel
 }
 
-interface StoredShape {
+interface StoredViews {
   views: GridView[]
   activeId: string | null
 }
@@ -86,11 +86,12 @@ export interface ViewStore {
  * array straight to callers, and a module-level sentinel would be one mutable
  * array shared by every store and every consumer of the ./view-storage subpath.
  */
-const empty = (): StoredShape => ({ views: [], activeId: null })
+const empty = (): StoredViews => ({ views: [], activeId: null })
 
 function isGridView(value: unknown): value is GridView {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Partial<GridView>
+
   return (
     typeof candidate.id === 'string' &&
     typeof candidate.name === 'string' &&
@@ -105,6 +106,7 @@ function createId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()
   }
+
   return `view-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
 }
 
@@ -118,10 +120,11 @@ function createId(): string {
 export function createViewStore(storageKey: string): ViewStore {
   const key = keyFor(storageKey)
 
-  const read = (): StoredShape => {
+  const read = (): StoredViews => {
     if (typeof window === 'undefined') return empty()
 
     let raw: string | null = null
+
     try {
       raw = window.localStorage.getItem(key)
     } catch {
@@ -133,9 +136,10 @@ export function createViewStore(storageKey: string): ViewStore {
 
     try {
       const parsed: unknown = JSON.parse(raw)
+
       if (typeof parsed !== 'object' || parsed === null) return empty()
 
-      const { views, activeId } = parsed as Partial<StoredShape>
+      const { views, activeId } = parsed as Partial<StoredViews>
       const validViews = Array.isArray(views) ? views.filter(isGridView) : []
 
       return {
@@ -151,7 +155,7 @@ export function createViewStore(storageKey: string): ViewStore {
     }
   }
 
-  const write = (next: StoredShape): void => {
+  const write = (next: StoredViews): void => {
     // Reads degrade quietly so a server render can proceed, but a write cannot
     // succeed here and must not pretend to: returning normally would tell the
     // caller a view was saved when nothing was persisted.
@@ -196,6 +200,7 @@ export function createViewStore(storageKey: string): ViewStore {
 
     saveView: (name: string, filterModel: FilterModel): GridView => {
       const trimmedName = name.trim()
+
       if (!trimmedName) {
         throw new Error('A view name is required.')
       }
@@ -225,6 +230,7 @@ export function createViewStore(storageKey: string): ViewStore {
           : [...current.views, view],
         activeId: view.id
       })
+
       return view
     },
 

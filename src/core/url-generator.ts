@@ -31,13 +31,16 @@ function getHostParams(url: URL, config: ParseConfig): [string, string][] {
  */
 function toUrlString(url: URL, params: URLSearchParams): string {
   const queryString = params.toString()
+
   if (queryString) {
     url.search = queryString
+
     return url.toString()
   }
 
   url.search = ''
   const result = url.toString()
+
   return result === `${url.origin}/` ? result.slice(0, -1) : result
 }
 
@@ -61,16 +64,20 @@ export function generateUrl(
     // Host params first, then the grouped param
     const params = new URLSearchParams(hostParams)
     const groupedResult = serializeGrouped(filterState, config)
+
     if (groupedResult.value) {
       params.append(groupedResult.paramName, groupedResult.value)
     }
+
     return toUrlString(url, params)
   }
 
   // Filter params first, then host params
   const params = serializeFilters(filterState, config)
+
   for (const [key, value] of hostParams) {
     params.append(key, value)
   }
+
   return toUrlString(url, params)
 }

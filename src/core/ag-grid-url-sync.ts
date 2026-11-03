@@ -4,7 +4,8 @@ import type {
   FilterState,
   InternalConfig,
   SerializationFormat,
-  SerializationMode
+  SerializationMode,
+  UrlState
 } from './types.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import { parseUrlFilters } from './url-parser.js'
@@ -56,9 +57,10 @@ export class AGGridUrlSync {
    * also keeps the page's own params (#215).
    * @param baseUrl - Optional base URL (defaults to current URL)
    */
-  getUrlState(baseUrl?: string): { url: string; hasFilters: boolean } {
+  getUrlState(baseUrl?: string): UrlState {
     const filterState = getFilterModel(this.config)
     const url = baseUrl ?? window.location.href
+
     return {
       url: generateUrl(url, filterState, this.config),
       hasFilters: Object.keys(filterState).length > 0
@@ -72,6 +74,7 @@ export class AGGridUrlSync {
   getQueryParams(): string {
     const url = this.generateUrl()
     const urlObj = new URL(url)
+
     return urlObj.search
   }
 

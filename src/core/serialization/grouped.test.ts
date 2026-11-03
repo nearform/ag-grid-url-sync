@@ -276,6 +276,47 @@ describe('Format Serializers', () => {
   describe('JsonSerializer', () => {
     const serializer = new JsonSerializer()
 
+    // #250: each filter is parsed with its schema at the URL boundary
+    it('should drop keys that a filter does not have', () => {
+      const value = JSON.stringify({
+        name: { filterType: 'text', type: 'contains', filter: 'a', extra: 1 }
+      })
+
+      expect(serializer.deserialize(value)).toEqual({
+        name: { filterType: 'text', type: 'contains', filter: 'a' }
+      })
+    })
+
+    it('should keep a column named __proto__ as an own key', () => {
+      const filter = { filterType: 'text', type: 'contains', filter: 'a' }
+      const value = `{"__proto__":${JSON.stringify(filter)}}`
+
+      const result = serializer.deserialize(value)
+
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
+      expect(Object.hasOwn(result, '__proto__')).toBe(true)
+      expect(
+        Object.getOwnPropertyDescriptor(result, '__proto__')?.value
+      ).toEqual(filter)
+    })
+
+    it.each([
+      [
+        'a filter with an unknown operation',
+        '{"a":{"filterType":"text","type":"regex","filter":"x"}}'
+      ],
+      [
+        'a number filter with a text value',
+        '{"a":{"filterType":"number","type":"eq","filter":"1"}}'
+      ],
+      [
+        'a filter type the library does not support',
+        '{"a":{"filterType":"set","values":["x"]}}'
+      ]
+    ])('should reject %s', (_label, value) => {
+      expect(() => serializer.deserialize(value)).toThrow()
+    })
+
     it('should serialize and deserialize correctly', () => {
       const serialized = serializer.serialize(sampleFilterState)
       const deserialized = serializer.deserialize(serialized)

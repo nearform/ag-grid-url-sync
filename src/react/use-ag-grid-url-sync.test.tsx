@@ -63,12 +63,12 @@ describe('useAGGridUrlSync', () => {
       expect(result.current.isReady).toBe(false)
       expect(result.current.currentUrl).toBe('')
       expect(result.current.hasFilters).toBe(false)
-      expect(typeof result.current.shareUrl).toBe('function')
-      expect(typeof result.current.getQueryParams).toBe('function')
-      expect(typeof result.current.applyUrlFilters).toBe('function')
-      expect(typeof result.current.clearFilters).toBe('function')
-      expect(typeof result.current.parseUrlFilters).toBe('function')
-      expect(typeof result.current.applyFilters).toBe('function')
+      expect(result.current.shareUrl).toBeTypeOf('function')
+      expect(result.current.getQueryParams).toBeTypeOf('function')
+      expect(result.current.applyUrlFilters).toBeTypeOf('function')
+      expect(result.current.clearFilters).toBeTypeOf('function')
+      expect(result.current.parseUrlFilters).toBeTypeOf('function')
+      expect(result.current.applyFilters).toBeTypeOf('function')
     })
 
     test('initializes when gridApi becomes available', () => {
@@ -516,16 +516,31 @@ describe('useAGGridUrlSync', () => {
 
   describe('State Updates', () => {
     test('updates currentUrl and hasFilters reactively', async () => {
+      let model: FilterModel = {}
+      mockGridApi.getFilterModel = vi.fn(() => model)
+
       const { result } = renderHook(() =>
         useAGGridUrlSync(mockGridApi as GridApi)
       )
 
       await waitForEffects()
 
-      // Since mocks might not work perfectly in this test environment,
-      // we just check that the state is managed correctly
-      expect(typeof result.current.currentUrl).toBe('string')
-      expect(typeof result.current.hasFilters).toBe('boolean')
+      expect(result.current.currentUrl).toBe('https://example.com')
+      expect(result.current.hasFilters).toBe(false)
+
+      // The grid gets a filter and fires filterChanged
+      model = { name: { filterType: 'text', type: 'contains', filter: 'ann' } }
+
+      const onFilterChanged = vi
+        .mocked(mockGridApi.addEventListener)
+        .mock.calls.find(([name]) => name === 'filterChanged')?.[1]
+
+      act(() => onFilterChanged?.())
+
+      expect(result.current.currentUrl).toBe(
+        'https://example.com/?f_name_contains=ann'
+      )
+      expect(result.current.hasFilters).toBe(true)
     })
 
     test('sets hasFilters to false when the grid has no filters', async () => {

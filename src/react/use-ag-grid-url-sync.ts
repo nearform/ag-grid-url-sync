@@ -52,7 +52,8 @@ function sameFilterModel(a: FilterModel, b: FilterModel): boolean {
  * does not have or that do not allow filtering.
  */
 function applicableModel(gridApi: GridApi, model: FilterModel): FilterModel {
-  if (typeof gridApi.getColumn !== 'function') return model
+  // A test double or an old AG Grid version can lack getColumn
+  if (!('getColumn' in gridApi)) return model
 
   return Object.fromEntries(
     Object.entries(model).filter(

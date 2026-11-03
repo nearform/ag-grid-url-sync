@@ -131,6 +131,49 @@ describe('Grid Integration', () => {
       })
     })
 
+    // AG Grid usually gives a number, which is what the grid filters on. A
+    // string value gets the same check as a URL param (#238).
+    it('should keep a number value from AG Grid as it is (#238)', () => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        id: {
+          filterType: 'number',
+          type: 'equals',
+          filter: 12345678901234567000
+        }
+      })
+
+      expect(getFilterModel(mockConfig)).toEqual({
+        id: { filterType: 'number', type: 'eq', filter: 12345678901234567000 }
+      })
+      expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
+    it('should read a string value from AG Grid as an exact number (#238)', () => {
+      mockGridApi.getFilterModel.mockReturnValue({
+        price: { filterType: 'number', type: 'greaterThan', filter: ' 1e21 ' },
+        id: {
+          filterType: 'number',
+          type: 'equals',
+          filter: '12345678901234567890'
+        },
+        name: { filterType: 'number', type: 'equals', filter: 'abc' }
+      })
+
+      expect(getFilterModel(mockConfig)).toEqual({
+        price: { filterType: 'number', type: 'greaterThan', filter: 1e21 }
+      })
+      expect(mockConfig.onParseError).toHaveBeenCalledTimes(2)
+      expect(mockConfig.onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message:
+            'Number value 12345678901234567890 would be rounded to 12345678901234567000'
+        })
+      )
+      expect(mockConfig.onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Invalid number format: abc' })
+      )
+    })
+
     it('should convert date filters from AG Grid', () => {
       mockGridApi.getFilterModel.mockReturnValue({
         created: { filterType: 'date', type: 'equals', dateFrom: '2024-01-15' },

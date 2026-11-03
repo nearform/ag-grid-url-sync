@@ -178,19 +178,28 @@ describe('URL Parser', () => {
     // Hand-written values: the same rule as the eq type guess, but a
     // number-only operation cannot fall back to text
     it.each([
-      ['f_id_gt=12345678901234567890', '12345678901234567890'],
-      ['f_id_range=9007199254740993,9007199254740995', '9007199254740993'],
-      ['f_id_lte=0.12345678901234567891', '0.12345678901234567891']
+      [
+        'f_id_gt=12345678901234567890',
+        '12345678901234567890 would be rounded to 12345678901234567000'
+      ],
+      [
+        'f_id_range=9007199254740993,9007199254740995',
+        '9007199254740993 would be rounded to 9007199254740992'
+      ],
+      [
+        'f_id_lte=0.12345678901234567891',
+        '0.12345678901234567891 would be rounded to 0.12345678901234568'
+      ]
     ])(
-      'should report %s, which loses digits, and skip it (#238)',
-      (param, lost) => {
+      'should report %s, which would be rounded, and skip it (#238)',
+      (param, rounded) => {
         expect(parseUrlFilters(`?f_ok_gt=1&${param}`, mockConfig)).toEqual({
           ok: { filterType: 'number', type: 'greaterThan', filter: 1 }
         })
         expect(mockConfig.onParseError).toHaveBeenCalledOnce()
         expect(mockConfig.onParseError).toHaveBeenCalledWith(
           expect.objectContaining({
-            message: `Number value loses digits: ${lost}`
+            message: `Number value ${rounded}`
           })
         )
       }
@@ -208,6 +217,30 @@ describe('URL Parser', () => {
           filterTo: 1.5e21
         }
       })
+      expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
+    it('should keep a value written with more digits than its shortest form (#238)', () => {
+      expect(
+        parseUrlFilters(
+          '?f_price_gt=19.989999999999998&f_x_range=0.10000000000000001,1',
+          mockConfig
+        )
+      ).toEqual({
+        price: { filterType: 'number', type: 'greaterThan', filter: 19.99 },
+        x: { filterType: 'number', type: 'inRange', filter: 0.1, filterTo: 1 }
+      })
+      expect(mockConfig.onParseError).not.toHaveBeenCalled()
+    })
+
+    // URLSearchParams reads a raw `+` as a space
+    it('should read an exponent with a raw + in a hand-typed URL (#238)', () => {
+      expect(parseUrlFilters('?f_a_gt=1e+21&f_b_eq=1e+21', mockConfig)).toEqual(
+        {
+          a: { filterType: 'number', type: 'greaterThan', filter: 1e21 },
+          b: { filterType: 'number', type: 'eq', filter: 1e21 }
+        }
+      )
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
     })
 

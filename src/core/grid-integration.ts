@@ -7,6 +7,7 @@ import type {
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
 import {
+  InvalidFilterError,
   NUMBER_FILTER_OPERATIONS,
   isDateFilterOperation,
   isNumberFilterOperation,
@@ -15,6 +16,7 @@ import {
 import { operatorById, operatorFromAgGrid } from './operators.js'
 import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
 import { toError } from './to-error.js'
+import { readNumber } from './validation.js'
 import type { GridApi } from 'ag-grid-community'
 
 /**
@@ -132,8 +134,18 @@ export function getFilterModel(config: InternalConfig): FilterState {
           continue
         }
 
-        // A number value, or a string AG Grid kept from the input box
-        const numericValue = Number(filter.filter)
+        // A number value is what the grid filters on, so it is kept. A string
+        // that AG Grid kept from the input box gets the same check as a URL
+        // param (#238).
+        const numericValue = v.is(v.string(), filter.filter)
+          ? readNumber(filter.filter)
+          : Number(filter.filter)
+
+        if (numericValue instanceof InvalidFilterError) {
+          if (config.onParseError) config.onParseError(numericValue)
+
+          continue
+        }
 
         // Skip invalid number filters
         if (isNaN(numericValue)) {

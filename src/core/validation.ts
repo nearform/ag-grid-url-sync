@@ -67,8 +67,8 @@ export function validateFilterValue(
 export function validateNumberFilter(value: number): ValidationResult {
   // Every finite number is valid. There is no safe-integer limit: String(n)
   // and parseFloat give back the same number, so a number that generateUrl
-  // writes comes back exactly. A hand-written value that would lose digits
-  // is rejected when it is parsed (see parseExactNumber, #238).
+  // writes comes back exactly. Text that would be rounded is rejected by
+  // readNumber, which reads URL params and string values from the grid (#238).
   if (!Number.isFinite(value)) {
     return { valid: false, error: 'Filter value must be a finite number' }
   }
@@ -112,6 +112,15 @@ export function validateNumberRange(
 const NUMBER_FORMAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 
 /**
+ * A space between the `e` and the exponent digits. URLSearchParams reads a
+ * raw `+` as a space, so "1e+21" in a hand-typed URL arrives as "1e 21".
+ */
+const EXPONENT_SPACE = /(?<=\d[eE]) (?=\d+$)/
+
+/** The most significant digits that toPrecision writes */
+const MAX_PRECISION = 100
+
+/**
  * A key for the value of a number in NUMBER_FORMAT, without its sign: the
  * significant digits (no leading or trailing zeros), then the position of the
  * decimal point after `e`. "1.50", "150e-2" and "0.0150e2" all give "15e1".
@@ -132,30 +141,74 @@ function significantDigits(text: string): string {
 }
 
 /**
- * Whether `number` has the same decimal digits as `text`, so the text loses
- * no digits when it is stored as a double. String(n) gives the shortest form
- * that reads back as n, so any other digits in the text are lost.
+ * Whether `number`, written with as many significant digits as `text` has,
+ * gives the digits of `text` back. Then the text is the double at the text's
+ * own precision: "19.989999999999998" is 19.99 written with 17 digits, so it
+ * is kept. "12345678901234567890" comes back as "12345678901234567168", so it
+ * would be rounded.
+ *
+ * String(n) is checked too. When the double lies exactly halfway between two
+ * texts, String(n) and toPrecision can round to different ones, and the text
+ * that generateUrl writes must always be kept.
  */
-const keepsDigits = (text: string, number: number): boolean =>
-  significantDigits(text) === significantDigits(String(Math.abs(number)))
+function keepsDigits(text: string, number: number): boolean {
+  const key = significantDigits(text)
+  const precision = Math.max(1, key.indexOf('e'))
+
+  if (precision > MAX_PRECISION) return false
+
+  const magnitude = Math.abs(number)
+
+  return (
+    key === significantDigits(String(magnitude)) ||
+    key === significantDigits(magnitude.toPrecision(precision))
+  )
+}
 
 /**
- * Parses the value as a number only if the whole value is a number, and only
- * if no digit is lost. Returns null otherwise.
+ * Reads the value as a number, or gives the error that says why it is not
+ * one. The one rule for every number in a URL or a grid input (#238): the
+ * whole value must be a number, it must be finite, and it must not be rounded
+ * when it is stored as a double.
  *
- * The form does not matter: "1e21", "1E+21" and "1000000000000000000000" are
- * all 1e21, and "1.50" and "007" are 1.5 and 7. A value such as the ID
- * "12345678901234567890" would come back as 12345678901234567000, so it is
- * not a number here (#238).
+ * The form does not matter: "1e21", "1E+21", "1e 21" (a raw `+`) and
+ * "1000000000000000000000" are all 1e21, and "1.50" and "007" are 1.5 and 7.
  */
-export function parseExactNumber(value: string): number | null {
-  const text = value.trim()
+export function readNumber(value: string): number | InvalidFilterError {
+  const text = (value?.trim() ?? '').replace(EXPONENT_SPACE, '+')
 
-  if (!NUMBER_FORMAT.test(text)) return null
+  if (!text) {
+    return new InvalidFilterError('Number filter value cannot be empty')
+  }
+
+  if (!NUMBER_FORMAT.test(text)) {
+    return new InvalidFilterError(`Invalid number format: ${text}`)
+  }
 
   const number = parseFloat(text)
+  const validation = validateNumberFilter(number)
 
-  return Number.isFinite(number) && keepsDigits(text, number) ? number : null
+  if (!validation.valid) {
+    return new InvalidFilterError(validation.error || 'Invalid number value')
+  }
+
+  if (!keepsDigits(text, number)) {
+    return new InvalidFilterError(
+      `Number value ${text} would be rounded to ${number}`
+    )
+  }
+
+  return number
+}
+
+/**
+ * The number in the value, or null when readNumber gives an error. The type
+ * guess for shared operations uses this, so such a value stays text.
+ */
+export function parseExactNumber(value: string): number | null {
+  const number = readNumber(value)
+
+  return number instanceof InvalidFilterError ? null : number
 }
 
 /**
@@ -165,30 +218,11 @@ export function parseExactNumber(value: string): number | null {
  * @returns Parsed number or throws InvalidFilterError
  */
 export function validateAndParseNumber(value: string): number {
-  const trimmedValue = value?.trim()
+  const number = readNumber(value)
 
-  if (!trimmedValue) {
-    throw new InvalidFilterError('Number filter value cannot be empty')
-  }
+  if (number instanceof InvalidFilterError) throw number
 
-  if (!NUMBER_FORMAT.test(trimmedValue)) {
-    throw new InvalidFilterError(`Invalid number format: ${value}`)
-  }
-
-  const numValue = parseFloat(trimmedValue)
-
-  const validation = validateNumberFilter(numValue)
-
-  if (!validation.valid) {
-    throw new InvalidFilterError(validation.error || 'Invalid number value')
-  }
-
-  // The same rule as parseExactNumber (#238)
-  if (!keepsDigits(trimmedValue, numValue)) {
-    throw new InvalidFilterError(`Number value loses digits: ${trimmedValue}`)
-  }
-
-  return numValue
+  return number
 }
 
 /**

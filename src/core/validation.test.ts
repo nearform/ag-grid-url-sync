@@ -127,15 +127,25 @@ describe('Validation Functions', () => {
       )
     })
 
-    it('should reject a number that loses digits (#238)', () => {
+    it('should reject a number that would be rounded (#238)', () => {
       expect(() => validateAndParseNumber('12345678901234567890')).toThrow(
-        'Number value loses digits: 12345678901234567890'
+        'Number value 12345678901234567890 would be rounded to 12345678901234567000'
+      )
+    })
+
+    it('should quote the trimmed value in every message', () => {
+      expect(() => validateAndParseNumber(' 42abc ')).toThrow(
+        'Invalid number format: 42abc'
+      )
+      expect(() => validateAndParseNumber(' 12345678901234567890 ')).toThrow(
+        'Number value 12345678901234567890 would be rounded'
       )
     })
   })
 
-  // A number is exact when the double that parseFloat gives has the same
-  // decimal digits as the text. The form of the text does not matter (#238).
+  // A number is exact when the double that parseFloat gives, written with as
+  // many significant digits as the text has, gives the text's digits back.
+  // The form of the text does not matter (#238).
   describe('parseExactNumber (#238)', () => {
     it.each([
       ['42', 42],
@@ -155,7 +165,19 @@ describe('Validation Functions', () => {
       ['1e+21', 1e21],
       ['1000000000000000000000', 1e21],
       ['0.1', 0.1],
-      ['5e-324', 5e-324]
+      ['5e-324', 5e-324],
+      // More digits than the shortest form, but the same double
+      ['19.989999999999998', 19.99],
+      ['0.10000000000000001', 0.1],
+      ['0.1000000000000000055511151231257827021181583404541015625', 0.1],
+      ['12345678901234567000', 12345678901234567000],
+      // The double is exactly ...248.25, a tie at 17 digits: String(n)
+      // writes .2 and toPrecision(17) writes .3
+      ['2194262264886248.2', 2194262264886248.25],
+      ['2194262264886248.3', 2194262264886248.25],
+      // A raw `+` in a hand-typed URL arrives as a space
+      ['1e 21', 1e21],
+      ['1.5E 21', 1.5e21]
     ])('should parse %s as %s', (value, expected) => {
       expect(parseExactNumber(value)).toBe(expected)
     })
@@ -168,6 +190,9 @@ describe('Validation Functions', () => {
       // Digits lost inside the safe range
       '0.12345678901234567891',
       '1234567890.12345678901234',
+      '3.14159265358979323846',
+      // Rounded to the nearest subnormal
+      '4e-324',
       // Too small or too large for a double
       '1e-400',
       '1e400',
@@ -175,7 +200,9 @@ describe('Validation Functions', () => {
       '',
       'abc',
       '42abc',
-      '1e 21'
+      '1 e21',
+      '1e  21',
+      '1 21'
     ])('should give null for %s', value => {
       expect(parseExactNumber(value)).toBeNull()
     })

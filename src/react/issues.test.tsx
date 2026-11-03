@@ -354,4 +354,35 @@ describe('useAGGridUrlSync issues (#229)', () => {
 
     expect(result.current.issues).toEqual([])
   })
+  test('drops the apply issues when a stored view is restored', async () => {
+    window.localStorage.clear()
+    createViewStore('restore-b').saveView('Eng', {
+      dept: { filterType: 'text', type: 'equals', filter: 'eng' }
+    })
+    const { api } = createGridApi()
+
+    const { result, rerender } = renderHook(
+      ({ storageKey }) =>
+        useAGGridUrlSync(asGridApi(api), {
+          storageKey,
+          autoApplyOnMount: true
+        }),
+      { initialProps: { storageKey: 'restore-a' } }
+    )
+
+    await waitForEffects()
+
+    act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+
+    expect(result.current.issues).toHaveLength(1)
+
+    // A new namespace with a stored view: auto-apply restores it
+    rerender({ storageKey: 'restore-b' })
+    await waitForEffects()
+
+    expect(api.setFilterModel).toHaveBeenLastCalledWith({
+      dept: { filterType: 'text', type: 'equals', filter: 'eng' }
+    })
+    expect(result.current.issues).toEqual([])
+  })
 })

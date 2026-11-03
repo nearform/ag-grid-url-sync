@@ -146,6 +146,10 @@ export function useAGGridUrlSync(
     enabledWhenReady = true,
     onError,
     storageKey,
+    // Only decides whether the hook throws in render (#229). The core and the
+    // hook's own parse calls never get it, so they always report and keep the
+    // valid filters.
+    throwOnError,
     ...coreOptions
   } = options
 
@@ -453,9 +457,7 @@ export function useAGGridUrlSync(
         try {
           urlSyncRef.current = new AGGridUrlSync(gridApi, {
             ...coreOptions,
-            onParseError: issue => reportFailure(issue, contextRef.current),
-            // The hook throws in render, never from an effect or a handler
-            throwOnError: false
+            onParseError: issue => reportFailure(issue, contextRef.current)
           })
           // oxlint-disable-next-line react/set-state-in-effect -- marks the hook ready once the grid API exists; #222 moves this to useSyncExternalStore
           setIsReady(true)
@@ -1246,9 +1248,7 @@ export function useAGGridUrlSync(
   // throwOnError, as in TanStack Query: the issue is thrown during render, so
   // a React error boundary catches it (#229). It is also sent to onParseError
   // one time, when it is found.
-  const thrownIssue = issues.find(issue =>
-    shouldThrow(coreOptions.throwOnError, issue)
-  )
+  const thrownIssue = issues.find(issue => shouldThrow(throwOnError, issue))
 
   if (thrownIssue) throw thrownIssue
 

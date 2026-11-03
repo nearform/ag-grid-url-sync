@@ -8,6 +8,7 @@ import type {
   UseAGGridUrlSyncReturn
 } from './types.js'
 import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
+import { createViewStore } from '../core/view-storage.js'
 import {
   asGridApi,
   waitForEffects,
@@ -243,5 +244,50 @@ describe('useAGGridUrlSync issues (#229)', () => {
     expect(getUrlState).toHaveReturned()
     expect(caught).toHaveBeenCalledOnce()
     expect(caught.mock.calls[0]?.[0]).toMatchObject({ code: 'VALUE_TOO_LONG' })
+  })
+  // The hook's own parse calls do not get throwOnError (#229 review): it only
+  // decides whether the hook throws in render
+  test('parseUrlFilters keeps the valid filters with throwOnError', async () => {
+    const { api } = createGridApi()
+
+    const { result } = renderHook(() =>
+      useAGGridUrlSync(asGridApi(api), { throwOnError: true })
+    )
+
+    await waitForEffects()
+
+    expect(
+      result.current.parseUrlFilters('?f_age_gt=abc&f_name_contains=bob')
+    ).toEqual({ name: { filterType: 'text', type: 'contains', filter: 'bob' } })
+  })
+
+  test('a URL with a bad param still wins over a stored view with throwOnError', async () => {
+    window.localStorage.clear()
+    createViewStore('issues-key').saveView('Eng', {
+      dept: { filterType: 'text', type: 'equals', filter: 'eng' }
+    })
+    Object.defineProperty(window.location, 'search', {
+      value: '?f_name_contains=bob&f_age_gt=abc',
+      configurable: true
+    })
+    Object.defineProperty(window.location, 'href', {
+      value: 'https://example.com/?f_name_contains=bob&f_age_gt=abc',
+      configurable: true
+    })
+    const { api } = createGridApi()
+
+    const { caught } = renderInBoundary(api, {
+      storageKey: 'issues-key',
+      autoApplyOnMount: true,
+      throwOnError: true
+    })
+
+    await waitForEffects()
+
+    expect(api.setFilterModel).toHaveBeenCalledWith({
+      name: { filterType: 'text', type: 'contains', filter: 'bob' }
+    })
+    expect(caught).toHaveBeenCalledOnce()
+    expect(caught.mock.calls[0]?.[0]).toMatchObject({ code: 'INVALID_NUMBER' })
   })
 })

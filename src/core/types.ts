@@ -4,6 +4,7 @@ import type {
   NumberFilterModel,
   DateFilterModel
 } from 'ag-grid-community'
+import { attachColumn } from './issue-columns.js'
 import {
   OPERATORS,
   operationsFor,
@@ -66,12 +67,19 @@ export interface AGGridUrlSyncConfig {
   maxValueLength?: number | undefined
 
   /**
-   * Optional error handler for parsing errors.
-   * Allows graceful error handling without breaking the application.
+   * Optional handler for issues: a filter that is dropped or not valid, in a
+   * URL, a value, or the grid model. The filter is skipped and the others are
+   * kept. Each error is a `URLSyncError` with a `code` (for example
+   * `VALUE_TOO_LONG`) and, when it is known, a `column`. In the core, an error
+   * from the grid API also comes here, as `GRID_ERROR` (the React hook sends it
+   * to `onError`). A URL that cannot be read is thrown as `INVALID_URL`, not
+   * sent here. The library never writes to the console, so an issue with no
+   * handler is silent (#220).
    *
    * In grouped mode, an error that comes from the grouped URL value is an
    * `InvalidSerializationError`, and the original error is in `error.cause`.
-   * In individual mode, the same failure arrives with no wrapper.
+   * The wrapper has the code and the column of the original issue, so a check
+   * on `error.code` works the same in both modes.
    */
   onParseError?: ((error: Error) => void) | undefined
 
@@ -344,15 +352,54 @@ export function isDateFilter(filter: ColumnFilter): filter is DateColumnFilter {
 // ============================================================================
 
 /**
+ * The reason for an issue (#220). Data issues are a filter that is dropped or
+ * not valid. The other codes are failures of an operation.
+ */
+export type IssueCode =
+  // Data issues
+  | 'INVALID_PARAM'
+  | 'INVALID_NUMBER'
+  | 'INVALID_DATE'
+  | 'VALUE_TOO_LONG'
+  | 'INVALID_GROUPED'
+  | 'TYPE_MISMATCH'
+  | 'INVALID_URL'
+  // Operation failures
+  | 'GRID_ERROR'
+  | 'NOT_READY'
+  | 'VIEW_NOT_FOUND'
+  | 'VIEW_NAME_REQUIRED'
+  | 'STORAGE_UNAVAILABLE'
+  | 'STORAGE_FULL'
+  | 'STORAGE_WRITE_FAILED'
+  | 'UNKNOWN'
+
+/** The code and the column of an issue, when the default is not right */
+export interface IssueDetails {
+  code?: IssueCode | undefined
+  column?: string | undefined
+}
+
+/**
  * Base error class for all URL sync operations
  */
 export class URLSyncError extends Error {
+  /** The reason for the error */
+  readonly code: IssueCode
+
+  /** The column of the filter, when it is known */
+  declare readonly column?: string
+
   constructor(
     message: string,
-    public override readonly cause?: Error
+    public override readonly cause?: Error,
+    details: IssueDetails = {}
   ) {
     super(message)
     this.name = 'URLSyncError'
+    this.code = details.code ?? 'UNKNOWN'
+
+    if (details.column !== undefined) attachColumn(this, details.column)
   }
 }
 
@@ -360,8 +407,8 @@ export class URLSyncError extends Error {
  * Error thrown when filter validation fails
  */
 export class InvalidFilterError extends URLSyncError {
-  constructor(message: string, cause?: Error) {
-    super(message, cause)
+  constructor(message: string, cause?: Error, details: IssueDetails = {}) {
+    super(message, cause, { ...details, code: details.code ?? 'INVALID_PARAM' })
     this.name = 'InvalidFilterError'
   }
 }
@@ -370,8 +417,8 @@ export class InvalidFilterError extends URLSyncError {
  * Error thrown when URL parsing fails
  */
 export class InvalidURLError extends URLSyncError {
-  constructor(message: string, cause?: Error) {
-    super(message, cause)
+  constructor(message: string, cause?: Error, details: IssueDetails = {}) {
+    super(message, cause, { ...details, code: details.code ?? 'INVALID_URL' })
     this.name = 'InvalidURLError'
   }
 }
@@ -380,20 +427,34 @@ export class InvalidURLError extends URLSyncError {
  * Error thrown when date validation fails
  */
 export class InvalidDateError extends InvalidFilterError {
-  constructor(message: string, cause?: Error) {
-    super(message, cause)
+  constructor(message: string, cause?: Error, details: IssueDetails = {}) {
+    super(message, cause, { ...details, code: details.code ?? 'INVALID_DATE' })
     this.name = 'InvalidDateError'
   }
 }
 
 /**
- * Error thrown when serialization/deserialization fails
+ * Error thrown when serialization/deserialization fails.
+ *
+ * When the cause is an issue inside the grouped value (for example a value
+ * over maxValueLength), this error has the same code and column, so a filter
+ * gives the same code in both modes. `INVALID_GROUPED` means that the grouped
+ * value itself does not decode.
  */
-export class InvalidSerializationError extends Error {
+export class InvalidSerializationError extends URLSyncError {
+  /** The grouped format: querystring, json or base64 */
+  readonly format: string
+
   constructor(format: string, cause: Error) {
-    super(`Invalid ${format} serialization: ${cause.message}`)
+    super(
+      `Invalid ${format} serialization: ${cause.message}`,
+      cause,
+      cause instanceof URLSyncError
+        ? { code: cause.code, column: cause.column }
+        : { code: 'INVALID_GROUPED' }
+    )
     this.name = 'InvalidSerializationError'
-    this.cause = cause
+    this.format = format
   }
 }
 

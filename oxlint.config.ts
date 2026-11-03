@@ -55,5 +55,18 @@ export default defineConfig({
     'anti-slop/no-runtime-typeof': 'error',
     'anti-slop/no-chained-type-assertions': 'error',
     'anti-slop/require-safety-comment-for-type-assertion': 'error'
-  }
+  },
+  overrides: [
+    // The library never writes to the console (#220). Issues go to the
+    // caller's callbacks instead.
+    {
+      files: ['src/**'],
+      rules: { 'no-console': 'error' }
+    },
+    // Tests spy on the console, and the type tests copy README examples
+    {
+      files: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/**/*.test-d.ts'],
+      rules: { 'no-console': 'off' }
+    }
+  ]
 })

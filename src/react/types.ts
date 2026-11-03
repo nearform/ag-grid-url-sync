@@ -28,9 +28,10 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
    * take precedence: a shared link should show the sender's filters rather than
    * the recipient's stored view.
    *
-   * Attempted once per grid. A failed attempt is reported through `onError` and
-   * `onParseError` and is not retried on later renders; pass a new `gridApi`, or
-   * call `applyUrlFilters`, to try again.
+   * Attempted once per grid. A failed attempt is reported one time (a bad
+   * filter through `onParseError`, any other failure through `onError`) and is
+   * not retried on later renders; pass a new `gridApi`, or call
+   * `applyUrlFilters`, to try again.
    *
    * Default: false
    */
@@ -49,8 +50,14 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
   enabledWhenReady?: boolean | undefined
 
   /**
-   * Optional error handler for hook-level errors (initialization, URL operations, etc.)
-   * This supplements the core onParseError callback for comprehensive error handling
+   * Optional handler for operation failures: an operation called before the
+   * grid is ready (`NOT_READY`), a grid API error (`GRID_ERROR`), a saved view
+   * that is not found or cannot be stored (`VIEW_*`, `STORAGE_*`). `context`
+   * names the operation, for example `'apply-url-filters'`.
+   *
+   * Each failure reaches one callback only (#220). A filter that is dropped or
+   * not valid goes to `onParseError`, not here. The hook never writes to the
+   * console, so a failure with no handler is silent.
    */
   onError?: ((error: Error, context: string) => void) | undefined
 }

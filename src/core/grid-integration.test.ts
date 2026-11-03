@@ -485,7 +485,7 @@ describe('Grid Integration', () => {
       })
     })
 
-    it('should warn on filter type mismatch - date filter on non-date column', () => {
+    it('should report a type mismatch - date filter on non-date column', () => {
       const filterState: FilterState = {
         name: { filterType: 'date', type: 'eq', filter: '2024-01-15' }
       }
@@ -496,15 +496,21 @@ describe('Grid Integration', () => {
 
       applyFilterModel(filterState, mockConfig)
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Column 'name' expects a text filter but received a date filter"
-        )
+      expect(consoleSpy).not.toHaveBeenCalled()
+      expect(mockConfig.onParseError).toHaveBeenCalledOnce()
+      expect(mockConfig.onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'TYPE_MISMATCH',
+          column: 'name',
+          message: expect.stringContaining(
+            "Column 'name' expects a text filter but received a date filter"
+          )
+        })
       )
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
     })
 
-    it('should warn on filter type mismatch - number filter on non-number column', () => {
+    it('should report a type mismatch - number filter on non-number column', () => {
       const filterState: FilterState = {
         name: { filterType: 'number', type: 'eq', filter: 25 }
       }
@@ -515,10 +521,16 @@ describe('Grid Integration', () => {
 
       applyFilterModel(filterState, mockConfig)
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Column 'name' expects a text filter but received a number filter"
-        )
+      expect(consoleSpy).not.toHaveBeenCalled()
+      expect(mockConfig.onParseError).toHaveBeenCalledOnce()
+      expect(mockConfig.onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'TYPE_MISMATCH',
+          column: 'name',
+          message: expect.stringContaining(
+            "Column 'name' expects a text filter but received a number filter"
+          )
+        })
       )
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
     })
@@ -827,6 +839,51 @@ describe('Grid Integration', () => {
       expect(getFilterModel(mockConfig)).toEqual({
         d: { filterType: 'date', type, filter: '' }
       })
+    })
+  })
+
+  // A handler that throws gets its own error back. The library does not catch
+  // it and report it again as GRID_ERROR (#220 review).
+  describe('a throwing onParseError', () => {
+    const handlerError = new Error('handler failed')
+
+    const throwingHandler = () =>
+      vi.fn(() => {
+        throw handlerError
+      })
+
+    it('reaches the caller of applyFilterModel and is reported one time', () => {
+      const onParseError = throwingHandler()
+      mockGridApi.getColumn.mockReturnValue({
+        getColDef: () => ({ filter: 'agTextColumnFilter' })
+      })
+
+      expect(() =>
+        applyFilterModel(
+          { name: { filterType: 'number', type: 'eq', filter: 1 } },
+          asGridApi(mockGridApi),
+          { onParseError }
+        )
+      ).toThrow(handlerError)
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'TYPE_MISMATCH' })
+      )
+    })
+
+    it('reaches the caller of getFilterModel and is reported one time', () => {
+      const onParseError = throwingHandler()
+      mockGridApi.getFilterModel.mockReturnValue({
+        n: { filterType: 'number', type: 'foo', filter: 1 }
+      })
+
+      expect(() =>
+        getFilterModel(asGridApi(mockGridApi), { onParseError })
+      ).toThrow(handlerError)
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'INVALID_PARAM' })
+      )
     })
   })
 })

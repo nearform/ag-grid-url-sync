@@ -202,6 +202,19 @@ describe('Grouped Serialization', () => {
   })
 
   describe('detectGroupedSerialization', () => {
+    it('does not write to the console for a URL it cannot read (#220)', () => {
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+
+      expect(detectGroupedSerialization('not a url', ['f'])).toEqual({
+        isGrouped: false
+      })
+      expect(consoleError).not.toHaveBeenCalled()
+
+      consoleError.mockRestore()
+    })
+
     it('should detect querystring format', () => {
       const url =
         'http://example.com?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25'

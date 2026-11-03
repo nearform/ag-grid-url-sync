@@ -17,7 +17,7 @@ import {
 } from './types.js'
 import { operatorById, operatorFromAgGrid } from './operators.js'
 import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
-import { toError } from './to-error.js'
+import { reportIssue, toIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
 import type { GridApi } from 'ag-grid-community'
@@ -56,7 +56,14 @@ function gridNumber(
   const number = readNumber(value)
 
   return number instanceof InvalidFilterError
-    ? new InvalidFilterError(`${number.message} (column '${column}')`)
+    ? new InvalidFilterError(
+        `${number.message} (column '${column}')`,
+        undefined,
+        {
+          code: 'INVALID_NUMBER',
+          column
+        }
+      )
     : number
 }
 
@@ -143,187 +150,196 @@ function readGridFilters(
   gridApi: GridApi,
   options: ResolvedOptions
 ): FilterState {
+  // Only the grid call is in the try. An issue report runs outside it, so a
+  // handler that throws gets its own error back, not a GRID_ERROR (#220).
+  let model: unknown
+
   try {
-    // A Map, not a plain object: an assignment to `obj['__proto__']` would
-    // call the prototype setter, and the column would be lost (#253)
-    const filters = new Map<string, ColumnFilter>()
     // AG Grid can hand back null despite the declared return type
-    const model: unknown = gridApi.getFilterModel()
-
-    // Checked, not parsed: Valibot's record output leaves out the keys
-    // `__proto__`, `constructor` and `prototype`, and here each one is a
-    // column name like any other
-    if (!v.is(JsonObjectSchema, model)) {
-      return {}
-    }
-
-    for (const [column, entry] of Object.entries(model)) {
-      // Filter types the library does not support (set, multi) are skipped
-      const parsed = v.safeParse(AgGridFilterSchema, entry)
-
-      if (!parsed.success) continue
-
-      const filter = parsed.output
-
-      // Handle text filters
-      if (filter.filterType === 'text') {
-        // The lookup key is the filter type and the AG Grid name
-        const operator = operatorFromAgGrid('text', filter.type)
-
-        if (operator && isTextFilterOperation(operator.id)) {
-          filters.set(column, {
-            filterType: 'text',
-            type: operator.id,
-            filter: String(filter.filter || '')
-          })
-        }
-      }
-      // Handle number filters
-      else if (filter.filterType === 'number') {
-        // AG Grid uses the same names for number and date operations, so the
-        // lookup key is the filter type and the AG Grid name
-        const operator = operatorFromAgGrid('number', filter.type)
-        const internalOperation = operator?.id
-
-        // If the operation type is not recognized, report the error
-        if (
-          !operator ||
-          !internalOperation ||
-          !isNumberFilterOperation(internalOperation)
-        ) {
-          options.onParseError(
-            new Error(
-              `Unknown number filter operation '${filter.type}' for column '${column}'. ` +
-                `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`
-            )
-          )
-
-          continue
-        }
-
-        // A blank filter has no value. A number filter needs a number, so
-        // this one gets 0, which nothing reads: the URL writer writes `true`
-        // and the grid writer writes null (#260).
-        if (operator.arity === 0) {
-          filters.set(column, {
-            filterType: 'number',
-            type: internalOperation,
-            filter: 0
-          })
-
-          continue
-        }
-
-        // A value that the operation needs is not there yet: the user is
-        // still editing, so there is no filter. Null is not 0 (#260).
-        if (
-          !hasGridValue(filter.filter) ||
-          (operator.arity === 2 && !hasGridValue(filter.filterTo))
-        ) {
-          continue
-        }
-
-        const numericValue = gridNumber(filter.filter, column)
-
-        // Only inRange uses filterTo, so the other operations ignore it
-        const numericTo =
-          operator.arity === 2 && hasGridValue(filter.filterTo)
-            ? gridNumber(filter.filterTo, column)
-            : undefined
-
-        if (numericValue instanceof InvalidFilterError) {
-          options.onParseError(numericValue)
-
-          continue
-        }
-
-        if (numericTo instanceof InvalidFilterError) {
-          options.onParseError(numericTo)
-
-          continue
-        }
-
-        // Skip invalid number filters
-        if (isNaN(numericValue)) {
-          continue
-        }
-
-        // Handle range operations
-        filters.set(
-          column,
-          internalOperation === 'inRange' && numericTo !== undefined
-            ? {
-                filterType: 'number',
-                type: internalOperation,
-                filter: numericValue,
-                filterTo: numericTo
-              }
-            : {
-                filterType: 'number',
-                type: internalOperation,
-                filter: numericValue
-              }
-        )
-      }
-      // Handle date filters
-      else {
-        // AG Grid uses generic names for date operations (`lessThan` is
-        // `dateBefore`), so the lookup key is the filter type and the name
-        const operator = operatorFromAgGrid('date', filter.type)
-        const mappedOperation = operator?.id
-
-        if (
-          operator &&
-          mappedOperation &&
-          isDateFilterOperation(mappedOperation)
-        ) {
-          // A blank filter has no date
-          if (operator.arity === 0) {
-            filters.set(column, {
-              filterType: 'date',
-              type: mappedOperation,
-              filter: ''
-            })
-
-            continue
-          }
-
-          const from = toIsoDateString(
-            filter.dateFrom || String(filter.filter || '')
-          )
-
-          // Only date ranges use dateTo (AG Grid uses dateFrom/dateTo)
-          const to =
-            operator.arity === 2
-              ? toIsoDateString(filter.dateTo ?? undefined)
-              : ''
-
-          // A date that the operation needs is not there yet: the user is
-          // still editing, so there is no filter (#260)
-          if (!from || (operator.arity === 2 && !to)) continue
-
-          filters.set(
-            column,
-            operator.arity === 2
-              ? {
-                  filterType: 'date',
-                  type: mappedOperation,
-                  filter: from,
-                  filterTo: to
-                }
-              : { filterType: 'date', type: mappedOperation, filter: from }
-          )
-        }
-      }
-    }
-
-    // Object.fromEntries creates own keys, so `__proto__` stays a column
-    return Object.fromEntries(filters)
+    model = gridApi.getFilterModel()
   } catch (error) {
-    options.onParseError(toError(error))
+    // The grid API threw, which is not a problem with a filter
+    reportIssue(options, toIssue(error, 'GRID_ERROR'))
 
     return {}
   }
+
+  // A Map, not a plain object: an assignment to `obj['__proto__']` would
+  // call the prototype setter, and the column would be lost (#253)
+  const filters = new Map<string, ColumnFilter>()
+
+  // Checked, not parsed: Valibot's record output leaves out the keys
+  // `__proto__`, `constructor` and `prototype`, and here each one is a
+  // column name like any other
+  if (!v.is(JsonObjectSchema, model)) {
+    return {}
+  }
+
+  for (const [column, entry] of Object.entries(model)) {
+    // Filter types the library does not support (set, multi) are skipped
+    const parsed = v.safeParse(AgGridFilterSchema, entry)
+
+    if (!parsed.success) continue
+
+    const filter = parsed.output
+
+    // Handle text filters
+    if (filter.filterType === 'text') {
+      // The lookup key is the filter type and the AG Grid name
+      const operator = operatorFromAgGrid('text', filter.type)
+
+      if (operator && isTextFilterOperation(operator.id)) {
+        filters.set(column, {
+          filterType: 'text',
+          type: operator.id,
+          filter: String(filter.filter || '')
+        })
+      }
+    }
+    // Handle number filters
+    else if (filter.filterType === 'number') {
+      // AG Grid uses the same names for number and date operations, so the
+      // lookup key is the filter type and the AG Grid name
+      const operator = operatorFromAgGrid('number', filter.type)
+      const internalOperation = operator?.id
+
+      // If the operation type is not recognized, report the error
+      if (
+        !operator ||
+        !internalOperation ||
+        !isNumberFilterOperation(internalOperation)
+      ) {
+        reportIssue(
+          options,
+          new InvalidFilterError(
+            `Unknown number filter operation '${filter.type}' for column '${column}'. ` +
+              `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`,
+            undefined,
+            { code: 'INVALID_PARAM', column }
+          )
+        )
+
+        continue
+      }
+
+      // A blank filter has no value. A number filter needs a number, so
+      // this one gets 0, which nothing reads: the URL writer writes `true`
+      // and the grid writer writes null (#260).
+      if (operator.arity === 0) {
+        filters.set(column, {
+          filterType: 'number',
+          type: internalOperation,
+          filter: 0
+        })
+
+        continue
+      }
+
+      // A value that the operation needs is not there yet: the user is
+      // still editing, so there is no filter. Null is not 0 (#260).
+      if (
+        !hasGridValue(filter.filter) ||
+        (operator.arity === 2 && !hasGridValue(filter.filterTo))
+      ) {
+        continue
+      }
+
+      const numericValue = gridNumber(filter.filter, column)
+
+      // Only inRange uses filterTo, so the other operations ignore it
+      const numericTo =
+        operator.arity === 2 && hasGridValue(filter.filterTo)
+          ? gridNumber(filter.filterTo, column)
+          : undefined
+
+      if (numericValue instanceof InvalidFilterError) {
+        reportIssue(options, numericValue)
+
+        continue
+      }
+
+      if (numericTo instanceof InvalidFilterError) {
+        reportIssue(options, numericTo)
+
+        continue
+      }
+
+      // Skip invalid number filters
+      if (isNaN(numericValue)) {
+        continue
+      }
+
+      // Handle range operations
+      filters.set(
+        column,
+        internalOperation === 'inRange' && numericTo !== undefined
+          ? {
+              filterType: 'number',
+              type: internalOperation,
+              filter: numericValue,
+              filterTo: numericTo
+            }
+          : {
+              filterType: 'number',
+              type: internalOperation,
+              filter: numericValue
+            }
+      )
+    }
+    // Handle date filters
+    else {
+      // AG Grid uses generic names for date operations (`lessThan` is
+      // `dateBefore`), so the lookup key is the filter type and the name
+      const operator = operatorFromAgGrid('date', filter.type)
+      const mappedOperation = operator?.id
+
+      if (
+        operator &&
+        mappedOperation &&
+        isDateFilterOperation(mappedOperation)
+      ) {
+        // A blank filter has no date
+        if (operator.arity === 0) {
+          filters.set(column, {
+            filterType: 'date',
+            type: mappedOperation,
+            filter: ''
+          })
+
+          continue
+        }
+
+        const from = toIsoDateString(
+          filter.dateFrom || String(filter.filter || '')
+        )
+
+        // Only date ranges use dateTo (AG Grid uses dateFrom/dateTo)
+        const to =
+          operator.arity === 2
+            ? toIsoDateString(filter.dateTo ?? undefined)
+            : ''
+
+        // A date that the operation needs is not there yet: the user is
+        // still editing, so there is no filter (#260)
+        if (!from || (operator.arity === 2 && !to)) continue
+
+        filters.set(
+          column,
+          operator.arity === 2
+            ? {
+                filterType: 'date',
+                type: mappedOperation,
+                filter: from,
+                filterTo: to
+              }
+            : { filterType: 'date', type: mappedOperation, filter: from }
+        )
+      }
+    }
+  }
+
+  // Object.fromEntries creates own keys, so `__proto__` stays a column
+  return Object.fromEntries(filters)
 }
 
 /**
@@ -446,45 +462,57 @@ function writeGridFilters(
   gridApi: GridApi,
   options: ResolvedOptions
 ): void {
-  try {
-    // A Map, not a plain object: an assignment to `obj['__proto__']` would
-    // call the prototype setter, and the column would be lost (#253)
-    const model = new Map<string, AGGridFilter>()
+  // A Map, not a plain object: an assignment to `obj['__proto__']` would
+  // call the prototype setter, and the column would be lost (#253)
+  const model = new Map<string, AGGridFilter>()
 
-    for (const [column, filter] of Object.entries(filterState)) {
-      // A JavaScript caller can pass anything here
-      if (!v.is(JsonObjectSchema, filter)) continue
+  for (const [column, filter] of Object.entries(filterState)) {
+    // A JavaScript caller can pass anything here
+    if (!v.is(JsonObjectSchema, filter)) continue
 
-      // Detect expected filter type for this column
-      const expectedType = detectColumnFilterType(gridApi, column)
+    // Detect expected filter type for this column
+    const expectedType = detectColumnFilterType(gridApi, column)
 
-      // Validate filter type compatibility
-      if (filter.filterType === 'date' && expectedType !== 'date') {
-        console.warn(
-          `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`
+    // Validate filter type compatibility
+    if (filter.filterType === 'date' && expectedType !== 'date') {
+      reportIssue(
+        options,
+        new InvalidFilterError(
+          `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`,
+          undefined,
+          { code: 'TYPE_MISMATCH', column }
         )
-        continue
-      }
-
-      if (filter.filterType === 'number' && expectedType !== 'number') {
-        console.warn(
-          `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`
-        )
-        continue
-      }
-
-      // Convert to AG Grid filter model
-      const agGridFilter = convertToAGGridFilter(filter)
-
-      if (agGridFilter) {
-        model.set(column, agGridFilter)
-      }
+      )
+      continue
     }
 
-    // Apply the filter model to AG Grid
+    if (filter.filterType === 'number' && expectedType !== 'number') {
+      reportIssue(
+        options,
+        new InvalidFilterError(
+          `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`,
+          undefined,
+          { code: 'TYPE_MISMATCH', column }
+        )
+      )
+      continue
+    }
+
+    // Convert to AG Grid filter model
+    const agGridFilter = convertToAGGridFilter(filter)
+
+    if (agGridFilter) {
+      model.set(column, agGridFilter)
+    }
+  }
+
+  // Only the grid call is in the try. An issue report runs outside it, so a
+  // handler that throws gets its own error back, not a GRID_ERROR (#220).
+  try {
     // Object.fromEntries creates own keys, so `__proto__` stays a column
     gridApi.setFilterModel(Object.fromEntries(model))
   } catch (error) {
-    options.onParseError(toError(error))
+    // The grid API threw, which is not a problem with a filter
+    reportIssue(options, toIssue(error, 'GRID_ERROR'))
   }
 }

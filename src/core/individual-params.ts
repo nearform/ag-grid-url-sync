@@ -21,7 +21,7 @@ import {
   validateDateFilter
 } from './validation.js'
 import { DEFAULT_CONFIG, resolveOptions } from './options.js'
-import { toError } from './to-error.js'
+import { reportIssue, toIssue } from './issues.js'
 
 // Individual (prefixed) URL parameter serialization and parsing.
 //
@@ -130,7 +130,7 @@ export function serializeFilters(
         }
       } catch (error) {
         // Skip this filter and keep the others, the same as parsing does
-        options.onParseError(toError(error))
+        reportIssue(options, toIssue(error, 'INVALID_PARAM', column))
         continue
       }
     }
@@ -269,7 +269,9 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
       }
     } catch (error) {
       throw new InvalidFilterError(
-        error instanceof Error ? error.message : 'Invalid date range'
+        error instanceof Error ? error.message : 'Invalid date range',
+        undefined,
+        { code: 'INVALID_DATE' }
       )
     }
   }
@@ -280,7 +282,9 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
     if (rangeParts.length !== 2) {
       throw new InvalidFilterError(
-        'Range operation requires exactly two values separated by comma'
+        'Range operation requires exactly two values separated by comma',
+        undefined,
+        { code: 'INVALID_NUMBER' }
       )
     }
 
@@ -291,7 +295,9 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
     if (!rangeValidation.valid) {
       throw new InvalidFilterError(
-        rangeValidation.error || 'Invalid range values'
+        rangeValidation.error || 'Invalid range values',
+        undefined,
+        { code: 'INVALID_NUMBER' }
       )
     }
 
@@ -320,7 +326,9 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
       }
     } catch (error) {
       throw new InvalidFilterError(
-        error instanceof Error ? error.message : 'Invalid date filter'
+        error instanceof Error ? error.message : 'Invalid date filter',
+        undefined,
+        { code: 'INVALID_DATE' }
       )
     }
   }
@@ -399,12 +407,14 @@ export function parseIndividualParams(
   for (const [param, value] of searchParams.entries()) {
     if (!param.startsWith(prefix)) continue
 
+    // Known once the param name is split, so the issue can name the column
+    let columnName: string | undefined
+
     try {
       // Extract column name and parse the filter parameter
-      const { column: columnName, operation } = extractColumnAndOperation(
-        param,
-        prefix
-      )
+      const parts = extractColumnAndOperation(param, prefix)
+      columnName = parts.column
+      const { operation } = parts
 
       const filterParam = parseFilterOperation(operation, value)
 
@@ -416,14 +426,14 @@ export function parseIndividualParams(
           filterParam.type
         )
 
-        filters.set(columnName, { ...filterParam, filter: validatedValue })
+        filters.set(parts.column, { ...filterParam, filter: validatedValue })
       } else {
         // Number and date filters are already validated in parseFilterOperation
-        filters.set(columnName, filterParam)
+        filters.set(parts.column, filterParam)
       }
     } catch (error) {
-      // Log parsing errors through the configured error handler
-      config.onParseError(toError(error))
+      // Report the issue and skip this param
+      reportIssue(config, toIssue(error, 'INVALID_PARAM', columnName))
       // Continue processing other parameters instead of failing completely
       continue
     }

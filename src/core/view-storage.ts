@@ -1,6 +1,8 @@
 import type { FilterModel } from 'ag-grid-community'
 import * as v from 'valibot'
 import { GridViewSchema, StoredViewsSchema } from './schemas.js'
+import { URLSyncError } from './types.js'
+import { toError } from './to-error.js'
 
 /**
  * localStorage-backed store for named grid views.
@@ -152,7 +154,9 @@ export function createViewStore(storageKey: string): ViewStore {
     // succeed here and must not pretend to: returning normally would tell the
     // caller a view was saved when nothing was persisted.
     if (typeof window === 'undefined') {
-      throw new Error('Browser storage is unavailable.')
+      throw new URLSyncError('Browser storage is unavailable.', undefined, {
+        code: 'STORAGE_UNAVAILABLE'
+      })
     }
 
     try {
@@ -164,12 +168,15 @@ export function createViewStore(storageKey: string): ViewStore {
         (error.name === 'QuotaExceededError' ||
           error.name === 'NS_ERROR_DOM_QUOTA_REACHED')
 
-      throw new Error(
-        isQuota
-          ? 'Browser storage is full. Delete a saved view and try again.'
-          : 'Error writing to storage.',
-        { cause: error }
-      )
+      throw isQuota
+        ? new URLSyncError(
+            'Browser storage is full. Delete a saved view and try again.',
+            toError(error),
+            { code: 'STORAGE_FULL' }
+          )
+        : new URLSyncError('Error writing to storage.', toError(error), {
+            code: 'STORAGE_WRITE_FAILED'
+          })
     }
   }
 
@@ -194,7 +201,9 @@ export function createViewStore(storageKey: string): ViewStore {
       const trimmedName = name.trim()
 
       if (!trimmedName) {
-        throw new Error('A view name is required.')
+        throw new URLSyncError('A view name is required.', undefined, {
+          code: 'VIEW_NAME_REQUIRED'
+        })
       }
 
       const current = read()

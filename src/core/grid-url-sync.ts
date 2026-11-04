@@ -20,7 +20,7 @@ import { generateUrl } from './url-generator.js'
 import { resolveParamPrefix } from './individual-params.js'
 import { getFilterModel, toGridModel } from './grid-integration.js'
 import type { GridView } from './view-storage.js'
-import type { Columns, OwnWrite } from './own-write.js'
+import type { Classified, Columns, OwnWrite, WriteKind } from './own-write.js'
 import { classifyEvent, settleWrite } from './own-write.js'
 
 // createGridUrlSync (#221): the framework-free sync. It owns its grid
@@ -46,6 +46,9 @@ export const IDLE_SNAPSHOT: GridUrlSyncSnapshot = Object.freeze({
  * can throw one (only in methods that the app calls).
  */
 type IssueMode = 'collect' | 'report' | 'throw'
+
+/** The write kinds with keys in the model form. A URL write has its own path. */
+type ModelWriteKind = Exclude<WriteKind, 'url'>
 
 interface Call {
   options: ResolvedOptions
@@ -276,30 +279,75 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
         fail(call, cause, 'GRID_ERROR')
       }
 
-      if (model) {
-        // Before the call, so an event inside it is known as ours (#273)
-        own = { phase: 'writing', kind: 'url' }
-
-        // Only the grid call is in the try. An issue report runs outside it,
-        // so a handler that throws gets its own error back (#220).
-        try {
-          api.setFilterModel(model)
-        } catch (cause) {
-          failed = true
-          own = null
-          fail(call, cause, 'GRID_ERROR')
-        }
-      }
+      if (model) failed = !setModel(model, 'url', call)
     }
 
     applyIssues = call.issues.length ? call.issues : NO_ISSUES
     readGrid()
 
-    if (filters && applies) settleUrlWrite(filters, before, failed)
+    if (filters && applies && settleUrlWrite(filters, before, failed)) {
+      followActiveView('url')
+    }
 
     publish()
 
     return { issues: call.issues }
+  }
+
+  /**
+   * Calls setFilterModel as the sync's own write of the kind. False when the
+   * grid threw: the call gets GRID_ERROR.
+   */
+  function setModel(model: FilterModel, kind: WriteKind, call: Call): boolean {
+    // Before the call, so an event inside it is known as ours (#273)
+    own = { phase: 'writing', kind }
+
+    // Only the grid call is in the try. An issue report runs outside it, so
+    // a handler that throws gets its own error back (#220).
+    try {
+      api.setFilterModel(model)
+
+      return true
+    } catch (cause) {
+      own = null
+      fail(call, cause, 'GRID_ERROR')
+
+      return false
+    }
+  }
+
+  /**
+   * Writes a model to the grid as the sync's own write, with keys in the
+   * model form. Reads the grid after the call, and at a landing applies the
+   * active-view rule. False when the grid threw.
+   */
+  function writeModel(
+    model: FilterModel,
+    kind: ModelWriteKind,
+    call: Call
+  ): boolean {
+    const before = liveModel()
+
+    if (!setModel(model, kind, call)) return false
+
+    const accepted = acceptedPart(model)
+
+    const settled = settleWrite(own, {
+      kind,
+      failed: false,
+      afterKey: modelKey(liveModel() ?? {}),
+      before,
+      beforeKey: before ? modelKey(before) : null,
+      accepted,
+      acceptedKey: modelKey(accepted)
+    })
+
+    own = settled.own
+    readGrid()
+
+    if (settled.landed) followActiveView(kind)
+
+    return true
   }
 
   /** The grid's filters now, or null when the grid cannot be read */
@@ -311,18 +359,80 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     }
   }
 
+  /** The grid's AG Grid model now, or null when the grid cannot be read */
+  function liveModel(): FilterModel | null {
+    try {
+      // AG Grid can hand back null despite the declared return type
+      return api.getFilterModel() ?? {}
+    } catch {
+      return null
+    }
+  }
+
+  /** The key of the grid's columns now, in the form of the write kind */
+  function liveKey(kind: WriteKind): string | null {
+    if (kind === 'url') {
+      const live = liveState()
+
+      return live ? filtersKey(live) : null
+    }
+
+    const live = liveModel()
+
+    return live ? modelKey(live) : null
+  }
+
+  /** Whether the grid shows this model now */
+  function shows(model: FilterModel | null): boolean {
+    if (model === null) return false
+
+    const live = liveModel()
+
+    return live !== null && modelKey(live) === modelKey(model)
+  }
+
+  /**
+   * The active-view rule (D2), after each landing and each change. A view
+   * write that lands keeps the model that the grid made of it. Any other
+   * grid model clears the active view and its stored pointer.
+   */
+  function followActiveView(landing: WriteKind | null): void {
+    if (!active) return
+
+    if (landing === 'view' || landing === 'restore') {
+      active = { id: active.id, model: liveModel() }
+
+      return
+    }
+
+    if (shows(active.model)) return
+
+    active = null
+    persistPointer(null, startCall('grid', 'report'))
+  }
+
+  /** Writes the stored pointer. A storage error is an issue of the call. */
+  function persistPointer(id: string | null, call: Call): void {
+    try {
+      views?.persistActiveViewId(id)
+    } catch (cause) {
+      fail(call, cause, 'STORAGE_WRITE_FAILED')
+    }
+  }
+
   /**
    * After the sync's own setFilterModel returns: did the write land, or does
    * the grid take it later? `state` is the grid's filters after the call.
+   * True when the write landed.
    */
   function settleUrlWrite(
     filters: FilterState,
     before: FilterState | null,
     failed: boolean
-  ): void {
+  ): boolean {
     const accepted = acceptedPart(filters)
 
-    own = settleWrite(own, {
+    const settled = settleWrite(own, {
       kind: 'url',
       failed,
       afterKey: filtersKey(state),
@@ -330,7 +440,11 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       beforeKey: before ? filtersKey(before) : null,
       accepted,
       acceptedKey: filtersKey(accepted)
-    }).own
+    })
+
+    own = settled.own
+
+    return settled.landed
   }
 
   /** The filters of the columns that the grid has */
@@ -350,19 +464,24 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   /**
-   * Whether a filterChanged comes from the sync's own write. `state` is the
-   * grid's filters at the event. Any other event ends the own write.
+   * What a filterChanged is: an echo or the landing of the sync's own write,
+   * or a change. The key has the form of the write's kind: `state` (the URL
+   * form) for a URL write, the grid's model for the others. A change ends
+   * the own write.
    */
-  function isOwnEvent(source: string | undefined): boolean {
+  function classify(source: string | undefined): Classified {
+    const modelForm = own !== null && own.kind !== 'url'
+    const live = modelForm ? (liveModel() ?? {}) : state
+
     const result = classifyEvent(own, {
-      key: filtersKey(state),
-      live: state,
+      key: modelForm ? modelKey(live) : filtersKey(state),
+      live,
       source
     })
 
     own = result.own
 
-    return result.kind !== 'change'
+    return result
   }
 
   /** Whether a URL has a param that the codec reads, even one that is bad */
@@ -383,9 +502,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
    * filters or of the page's params
    */
   function filtersKey(filters: FilterState): string {
-    const sorted = Object.fromEntries(
-      Object.entries(filters).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    )
+    const sorted = Object.fromEntries(Object.entries(filters).sort(byColumnId))
 
     return generateUrl(
       'http://key.invalid/',
@@ -413,12 +530,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     }
   }
 
-  /**
-   * Writes a filter change, unless the sync's own apply caused it or the
-   * address bar already has the same filters
-   */
-  function writeChange(source: string | undefined): void {
-    if (isOwnEvent(source) || historyMode === 'none' || !hasWindow()) return
+  /** Writes a filter change, unless the address bar has the same filters */
+  function writeChange(): void {
+    if (historyMode === 'none' || !hasWindow()) return
 
     const key = filtersKey(state)
 
@@ -435,19 +549,26 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   function onFilterChanged(event?: { source?: string }): void {
     if (status !== 'active') return
 
-    // Inside the sync's own setFilterModel: the write lands. The apply reads
-    // the grid and publishes after the call.
+    // Inside the sync's own setFilterModel: the write lands. The writer
+    // reads the grid and publishes after the call.
     if (own?.phase === 'writing') {
-      const live = liveState()
-      own = live
-        ? { phase: 'landed', kind: own.kind, key: filtersKey(live) }
-        : null
+      const key = liveKey(own.kind)
+      own = key === null ? null : { phase: 'landed', kind: own.kind, key }
 
       return
     }
 
     readGrid()
-    writeChange(event?.source)
+
+    const result = classify(event?.source)
+
+    if (result.kind !== 'echo') {
+      followActiveView(result.kind === 'landing' ? result.write : null)
+    }
+
+    // An own write's landing is not a user edit
+    if (result.kind === 'change') writeChange()
+
     publish()
   }
 
@@ -560,9 +681,62 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       return view
     },
 
-    loadView() {
-      // Task 4 (#223) writes the view to the grid
-      if (views && status !== 'active') notReady()
+    loadView(id) {
+      if (!views) return
+
+      if (status !== 'active') {
+        notReady()
+
+        return
+      }
+
+      const call = startCall('api', 'throw')
+
+      // null clears the filters. A JavaScript caller can also pass undefined.
+      const wanted = id ?? null
+
+      const view =
+        wanted === null
+          ? null
+          : views.listViews().find(candidate => candidate.id === wanted)
+
+      if (view === undefined) {
+        // Another tab can have deleted it: read the list again
+        refreshViews()
+        publish()
+        fail(
+          call,
+          new URLSyncError(`No saved view with id "${wanted}"`, undefined, {
+            code: 'VIEW_NOT_FOUND'
+          }),
+          'VIEW_NOT_FOUND'
+        )
+
+        return
+      }
+
+      const previous = active
+
+      // Before the write, so no snapshot shows null while a deferred write
+      // is pending (D2)
+      active = view ? { id: view.id, model: null } : null
+
+      let wrote = false
+
+      try {
+        wrote = writeModel(view?.filterModel ?? {}, 'view', call)
+      } finally {
+        // The grid threw (GRID_ERROR): the old active view stays (D2)
+        if (!wrote) active = previous
+      }
+
+      if (!wrote) return
+
+      // The grid no longer shows an applied URL
+      applyIssues = NO_ISSUES
+      publish()
+
+      if ((active?.id ?? null) === wanted) persistPointer(wanted, call)
     },
 
     deleteView(id) {
@@ -578,10 +752,20 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
         return
       }
 
+      // The grid still shows the deleted view: clear it, as loadView(null)
+      // does. After a hand edit, the grid's model is the user's.
+      const clears =
+        status === 'active' && active?.id === id && shows(active.model)
+
       if (active?.id === id) active = null
 
       refreshViews()
-      publish()
+
+      try {
+        if (clears) writeModel({}, 'view', call)
+      } finally {
+        publish()
+      }
     },
 
     destroy
@@ -648,6 +832,16 @@ function sameViews(a: readonly GridView[], b: readonly GridView[]): boolean {
       )
     })
   )
+}
+
+/** Sorts entries by column id */
+function byColumnId([a]: [string, unknown], [b]: [string, unknown]): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/** A key for an AG Grid model that does not depend on the order of its columns */
+function modelKey(model: Columns): string {
+  return JSON.stringify(Object.entries(model).sort(byColumnId))
 }
 
 /** The key of an issue's content */

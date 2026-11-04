@@ -112,6 +112,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   // The sync's own latest grid write. The filterChanged events that it causes
   // must not be written to history (#273).
   let own: OwnWrite | null = null
+  // The issue source of the call that made the own write, for its landing
+  // in a later event
+  let ownSource: IssueSource = 'grid'
   const listensToPopstate = options.popstate ?? historyMode === 'push'
   // The tracked saved view. `model` is its landed model, null while pending.
   let active: { id: string; model: FilterModel | null } | null = null
@@ -313,6 +316,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     // Before the call, so an event inside it is known as ours (#273). A
     // pending write stays known: a deferred grid lands it first.
     own = startWrite(own, kind)
+    ownSource = call.source
 
     // Only the grid call is in the try. An issue report runs outside it, so
     // a handler that throws gets its own error back (#220).
@@ -604,7 +608,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     if (result.kind === 'change') writeChange('grid', false)
 
     if (result.kind === 'landing' && result.write !== null) {
-      writeLanding(result.write, 'grid')
+      writeLanding(result.write, ownSource)
     }
 
     publish()

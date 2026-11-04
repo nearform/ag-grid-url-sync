@@ -513,6 +513,35 @@ describe('createGridUrlSync: loadView while the write is pending', () => {
     sync.destroy()
   })
 
+  it('A, B, A in one tick: A is active, and its pointer stays', async () => {
+    const { a, b, grid, store, sync } = setup('deferred')
+
+    sync.loadView(a.id)
+    sync.loadView(b.id)
+    sync.loadView(a.id)
+    await tick()
+
+    expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+    expect(sync.getSnapshot().activeViewId).toBe(a.id)
+    expect(store.getActiveViewId()).toBe(a.id)
+
+    sync.destroy()
+  })
+
+  it('A, then a clear, in one tick: no view is active, and the grid is clear', async () => {
+    const { a, grid, store, sync } = setup('deferred')
+
+    sync.loadView(a.id)
+    sync.loadView(null)
+    await tick()
+
+    expect(grid.api.getFilterModel()).toEqual({})
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(store.getActiveViewId()).toBeNull()
+
+    sync.destroy()
+  })
+
   it('deleteView while the load is pending does not clear the grid', async () => {
     const { a, grid, sync } = setup('deferred')
     sync.loadView(a.id)

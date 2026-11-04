@@ -106,6 +106,24 @@ describe.each(GRID_TIMINGS)(
       sync.destroy()
     })
 
+    it('three applies in one tick, the first the same as the third, write no history', async () => {
+      const grid = createTimedGrid(timing)
+      const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+      const length = window.history.length
+
+      sync.applyUrl(href('/?f_name_contains=jo'))
+      sync.applyUrl(href('/?f_age_eq=30'))
+      sync.applyUrl(href('/?f_name_contains=jo'))
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+      expect(sync.getSnapshot().url).toContain('f_name_contains=jo')
+      expect(window.location.search).toBe('')
+      expect(window.history.length).toBe(length)
+
+      sync.destroy()
+    })
+
     it('a user edit after an own apply writes history', async () => {
       const grid = createTimedGrid(timing)
       const sync = createGridUrlSync({ api: grid.api, history: 'push' })

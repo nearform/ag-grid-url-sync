@@ -363,7 +363,7 @@ describe('a write that starts while an earlier write is pending', () => {
       waits: ['ua']
     }
 
-    it("calls the earlier model write's landing an echo", () => {
+    it("calls the earlier model write's landing an echo, and drops it from waits", () => {
       const result = classifyEvent(second, {
         key: 'ma',
         live: { name: 'a' },
@@ -371,10 +371,14 @@ describe('a write that starts while an earlier write is pending', () => {
         urlKey: 'ua'
       })
 
-      expect(result).toEqual({ own: second, kind: 'echo', write: 'view' })
+      expect(result).toEqual({
+        own: { ...second, waits: [] },
+        kind: 'echo',
+        write: 'view'
+      })
     })
 
-    it("calls the earlier URL write's landing an echo", () => {
+    it("calls the earlier URL write's landing an echo, and drops it from waits", () => {
       const own: OwnWrite = { ...pending, acceptedKey: 'kage', waits: ['kjo'] }
 
       const result = classifyEvent(own, {
@@ -383,7 +387,11 @@ describe('a write that starts while an earlier write is pending', () => {
         source: 'api'
       })
 
-      expect(result).toEqual({ own, kind: 'echo', write: 'url' })
+      expect(result).toEqual({
+        own: { ...own, waits: [] },
+        kind: 'echo',
+        write: 'url'
+      })
     })
 
     it("calls a UI edit with the earlier write's URL form a change", () => {
@@ -409,6 +417,109 @@ describe('a write that starts while an earlier write is pending', () => {
         write: 'view'
       })
     })
+  })
+})
+
+// The grid lands the waited writes in order, and sends no event for a write
+// that does not change its model. So `waits` is a queue.
+describe('waits as a queue', () => {
+  /** The pending model write `accepted`, after the writes in `waits` */
+  const after = (
+    acceptedKey: string,
+    waits: readonly string[],
+    beforeKey = 'm0'
+  ): OwnWrite => ({
+    ...pending,
+    kind: 'view',
+    beforeKey,
+    acceptedKey,
+    acceptedUrlKey: `u${acceptedKey.slice(1)}`,
+    waits
+  })
+
+  /** The grid's own event with the model key `key` */
+  const api = (key: string) => ({
+    key,
+    live: { name: key },
+    source: 'api',
+    urlKey: `u${key.slice(1)}`
+  })
+
+  it('A, B, A: the first A is an echo, and B stays in waits', () => {
+    const own = after('ma', ['ua', 'ub'])
+
+    expect(classifyEvent(own, api('ma'))).toEqual({
+      own: { ...own, waits: ['ub'] },
+      kind: 'echo',
+      write: 'view'
+    })
+  })
+
+  it('A, B, A: B empties waits, and the write still waits for its landing', () => {
+    const own = after('ma', ['ub'])
+
+    expect(classifyEvent(own, api('mb'))).toEqual({
+      own: { ...own, waits: [] },
+      kind: 'echo',
+      write: 'view'
+    })
+  })
+
+  it('A, B, A: the last A lands', () => {
+    expect(classifyEvent(after('ma', []), api('ma'))).toEqual({
+      own: { phase: 'landed', kind: 'view', key: 'ma' },
+      kind: 'landing',
+      write: 'view'
+    })
+  })
+
+  it('A, A: the one event lands the write, because the grid sends no second event', () => {
+    expect(classifyEvent(after('ma', ['ua']), api('ma'))).toEqual({
+      own: { phase: 'landed', kind: 'view', key: 'ma' },
+      kind: 'landing',
+      write: 'view'
+    })
+  })
+
+  it('A, A, A: the one event lands the write', () => {
+    expect(classifyEvent(after('ma', ['ua', 'ua']), api('ma')).kind).toBe(
+      'landing'
+    )
+  })
+
+  it('A, then the model from before: A is an echo, then the model from before lands', () => {
+    const first = classifyEvent(after('m0', ['ua'], 'm0'), api('ma'))
+
+    expect(first.kind).toBe('echo')
+
+    const second = classifyEvent(first.own, api('m0'))
+
+    expect(second).toEqual({
+      own: { phase: 'landed', kind: 'view', key: 'm0' },
+      kind: 'landing',
+      write: 'view'
+    })
+  })
+
+  it('drops each wait up to the match: a write with no event was skipped', () => {
+    const own = after('md', ['ua', 'ub', 'uc'])
+
+    expect(classifyEvent(own, api('mb')).own).toEqual({ ...own, waits: ['uc'] })
+  })
+
+  it('jo, age, jo for URL writes: two echoes, then the landing', () => {
+    const own: OwnWrite = { ...pending, waits: ['kjo', 'kage'] }
+    const event = (key: string) => ({ key, live: accepted, source: 'api' })
+
+    const first = classifyEvent(own, event('kjo'))
+    const second = classifyEvent(first.own, event('kage'))
+    const third = classifyEvent(second.own, event('kjo'))
+
+    expect([first.kind, second.kind, third.kind]).toEqual([
+      'echo',
+      'echo',
+      'landing'
+    ])
   })
 })
 

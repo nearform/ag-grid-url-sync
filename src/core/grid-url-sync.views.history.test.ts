@@ -120,6 +120,23 @@ describe.each(GRID_TIMINGS)(
       sync.destroy()
     })
 
+    it('a history write that fails at a view landing has the source api', async () => {
+      const failing = () => {
+        throw new Error('The router is down')
+      }
+
+      const { a, sync, onIssue } = setup(timing, failing)
+
+      sync.loadView(a.id)
+      await tick()
+
+      expect(
+        onIssue.mock.calls.map(([event]) => [event.issue.code, event.source])
+      ).toEqual([['HISTORY_WRITE_FAILED', 'api']])
+
+      sync.destroy()
+    })
+
     it('loadView(null) adds one history entry with no filters', async () => {
       const { a, sync } = setup(timing)
       sync.loadView(a.id)
@@ -253,6 +270,36 @@ describe('createGridUrlSync: two view loads in one tick', () => {
     expect(sync.getSnapshot().activeViewId).toBe(b.id)
     expect(window.history.length).toBe(length + 1)
     expect(window.location.search).toBe('?f_age_eq=30')
+
+    sync.destroy()
+  })
+
+  it('A, B, A in one tick: A is active, and one entry is written for A', async () => {
+    const { a, b, sync } = setup('deferred')
+    const length = window.history.length
+
+    sync.loadView(a.id)
+    sync.loadView(b.id)
+    sync.loadView(a.id)
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBe(a.id)
+    expect(window.history.length).toBe(length + 1)
+    expect(window.location.search).toBe('?f_name_contains=jo')
+
+    sync.destroy()
+  })
+
+  it('A, then a clear, in one tick: no entry is written', async () => {
+    const { a, sync } = setup('deferred')
+    const length = window.history.length
+
+    sync.loadView(a.id)
+    sync.loadView(null)
+    await tick()
+
+    expect(window.history.length).toBe(length)
+    expect(window.location.search).toBe('')
 
     sync.destroy()
   })

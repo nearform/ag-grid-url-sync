@@ -23,8 +23,9 @@ export type Columns = Readonly<FilterState> | Readonly<FilterModel>
  *   key is the write's echo: one write can cause more than one event.
  *
  * `waits`: the URL forms of earlier writes that were still pending when this
- * write started. A deferred grid lands them first, so their landing events
- * are echoes of this write, not changes.
+ * write started, oldest first. A deferred grid lands them first and in
+ * order, so their landing events are echoes of this write, not changes.
+ * Each such event takes its write (and the ones before it) off the queue.
  */
 export type OwnWrite =
   | {
@@ -164,16 +165,20 @@ export function classifyEvent(
   }
 
   if (own?.phase === 'pending') {
-    // The grid shows the write. This comes first: after an earlier write
-    // landed, the write can be the state from before.
+    // An earlier write lands first. The grid's own landing has the source
+    // 'api'.
+    if (event.source === 'api') {
+      const waited = afterWait(own, event)
+
+      if (waited) return waited
+    }
+
+    // The grid shows the write. This comes before the next check: after an
+    // earlier write landed, the write can be the state from before.
     if (event.key === own.acceptedKey) return landing(own, event.key)
 
-    // The grid still shows the state from before the write, or an earlier
-    // write lands first. The grid's own landing has the source 'api'.
-    if (
-      (own.beforeKey !== null && event.key === own.beforeKey) ||
-      (event.source === 'api' && waitsFor(own, event))
-    ) {
+    // The grid still shows the state from before the write
+    if (own.beforeKey !== null && event.key === own.beforeKey) {
       return { own, kind: 'echo', write: own.kind }
     }
 
@@ -204,15 +209,35 @@ function landing(own: Pending, key: string): Classified {
   }
 }
 
-/** Whether the event's URL form is that of an earlier write that waits */
-function waitsFor(
+/**
+ * An event with the URL form of a write in `waits`: that write lands. The
+ * grid lands writes in order, so the writes before it are done too, and it
+ * sends no event for a next write with the same form. Null when the event
+ * is not in `waits`.
+ */
+function afterWait(
   own: Pending,
   event: { key: string; urlKey?: string | undefined }
-): boolean {
+): Classified | null {
   // A URL write's key is in the URL form already
   const urlForm = own.kind === 'url' ? event.key : event.urlKey
+  const waits = own.waits ?? []
+  const at = urlForm === undefined ? -1 : waits.indexOf(urlForm)
 
-  return urlForm !== undefined && (own.waits ?? []).includes(urlForm)
+  if (at < 0) return null
+
+  const rest = waits.slice(at + 1)
+  const other = rest.findIndex(form => form !== urlForm)
+  const left = other < 0 ? [] : rest.slice(other)
+  const next: Pending = { ...own, waits: left }
+
+  // No earlier write is left, and the grid shows this write: it sends no
+  // second event, so this is the landing
+  if (left.length === 0 && event.key === own.acceptedKey) {
+    return landing(next, event.key)
+  }
+
+  return { own: next, kind: 'echo', write: own.kind }
 }
 
 /**

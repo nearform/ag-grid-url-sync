@@ -349,12 +349,18 @@ describe('Format Serializers', () => {
       expect(serializer.deserialize(value)).toEqual(JSON.parse(value))
     })
 
+    // A custom filter's model can be any value (#283 review)
     it.each([
       ['a column that is not an object', '{"a":"x"}'],
-      ['a column that is an array', '{"a":[1]}'],
-      ['a column that is null', '{"a":null}']
-    ])('should reject %s', (_label, value) => {
-      expect(() => serializer.deserialize(value)).toThrow()
+      ['a column that is an array', '{"a":[1]}']
+    ])('should keep %s', (_label, value) => {
+      expect(serializer.deserialize(value)).toEqual(JSON.parse(value))
+    })
+
+    it('should read a column that is null as no filter', () => {
+      expect(
+        serializer.deserialize('{"a":null,"b":{"filterType":"set"}}')
+      ).toEqual({ b: { filterType: 'set' } })
     })
 
     it('should serialize and deserialize correctly', () => {

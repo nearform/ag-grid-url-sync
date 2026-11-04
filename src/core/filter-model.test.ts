@@ -133,15 +133,19 @@ describe.each(['json', 'base64'] as const)('%s format', format => {
     })
   })
 
-  it('rejects a value with a column that is not an object', () => {
+  // A custom filter's model can be any value (#283 review). AG Grid ignores
+  // one that a built-in filter cannot read. Null is no filter.
+  it('keeps a column model of any JSON value, and drops null', () => {
     const onParseError = vi.fn<(error: Error) => void>()
-    const value = JSON.stringify({ name: 'jo' })
+    const value = JSON.stringify({ name: 'jo', tags: [1, 2], n: 5, x: null })
     const encoded = format === 'json' ? value : btoa(value)
 
-    expect(deserializeGrouped(encoded, format, { onParseError })).toEqual({})
-    expect(onParseError.mock.calls[0]?.[0]).toMatchObject({
-      code: 'INVALID_GROUPED'
+    expect(deserializeGrouped(encoded, format, { onParseError })).toEqual({
+      name: 'jo',
+      tags: [1, 2],
+      n: 5
     })
+    expect(onParseError).not.toHaveBeenCalled()
   })
 
   it('keeps a column named __proto__', () => {
@@ -304,6 +308,7 @@ describe.each(['json', 'base64'] as const)(
         'a custom model string',
         { mode: 'after', value: { note: 'x'.repeat(30) } }
       ],
+      ['a custom model that is a string', 'x'.repeat(30)],
       [
         'a set value in a multi filter',
         {
@@ -348,19 +353,33 @@ describe.each(['json', 'base64'] as const)(
 // A custom filter's model can be any value, for example an array (#283
 // review). JSON keeps a column model that is an object.
 describe('a custom filter with a model that is not an object', () => {
-  it('json reports it as UNSUPPORTED_FILTER and leaves it out', () => {
+  it.each([
+    ['an array', ['a', 'b']],
+    ['a string', 'after-2008'],
+    ['a number', 2008],
+    ['a boolean', true]
+  ])('json round-trips %s with no issue', (_name, custom) => {
     const onParseError = vi.fn<(error: Error) => void>()
 
     const url = generateUrl(
       'http://x.test/',
-      { ...SET, tags: ['a', 'b'] },
+      { ...SET, custom },
       { ...grouped('json'), onParseError }
     )
 
-    expect(parseUrlFilters(url, grouped('json'))).toEqual(SET)
+    expect(parseUrlFilters(url, grouped('json'))).toEqual({ ...SET, custom })
+    expect(onParseError).not.toHaveBeenCalled()
+  })
+
+  it('the individual codec reports it as UNSUPPORTED_FILTER', () => {
+    const onParseError = vi.fn<(error: Error) => void>()
+
+    expect(
+      generateUrl('http://x.test/', { custom: 'after-2008' }, { onParseError })
+    ).toBe('http://x.test')
     expect(onParseError.mock.calls[0]?.[0]).toMatchObject({
       code: 'UNSUPPORTED_FILTER',
-      column: 'tags'
+      column: 'custom'
     })
   })
 })

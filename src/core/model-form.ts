@@ -76,7 +76,9 @@ export function modelToState(
   // The columns that the codec cannot hold are reported here and not read,
   // so they get one issue each
   const simple = Object.entries(model).filter(([column, entry]) => {
-    if (!isColumnModel(entry) || isSimpleKind(entry)) return true
+    if (entry === null || entry === undefined) return false
+
+    if (isColumnModel(entry) && isSimpleKind(entry)) return true
 
     reportIssue(options, unsupported(column, entry))
 
@@ -87,7 +89,18 @@ export function modelToState(
   return fromGridModel(Object.fromEntries(simple), options)
 }
 
-function unsupported(column: string, entry: ColumnModel): InvalidFilterError {
+function unsupported(
+  column: string,
+  entry: FilterModel[string]
+): InvalidFilterError {
+  if (!isColumnModel(entry)) {
+    return new InvalidFilterError(
+      `Column '${column}' has a custom filter model that is not an object, which this URL format cannot hold. Use grouped({ format: 'json' }) to keep it in the URL.`,
+      undefined,
+      { code: 'UNSUPPORTED_FILTER', column }
+    )
+  }
+
   const filterType = filterTypeOf(entry)
 
   const kind = Object.hasOwn(entry, 'conditions')
@@ -121,42 +134,25 @@ export function urlForm(
     return stateToModel(modelToState(model, options))
   }
 
-  return objectColumns(model, options)
+  return heldColumns(model)
 }
 
 /**
- * The columns of a model whose model is a JSON object: what the json and
- * base64 formats hold. A custom filter's model can be any value. One that
- * is not an object (an array, a string) is reported as UNSUPPORTED_FILTER.
- * Null is no filter.
+ * The columns of a model that json and base64 hold: every column with a
+ * filter. A custom filter's model can be any JSON value (#283 review). AG
+ * Grid ignores one that a built-in filter cannot read. Null is no filter.
  */
-export function objectColumns(
-  model: FilterModel | null | undefined,
-  config?: AGGridUrlSyncConfig
+export function heldColumns(
+  model: FilterModel | null | undefined
 ): FilterModel {
   if (!(model instanceof Object)) return {}
 
-  const options = resolveOptions(config)
-
-  const kept = Object.entries(model).filter(([column, entry]) => {
-    if (isColumnModel(entry)) return true
-
-    if (entry !== null && entry !== undefined) {
-      reportIssue(
-        options,
-        new InvalidFilterError(
-          `Column '${column}' has a custom filter model that is not an object, which this URL format cannot hold.`,
-          undefined,
-          { code: 'UNSUPPORTED_FILTER', column }
-        )
-      )
-    }
-
-    return false
-  })
-
   // Own keys, so a column named `__proto__` stays a column
-  return Object.fromEntries(kept)
+  return Object.fromEntries(
+    Object.entries(model).filter(
+      ([, entry]) => entry !== null && entry !== undefined
+    )
+  )
 }
 
 /**

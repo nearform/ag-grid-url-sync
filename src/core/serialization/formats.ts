@@ -19,7 +19,7 @@ import { ColumnFilterSchema, JsonObjectSchema } from '../schemas.js'
 import { convertToAGGridFilter } from '../grid-integration.js'
 import type { ColumnModel } from '../schemas.js'
 import { isColumnModel } from '../schemas.js'
-import { modelToState, objectColumns, stateToModel } from '../model-form.js'
+import { heldColumns, modelToState, stateToModel } from '../model-form.js'
 import { stableJson } from '../stable-json.js'
 import { toError } from '../to-error.js'
 
@@ -80,7 +80,7 @@ function dropOverLengthTextValues(
 
   const kept = Object.entries(model).filter(([column, entry]) => {
     try {
-      const texts = isColumnModel(entry) ? textValues(entry) : []
+      const texts = isColumnModel(entry) ? textValues(entry) : allStrings(entry)
 
       for (const text of texts) validateFilterValue(text, cfg)
 
@@ -125,15 +125,16 @@ function parseAndValidateJson(value: string): FilterModel {
       throw new Error('Invalid JSON: must be an object')
     }
 
-    const entries = Object.entries(json).map(([columnId, filter]) => {
-      if (!isColumnModel(filter)) {
-        throw new Error(
-          `Invalid JSON: filter for column ${columnId} is not a valid filter object`
-        )
-      }
-
-      return [columnId, fromJsonColumn(filter)] as const
-    })
+    // A custom filter's model can be any JSON value. Null is no filter.
+    const entries = Object.entries(json)
+      .filter(([, filter]) => filter !== null)
+      .map(
+        ([columnId, filter]) =>
+          [
+            columnId,
+            isColumnModel(filter) ? fromJsonColumn(filter) : filter
+          ] as const
+      )
 
     // Object.fromEntries creates own keys, so a column named `__proto__`
     // stays a column. An assignment to a plain object would call the
@@ -151,7 +152,7 @@ function toJson(
   format: SerializationFormat
 ): string {
   return stableJson(
-    dropOverLengthTextValues(objectColumns(model, config), config, format)
+    dropOverLengthTextValues(heldColumns(model), config, format)
   )
 }
 

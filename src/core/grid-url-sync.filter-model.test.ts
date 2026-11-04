@@ -346,14 +346,28 @@ describe('a custom filter model that is an array', () => {
     sync.destroy()
   })
 
-  it.each([
-    ['individual', individual(), {}],
-    ['json', grouped({ format: 'json' }), JSON_CODEC]
-  ])('a URL apply with the %s codec keeps it', (_name, codec, config) => {
+  it('a URL apply with the individual codec keeps it', () => {
     const grid = anyModelGrid(TAGS)
-    const sync = createGridUrlSync({ api: grid.api, codec })
+    const sync = createGridUrlSync({ api: grid.api, codec: individual() })
 
-    sync.applyUrl(generateUrl('http://x.test/', NAME_JO, config))
+    sync.applyUrl(generateUrl('http://x.test/', NAME_JO))
+
+    expect(grid.model()).toEqual({ ...TAGS, ...NAME_JO })
+
+    sync.destroy()
+  })
+
+  it('the json codec holds it, so a json URL applies it', () => {
+    const grid = anyModelGrid({})
+
+    const sync = createGridUrlSync({
+      api: grid.api,
+      codec: grouped({ format: 'json' })
+    })
+
+    sync.applyUrl(
+      generateUrl('http://x.test/', { ...TAGS, ...NAME_JO }, JSON_CODEC)
+    )
 
     expect(grid.model()).toEqual({ ...TAGS, ...NAME_JO })
 

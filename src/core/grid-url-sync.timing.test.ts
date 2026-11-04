@@ -318,11 +318,30 @@ describe.each(GRID_TIMINGS)(
 )
 
 describe('handOver', () => {
-  it('gives null for a sync with no own write', () => {
+  it('hands the apply issues to a sync that keeps them', () => {
+    const grid = createTimedGrid('in-call')
+    const first = createGridUrlSync({ api: grid.api, applyUrlOnCreate: false })
+    first.applyUrl(href('/?f_name_contains=jo&f_age_unknownOperation=1'))
+    const handover = handOver(first)
+    first.destroy()
+    const options = { api: grid.api, applyUrlOnCreate: false } as const
+
+    const keeps = createSync(options, { handover, keepApplyIssues: true })
+    const drops = createSync(options, { handover })
+
+    expect(handover?.applyIssues).toHaveLength(1)
+    expect(keeps.getSnapshot().issues).toHaveLength(1)
+    expect(drops.getSnapshot().issues).toEqual([])
+
+    keeps.destroy()
+    drops.destroy()
+  })
+
+  it('gives no own write for a sync with no own write', () => {
     const grid = createTimedGrid('in-call')
     const sync = createGridUrlSync({ api: grid.api, applyUrlOnCreate: false })
 
-    expect(handOver(sync)).toBeNull()
+    expect(handOver(sync)?.own).toBeNull()
 
     sync.destroy()
   })

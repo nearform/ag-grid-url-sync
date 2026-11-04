@@ -584,7 +584,7 @@ Refer to the [package.json](./package.json) for the full export map.
 
 ## React Integration
 
-For React applications, use the dedicated `useAGGridUrlSync` hook that provides a complete solution with React-specific features and state management.
+For React applications, use the `useGridUrlSync` hook. It is a thin adapter on [`createGridUrlSync`](#vanilla-js-creategridurlsync): it takes the same options, and the grid behaves as with the vanilla sync. The older `useAGGridUrlSync` hook is deprecated and will be removed in 0.6.0 (see [Migrating from `useAGGridUrlSync`](#migrating-from-useaggridurlsync)).
 
 ### Installation for React
 
@@ -594,7 +594,88 @@ npm install ag-grid-url-sync
 
 The hook works with React 16.8 and later. It uses the `use-sync-external-store` package, which npm installs with the library. On React 18 and later, that package uses React's own `useSyncExternalStore`.
 
-### Basic React Usage
+### `useGridUrlSync({ api, ...options })`
+
+```tsx
+import { useState } from 'react'
+import { AgGridReact } from 'ag-grid-react'
+import type { GridApi } from 'ag-grid-community'
+import { useGridUrlSync } from 'ag-grid-url-sync/react'
+import { individual } from 'ag-grid-url-sync'
+
+function GridComponent() {
+  const [api, setApi] = useState<GridApi | null>(null)
+
+  const { status, hasFilters, issues, getUrl, applyFilters } = useGridUrlSync({
+    api,
+    codec: individual({ prefix: 'filter_' }),
+    history: 'push', // each filter change adds a history entry; back and forward apply the URL
+    onIssue: ({ issue, source }) => console.warn(source, issue.code)
+  })
+
+  return (
+    <div>
+      <button
+        disabled={status !== 'active'}
+        onClick={() => navigator.clipboard.writeText(getUrl())}
+      >
+        Share filters
+      </button>
+      <button disabled={!hasFilters} onClick={() => applyFilters({})}>
+        Clear filters
+      </button>
+      {issues.length > 0 && (
+        <p>The link leaves out {issues.length} filter(s)</p>
+      )}
+      <AgGridReact onGridReady={params => setApi(params.api)} {...gridProps} />
+    </div>
+  )
+}
+```
+
+The options are the [`createGridUrlSync` options](#vanilla-js-creategridurlsync) (`codec`, `maxValueLength`, `history`, `popstate`, `applyUrlOnCreate`, `throwOnError`, `onIssue`), with these changes:
+
+| Option         | Default | Description                                                                                                                                                                                                     |
+| -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`          | none    | The AG Grid API, or `null` while the grid starts                                                                                                                                                                |
+| `storageKey`   | none    | Enables saved views, kept in `localStorage` under this key (in place of the core's `views` store). With no key, the view methods do nothing                                                                     |
+| `enabled`      | `true`  | With `false`, the hook makes no sync: `status` is `'idle'`, and a method reports `NOT_READY`. `views` still shows what is in storage. Back to `true` starts again, as a new sync does: the URL is applied again |
+| `throwOnError` | `false` | As in TanStack Query: the hook throws a picked issue during render, so an error boundary catches it. The methods do not throw                                                                                   |
+
+The hook returns the snapshot and the methods of the sync:
+
+| Property                             | Description                                                                      |
+| ------------------------------------ | -------------------------------------------------------------------------------- |
+| `status`                             | `'idle'` (no grid, no sync yet, or a server render), `'active'` or `'destroyed'` |
+| `url`, `hasFilters`, `issues`        | The URL with the grid's filters, whether there are filters, the latest issues    |
+| `views`, `activeViewId`              | The saved views and the active one                                               |
+| `applyUrl(url?)`, `applyFilters(f)`  | Apply a URL or filters. They return `{ issues }`                                 |
+| `getUrl(baseUrl?)`                   | The URL with the grid's filters, for example to share                            |
+| `saveView`, `loadView`, `deleteView` | The saved view methods of the sync                                               |
+
+- **The core's rules hold.** On mount, a URL with filters wins over the stored view, a URL with no filters keeps the grid's filters, and a URL apply writes no history.
+- **Options can change after mount.** A new codec, `maxValueLength`, history mode, `popstate` or `storageKey` makes a new sync on the same grid. It does not apply the URL again, and it keeps the active view. A new `storageKey` restores that store's view. A new codec object with the same settings, a new `onIssue` or a new `history` function makes no new sync.
+- **The result is stable.** It is the same object until a snapshot value changes, and the methods never change.
+- **A method with no sync** (no grid yet, `enabled: false`): `applyUrl` and `applyFilters` report `NOT_READY` to `onIssue`, and so do `saveView` and `loadView` with a `storageKey`. `getUrl` returns the base URL. `deleteView` still works with storage only.
+- **Issues stay across a new sync.** After an option change or a `StrictMode` remount, `issues` still shows the latest apply's issues until the next apply. `onIssue` gets each issue one time.
+- `StrictMode`, React's `<Activity>` and server rendering are supported.
+
+### Migrating from `useAGGridUrlSync`
+
+| `useAGGridUrlSync`                                              | `useGridUrlSync`                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `useAGGridUrlSync(gridApi, options)`                            | `useGridUrlSync({ api: gridApi, ...options })`                                        |
+| `paramPrefix`, `serialization`, `groupedParam`, `format`        | `codec: individual({ prefix })` or `grouped({ param, format })`                       |
+| `autoApplyOnMount` (default `false`)                            | `applyUrlOnCreate` (default `true`). A URL with no filters keeps the grid's filters   |
+| `enabledWhenReady`                                              | `enabled`                                                                             |
+| `onParseError`, `onError(error, context)`                       | `onIssue({ issue, source })`                                                          |
+| `isReady`                                                       | `status === 'active'`                                                                 |
+| `currentUrl`, `shareUrl(baseUrl?)`                              | `url`, `getUrl(baseUrl?)`                                                             |
+| `applyUrlFilters(url?)`, `clearFilters()`                       | `applyUrl(url?)`, `applyFilters({})`                                                  |
+| `getQueryParams()`                                              | `new URL(getUrl()).search`, while `status` is `'active'`                              |
+| `parseUrlFilters`, `getFiltersAsFormat`, `getSerializationMode` | The module functions `parseUrlFilters` and `serializeGrouped` from `ag-grid-url-sync` |
+
+### Basic React Usage (deprecated `useAGGridUrlSync`)
 
 ```tsx
 import React, { useState } from 'react'
@@ -672,7 +753,7 @@ function GridComponent() {
 }
 ```
 
-### React Hook API
+### React Hook API (deprecated `useAGGridUrlSync`)
 
 #### `useAGGridUrlSync(gridApi, options?)`
 

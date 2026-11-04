@@ -1,6 +1,10 @@
+import type { GridApi } from 'ag-grid-community'
 import type {
   AGGridUrlSyncConfig,
+  ApplyResult,
   FilterState,
+  GridUrlSyncOptions,
+  GridUrlSyncSnapshot,
   HistoryMode,
   SerializationFormat,
   SerializationMode,
@@ -10,6 +14,8 @@ import type { GridView } from '../core/view-storage.js'
 
 /**
  * Configuration options for the React hook
+ *
+ * @deprecated Use `useGridUrlSync` and its types. Removed in 0.6.0.
  */
 export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
   /**
@@ -86,6 +92,8 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
 
 /**
  * Return type for the useAGGridUrlSync hook
+ *
+ * @deprecated Use `useGridUrlSync` and its types. Removed in 0.6.0.
  */
 export interface UseAGGridUrlSyncReturn {
   /**
@@ -251,5 +259,54 @@ export interface UseAGGridUrlSyncReturn {
    *
    * @param id - Id of the view to delete
    */
+  deleteView: (id: string) => void
+}
+
+// ============================================================================
+// useGridUrlSync, the 0.6.0 hook (#271)
+// ============================================================================
+
+/**
+ * The options of `useGridUrlSync`: the options of `createGridUrlSync`, with
+ * the grid's `api` that can be null while the grid starts, and the React
+ * options. An option can change after mount.
+ */
+export interface UseGridUrlSyncOptions extends Omit<
+  GridUrlSyncOptions,
+  'api' | 'views'
+> {
+  /** The AG Grid API, or null while the grid starts */
+  api: GridApi | null | undefined
+  /**
+   * Enables saved views, kept in localStorage under this key. Two grids on
+   * the same origin need two keys. With no key, `views` is empty and the
+   * view methods do nothing.
+   */
+  storageKey?: string | undefined
+  /**
+   * With `false`, the hook makes no sync: the state is idle, and a method
+   * reports `NOT_READY`. `views` still shows what is in storage.
+   * @default true
+   */
+  enabled?: boolean | undefined
+}
+
+/**
+ * The result of `useGridUrlSync`: the sync's snapshot and its methods. The
+ * object stays the same until a snapshot value changes, and the methods
+ * never change.
+ */
+export interface UseGridUrlSyncResult extends GridUrlSyncSnapshot {
+  /** Applies the filters of a URL (default: the address bar) to the grid */
+  applyUrl: (url?: string) => ApplyResult
+  /** Applies filters to the grid, as the app's own write */
+  applyFilters: (filters: FilterState) => ApplyResult
+  /** The URL with the grid's filters (default base: the address bar) */
+  getUrl: (baseUrl?: string) => string
+  /** Saves the grid's filters as a view, and makes it active */
+  saveView: (name: string) => GridView | null
+  /** Loads a saved view. `null` clears the filters. */
+  loadView: (id: string | null) => void
+  /** Deletes a saved view */
   deleteView: (id: string) => void
 }

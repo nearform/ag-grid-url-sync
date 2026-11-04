@@ -754,8 +754,9 @@ export interface GridUrlSyncOptions {
   applyUrlOnCreate?: boolean | undefined
   /**
    * Throw an issue instead of reporting it, in the methods that the app
-   * calls (`applyUrl`, `getUrl`). `createGridUrlSync` and the sync's own
-   * listeners never throw.
+   * calls (`applyUrl`, `applyFilters`, `getUrl`, `saveView`, `loadView`,
+   * `deleteView`). `createGridUrlSync` and the sync's own listeners never
+   * throw.
    * @default false
    */
   throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
@@ -763,7 +764,10 @@ export interface GridUrlSyncOptions {
   onIssue?: ((event: IssueEvent) => void) | undefined
   /**
    * The saved views. Give `createViewStore(key)` from
-   * `ag-grid-url-sync/view-storage`.
+   * `ag-grid-url-sync/view-storage`, or your own `ViewStore`. With no
+   * store, `views` is empty and the view methods do nothing. On create, a
+   * URL that holds the stored view restores it, else a URL with at least
+   * one filter wins, else the stored view is restored.
    */
   views?: ViewStore | undefined
 }
@@ -789,10 +793,21 @@ export interface GridUrlSync {
    * when the save fails.
    */
   saveView(name: string): GridView | null
-  /** Loads a saved view into the grid. `null` clears the filters. */
+  /**
+   * Loads a saved view into the grid and makes it active. `null` clears the
+   * filters. When the view lands, the URL is written in the `history` mode,
+   * as for a user edit. An unknown id reports `VIEW_NOT_FOUND`.
+   */
   loadView(id: string | null): void
-  /** Deletes a saved view */
+  /**
+   * Deletes a saved view. If it is active and the grid still shows it, the
+   * grid is cleared.
+   */
   deleteView(id: string): void
-  /** Removes the listeners. The snapshot keeps the last state. */
+  /**
+   * Removes the listeners. The snapshot keeps the last state. After this,
+   * `applyUrl`, `applyFilters`, `saveView` and `loadView` report
+   * `NOT_READY`.
+   */
   destroy(): void
 }

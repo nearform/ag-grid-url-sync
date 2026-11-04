@@ -718,7 +718,8 @@ export interface GridUrlSyncSnapshot {
 }
 
 /**
- * How the sync writes a filter change to the address bar. `'none'` never
+ * How the sync writes a filter change to the address bar: a user edit, a
+ * view load or `applyFilters`. A URL apply writes nothing. `'none'` never
  * writes. `'replace'` and `'push'` use `window.history`. A function gets the
  * URL, for example `url => router.replace(url)`.
  */
@@ -775,6 +776,11 @@ export interface GridUrlSync {
   subscribe(listener: () => void): () => void
   /** Applies the filters of a URL (default: the address bar) to the grid */
   applyUrl(url?: string): ApplyResult
+  /**
+   * Applies filters to the grid as the app's own write. When it lands, the
+   * URL is written in the `history` mode, as for a user edit.
+   */
+  applyFilters(filters: FilterState): ApplyResult
   /** The URL with the grid's filters (default base: the address bar) */
   getUrl(baseUrl?: string): string
   /**

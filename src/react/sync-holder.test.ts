@@ -26,6 +26,7 @@ function createFakeSync() {
       return () => listeners.delete(listener)
     },
     applyUrl: () => ({ issues: [] }),
+    applyFilters: () => ({ issues: [] }),
     getUrl: () => '',
     saveView: () => null,
     loadView: () => {},

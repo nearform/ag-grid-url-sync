@@ -221,7 +221,8 @@ export const GRID_TIMINGS: readonly GridTiming[] = [
 /** The columns of a timed grid. It drops the filters of other columns. */
 const TIMED_COLUMNS = new Map([
   ['name', 'agTextColumnFilter'],
-  ['age', 'agNumberColumnFilter']
+  ['age', 'agNumberColumnFilter'],
+  ['status', 'agSetColumnFilter']
 ])
 
 export interface TimedGrid {

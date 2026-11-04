@@ -60,6 +60,7 @@ type IssueMode = 'collect' | 'report' | 'throw'
 type ModelWriteKind = Exclude<WriteKind, 'url'>
 
 interface Call {
+  source: IssueSource
   options: ResolvedOptions
   issues: URLSyncError[]
 }
@@ -134,6 +135,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     const issues: URLSyncError[] = []
 
     return {
+      source,
       issues,
       options: {
         ...codec,
@@ -357,7 +359,10 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     own = settled.own
     readGrid()
 
-    if (settled.landed) followActiveView(kind)
+    if (settled.landed) {
+      followActiveView(kind)
+      writeLanding(kind, call.source)
+    }
 
     return true
   }
@@ -552,7 +557,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   /** Writes a filter change, unless the address bar has the same filters */
-  function writeChange(): void {
+  function writeChange(source: IssueSource, replace: boolean): void {
     if (historyMode === 'none' || !hasWindow()) return
 
     const key = filtersKey(state)
@@ -564,7 +569,16 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
     if (key === filtersKey(current)) return
 
-    write('grid', false)
+    write(source, replace)
+  }
+
+  /**
+   * At an own write's landing: a view or app write goes to history as a user
+   * edit does (D3), and the restore on create replaces the entry. A URL
+   * write does not, because the URL holds those filters already (#273).
+   */
+  function writeLanding(kind: WriteKind, source: IssueSource): void {
+    if (kind !== 'url') writeChange(source, kind === 'restore')
   }
 
   function onFilterChanged(event?: { source?: string }): void {
@@ -587,8 +601,11 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       followActiveView(result.kind === 'landing' ? result.write : null)
     }
 
-    // An own write's landing is not a user edit
-    if (result.kind === 'change') writeChange()
+    if (result.kind === 'change') writeChange('grid', false)
+
+    if (result.kind === 'landing' && result.write !== null) {
+      writeLanding(result.write, 'grid')
+    }
 
     publish()
   }
@@ -637,6 +654,30 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       if (href === undefined) return { issues: NO_ISSUES }
 
       return apply(href, 'api', 'throw', false)
+    },
+
+    applyFilters(filters) {
+      if (status !== 'active') {
+        notReady()
+
+        return { issues: NO_ISSUES }
+      }
+
+      const call = startCall('api', 'throw')
+      let model: FilterModel | undefined
+
+      try {
+        model = toGridModel(filters, api, call.options)
+      } catch (cause) {
+        fail(call, cause, 'GRID_ERROR')
+      }
+
+      if (model) writeModel(model, 'app', call)
+
+      applyIssues = call.issues.length ? call.issues : NO_ISSUES
+      publish()
+
+      return { issues: call.issues }
     },
 
     getUrl(baseUrl) {

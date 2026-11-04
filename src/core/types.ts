@@ -1,4 +1,5 @@
 import type {
+  FilterModel,
   GridApi as AGGridApi,
   TextFilterModel,
   NumberFilterModel,
@@ -313,6 +314,10 @@ export type ColumnFilter =
 
 /**
  * Complete filter state mapping column IDs to their filters
+ *
+ * @deprecated The public interfaces use AG Grid's `FilterModel` (#225). This
+ * type is left only for the deprecated `AGGridUrlSync`, `useAGGridUrlSync`,
+ * `getFilterModel` and `applyFilterModel`. It will be removed in 0.6.0.
  */
 export interface FilterState {
   [columnId: string]: ColumnFilter
@@ -403,6 +408,7 @@ export type IssueCode =
   | 'INVALID_GROUPED'
   | 'TYPE_MISMATCH'
   | 'INVALID_URL'
+  | 'UNSUPPORTED_FILTER'
   // Operation failures
   | 'GRID_ERROR'
   | 'NOT_READY'
@@ -591,19 +597,19 @@ export interface GroupedSerializationResult {
  */
 export interface FormatSerializer {
   /**
-   * Serialize filter state to string
+   * Serialize an AG Grid filter model to a string
    * @param config - Caller's configuration. All serializers honour
    * maxValueLength and onParseError. JSON and Base64 drop over-length text
    * values and report them through onParseError (see #213, #207).
    */
-  serialize(filterState: FilterState, config?: ResolvedOptions): string
+  serialize(model: FilterModel, config?: ResolvedOptions): string
   /**
-   * Deserialize string to filter state
+   * Deserialize a string to an AG Grid filter model
    * @param config - Caller's configuration. All serializers honour
    * maxValueLength and onParseError. JSON and Base64 drop over-length text
    * values and report them through onParseError (see #213, #207).
    */
-  deserialize(value: string, config?: ResolvedOptions): FilterState
+  deserialize(value: string, config?: ResolvedOptions): FilterModel
   /** Format identifier */
   format: SerializationFormat
 }
@@ -793,10 +799,12 @@ export interface GridUrlSync {
   /** Applies the filters of a URL (default: the address bar) to the grid */
   applyUrl(url?: string): ApplyResult
   /**
-   * Applies filters to the grid as the app's own write. When it lands, the
-   * URL is written in the `history` mode, as for a user edit.
+   * Writes an AG Grid filter model to the grid as the app's own write. It
+   * replaces the full model, as `setFilterModel` does. A number or date
+   * filter on a column of another type is left out (`TYPE_MISMATCH`). When
+   * it lands, the URL is written in the `history` mode, as for a user edit.
    */
-  applyFilters(filters: FilterState): ApplyResult
+  applyFilters(model: FilterModel): ApplyResult
   /** The URL with the grid's filters (default base: the address bar) */
   getUrl(baseUrl?: string): string
   /**

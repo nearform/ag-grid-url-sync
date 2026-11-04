@@ -87,7 +87,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
     const onParseError = vi.fn()
 
     const { api, fireFilterChanged } = createGridApi({
-      age: { filterType: 'number', type: 'unknownOperation', filter: 1 }
+      age: { filterType: 'number', type: 'equals', filter: 'abc' }
     })
 
     renderHook(() => useAGGridUrlSync(asGridApi(api), { onParseError }))
@@ -103,7 +103,7 @@ describe('useAGGridUrlSync hasFilters (#215)', () => {
     const onParseError = vi.fn()
 
     const bad: FilterModel = {
-      age: { filterType: 'number', type: 'unknownOperation', filter: 1 }
+      age: { filterType: 'number', type: 'equals', filter: 'abc' }
     }
 
     let model = bad

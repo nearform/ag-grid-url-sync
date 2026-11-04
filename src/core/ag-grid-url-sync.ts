@@ -13,7 +13,12 @@ import { gridColumnTypes } from './column-types.js'
 import { collectIssues } from './issues.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
-import { getFilterModel, applyFilterModel } from './grid-integration.js'
+import {
+  getFilterModel,
+  applyFilterModel,
+  fromGridModel
+} from './grid-integration.js'
+import { stateToModel } from './model-form.js'
 import { serializeGrouped } from './serialization/grouped.js'
 
 /**
@@ -67,7 +72,7 @@ export class AGGridUrlSync {
     const url = baseUrl ?? window.location.href
 
     return {
-      url: generateUrl(url, filterState, options),
+      url: generateUrl(url, stateToModel(filterState), options),
       hasFilters: Object.keys(filterState).length > 0,
       issues
     }
@@ -92,7 +97,13 @@ export class AGGridUrlSync {
   applyFromUrl(url?: string): ApplyResult {
     const { options, issues } = collectIssues(this.options)
     const urlToParse = url ?? window.location.href
-    const filterState = parseUrlFilters(urlToParse, options)
+
+    // The class keeps its own filter state (deprecated, #225)
+    const filterState = fromGridModel(
+      parseUrlFilters(urlToParse, options),
+      options
+    )
+
     // Through applyFilters, so a subclass that overrides it sees URL applies.
     // An override from before #229 returns nothing, so its result is read
     // with care.
@@ -158,7 +169,7 @@ export class AGGridUrlSync {
     }
 
     // Use the serialization module
-    const result = serializeGrouped(filterState, tempConfig)
+    const result = serializeGrouped(stateToModel(filterState), tempConfig)
 
     return result.value
   }

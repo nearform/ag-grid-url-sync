@@ -96,10 +96,29 @@ With no grid (`parseUrlFilters`, `parseFilterParam`), the value of these four op
 parseUrlFilters('?f_age_eq=30', {
   columnTypes: column => (column === 'age' ? 'number' : undefined)
 })
-// { age: { filterType: 'number', type: 'eq', filter: 30 } }
+// { age: { filterType: 'number', type: 'equals', filter: 30 } }
 ```
 
 > **Breaking change in 0.6.0:** before 0.6.0, the library guessed the type from the value, so `f_zip_eq=01234` became the number `1234`, and `f_note_eq=2024-01-15` on a text column became a date filter that the grid then rejected (`TYPE_MISMATCH`).
+
+### Filter Models
+
+The library uses AG Grid's own `FilterModel` (the value of `gridApi.getFilterModel()`), in the sync, the React hook, saved views and the URL functions. The URL formats hold different parts of it:
+
+| Format                                                         | Holds                                                                                  |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `individual()` (the default)                                   | Text, number and date filters with one condition                                       |
+| `grouped({ format: 'querystring' })`                           | The same as `individual()`, in one param                                               |
+| `grouped({ format: 'json' })`, `grouped({ format: 'base64' })` | Any filter model: set, multi and custom filters, and combined conditions (`AND`, `OR`) |
+
+- **A URL apply changes only the columns that the format holds.** With `individual()`, a set filter or combined conditions on the grid stay when the user opens a link. A URL filter on the same column replaces it.
+- **A filter that the format cannot hold is an issue.** When the grid has one, the sync reports `UNSUPPORTED_FILTER` (a warning) one time, and leaves it out of the URL. This includes AG Grid's custom `filterOptions`. Use `grouped({ format: 'json' })` to keep it in the URL. The issue stays in `issues` while the grid has the filter, so with `throwOnError: true` the React hook throws again after each reset of the error boundary. To not throw for it, give `throwOnError: issue => issue.code !== 'UNSUPPORTED_FILTER'`. The deprecated `useAGGridUrlSync` and `AGGridUrlSync` do not report it.
+- `applyFilters(model)` replaces the full model, as `gridApi.setFilterModel(model)` does.
+- A custom filter's model can be any JSON value (an object, an array, a string, a number). `json` and `base64` hold each one. `individual()` reports one that is not an object as `UNSUPPORTED_FILTER`, and a URL apply keeps it on the grid. AG Grid ignores a value that a built-in filter cannot read.
+- The JSON and base64 values have the keys in sorted order, so the same filters give the same URL.
+- Links from 0.5 in the `json` and `base64` formats still open: the old form of a filter (for example `type: 'eq'`) is read as AG Grid's form.
+
+> **Breaking change in 0.6.0:** `parseUrlFilters`, `deserializeGrouped` and the serializers give AG Grid's model, and `generateUrl`, `serializeFilters`, `serializeGrouped` and `applyFilters` take it. So an operation has AG Grid's name (`equals`, not `eq`; `lessThan`, not `dateBefore`), and a date filter has `dateFrom` and `dateTo`. A URL apply no longer clears the filters that the format cannot hold. The library's own `FilterState` type is deprecated, with the deprecated `AGGridUrlSync`, `useAGGridUrlSync`, `getFilterModel`, `applyFilterModel` and `parseFilterParam`.
 
 ### URL Examples
 
@@ -171,7 +190,8 @@ import { createGridUrlSync } from 'ag-grid-url-sync'
 import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
 
 // TypeScript types (available from both imports)
-import type { FilterState, AGGridUrlSyncConfig } from 'ag-grid-url-sync'
+import type { AGGridUrlSyncConfig } from 'ag-grid-url-sync'
+import type { FilterModel } from 'ag-grid-community'
 ```
 
 ### Tree-Shaking & Granular Imports
@@ -215,9 +235,10 @@ import type {
 
 ```typescript
 import { parseUrlFilters } from 'ag-grid-url-sync/url-parser'
-import type { FilterState } from 'ag-grid-url-sync/types'
+import type { FilterModel } from 'ag-grid-community'
 
-function getFiltersFromUrl(url: string): FilterState {
+// AG Grid's filter model, for example for `initialState.filter.filterModel`
+function getFiltersFromUrl(url: string): FilterModel {
   // Options that you leave out get their defaults. No grid is needed.
   return parseUrlFilters(url, {
     onParseError: error => console.error('Parse error:', error)
@@ -244,26 +265,16 @@ function getFiltersFromUrl(url: string): FilterState {
 
 ```typescript
 import { generateUrl } from 'ag-grid-url-sync/url-generator'
-import type { FilterState } from 'ag-grid-url-sync/types'
+import type { FilterModel } from 'ag-grid-community'
 
-function createShareableUrl(filters: FilterState, baseUrl: string): string {
-  return generateUrl(baseUrl, filters, { maxValueLength: 500 })
+function createShareableUrl(model: FilterModel, baseUrl: string): string {
+  return generateUrl(baseUrl, model, { maxValueLength: 500 })
 }
 ```
 
 #### Example: Read and Write the Grid Filters
 
-```typescript
-import {
-  getFilterModel,
-  applyFilterModel
-} from 'ag-grid-url-sync/grid-integration'
-
-const filters = getFilterModel(gridApi, { onParseError: console.warn })
-applyFilterModel(filters, otherGridApi)
-```
-
-The config form (`getFilterModel({ ...DEFAULT_CONFIG, gridApi })`) still works, but it is deprecated.
+`getFilterModel` and `applyFilterModel` are deprecated: they use the library's own filter state. Use AG Grid's `gridApi.getFilterModel()` and `gridApi.setFilterModel(model)`, or `sync.applyFilters(model)`.
 
 **💡 Pro Tip**: Use granular imports in libraries and applications where bundle size matters. All existing import patterns remain fully supported for backward compatibility.
 
@@ -297,7 +308,7 @@ sync.applyFilters({
 sync.destroy()
 ```
 
-`applyFilters` writes filters to the grid as the app's own write. When they land, the sync writes the URL in the `history` mode, as it does for a user edit. `applyUrl` writes no history, because the URL already holds those filters.
+`applyFilters` writes an AG Grid filter model to the grid as the app's own write. It replaces the full model, as `setFilterModel` does. When it lands, the sync writes the URL in the `history` mode, as it does for a user edit. `applyUrl` writes no history, because the URL already holds those filters.
 
 | Option             | Default                   | Meaning                                                                                                                                                                                                                                                                        |
 | ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -416,8 +427,9 @@ const urlSync = createUrlSync(gridApi, {
   format: 'json'
 })
 
-// Result: ?grid_filters=%7B%22name%22%3A%7B%22filterType%22%3A%22text%22...
-// Decoded: {"name":{"filterType":"text","type":"contains","filter":"john"}...}
+// Result: ?grid_filters=%7B%22name%22%3A%7B%22filter%22%3A%22john%22...
+// Decoded: AG Grid's filter model, with sorted keys (#225)
+// {"name":{"filter":"john","filterType":"text","type":"contains"}...}
 ```
 
 #### Base64 Format
@@ -512,24 +524,25 @@ import {
 
 The library never writes to the console. Each problem goes to one callback, and each error that the library makes has a `code` that you can switch on:
 
-| Code                                                          | Meaning                                                        | Callback                                                                                                 |
-| ------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `INVALID_PARAM`                                               | A param name that is not valid, or an unknown operation        | `onParseError`                                                                                           |
-| `INVALID_NUMBER`                                              | A value that is not a number, or that would be rounded         | `onParseError`                                                                                           |
-| `INVALID_DATE`                                                | A date that does not exist, or a date range in the wrong order | `onParseError`                                                                                           |
-| `VALUE_TOO_LONG`                                              | A text value over `maxValueLength`                             | `onParseError`                                                                                           |
-| `INVALID_GROUPED`                                             | A grouped value that does not decode (bad JSON or base64)      | `onParseError`                                                                                           |
-| `TYPE_MISMATCH`                                               | A number or date filter on a column of another type            | `onParseError`                                                                                           |
-| `INVALID_URL`                                                 | A URL that the parser cannot read                              | Thrown by `parseUrlFilters` and `applyFromUrl`. The React hook catches it and sends it to `onParseError` |
-| `GRID_ERROR`                                                  | The AG Grid API threw                                          | `onParseError` in the core, `onError` in the React hook                                                  |
-| `NOT_READY`                                                   | A hook operation called before the grid is ready               | `onError` (React)                                                                                        |
-| `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | A saved view operation that cannot run                         | `onError` (React)                                                                                        |
-| `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | Browser storage for saved views failed                         | `onError` (React)                                                                                        |
-| `HISTORY_WRITE_FAILED`                                        | The sync could not write the address bar                       | `onIssue` in the core, `onError` in the React hook                                                       |
+| Code                                                          | Meaning                                                                            | Callback                                                                                                 |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `INVALID_PARAM`                                               | A param name that is not valid, or an unknown operation                            | `onParseError`                                                                                           |
+| `INVALID_NUMBER`                                              | A value that is not a number, or that would be rounded                             | `onParseError`                                                                                           |
+| `INVALID_DATE`                                                | A date that does not exist, or a date range in the wrong order                     | `onParseError`                                                                                           |
+| `VALUE_TOO_LONG`                                              | A text value over `maxValueLength`                                                 | `onParseError`                                                                                           |
+| `INVALID_GROUPED`                                             | A grouped value that does not decode (bad JSON or base64)                          | `onParseError`                                                                                           |
+| `TYPE_MISMATCH`                                               | A number or date filter on a column of another type                                | `onParseError`                                                                                           |
+| `INVALID_URL`                                                 | A URL that the parser cannot read                                                  | Thrown by `parseUrlFilters` and `applyFromUrl`. The React hook catches it and sends it to `onParseError` |
+| `UNSUPPORTED_FILTER`                                          | A filter that the URL format cannot hold (set, multi, custom, combined conditions) | `onParseError`, and the sync's `onIssue` when it reads the grid                                          |
+| `GRID_ERROR`                                                  | The AG Grid API threw                                                              | `onParseError` in the core, `onError` in the React hook                                                  |
+| `NOT_READY`                                                   | A hook operation called before the grid is ready                                   | `onError` (React)                                                                                        |
+| `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | A saved view operation that cannot run                                             | `onError` (React)                                                                                        |
+| `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | Browser storage for saved views failed                                             | `onError` (React)                                                                                        |
+| `HISTORY_WRITE_FAILED`                                        | The sync could not write the address bar                                           | `onIssue` in the core, `onError` in the React hook                                                       |
 
-Each error has a `severity`: `'warning'` for the first seven rows, `'error'` for the others. `createGridUrlSync` sends every issue to `onIssue`; the callbacks in the table are for the deprecated API and the React hook.
+Each error has a `severity`: `'warning'` for the first eight rows, `'error'` for the others. `createGridUrlSync` sends every issue to `onIssue`; the callbacks in the table are for the deprecated API and the React hook.
 
-The codes in the first seven rows are data issues: a filter that is dropped or is not valid. The library skips that filter and keeps the others. When the library knows the column, it is in `error.column`. `onParseError` is typed with `Error`, so check `instanceof URLSyncError` before you read `code` or `column`.
+The codes in the first eight rows are data issues: a filter that is dropped or is not valid. The library skips that filter and keeps the others. When the library knows the column, it is in `error.column`. `onParseError` is typed with `Error`, so check `instanceof URLSyncError` before you read `code` or `column`.
 
 Every error is a `URLSyncError`. The classes from earlier versions (`InvalidFilterError`, `InvalidDateError`, `InvalidURLError`, `InvalidSerializationError`) are subclasses of it, so an `instanceof` check still works.
 
@@ -547,7 +560,7 @@ const urlSync = createUrlSync(gridApi, {
 
 In grouped mode, an error that comes from the grouped URL value is an `InvalidSerializationError`, and the original error is in `error.cause`. When the original error is an issue with one filter (for example a value over `maxValueLength`), the wrapper has the same `code` and `column`. So a check on `error.code` works the same in both modes. `INVALID_GROUPED` means that the grouped value itself does not decode.
 
-In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onParseError`, both when the URL is generated and when it is parsed.
+In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onParseError`, both when the URL is generated and when it is parsed. In `json` and `base64`, the limit is also for each set filter value and each string of a custom filter's model, and the column with the long value is dropped.
 
 #### Dropped Filters in the Result
 

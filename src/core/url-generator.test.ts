@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { serializeFilters, generateUrl } from './url-generator.js'
 import { parseUrlFilters } from './url-parser.js'
-import type { FilterState, InternalConfig } from './types.js'
+import type { FilterModel } from 'ag-grid-community'
+import type { InternalConfig } from './types.js'
 import { InvalidFilterError } from './types.js'
 import { asGridApi } from '../test-helpers.js'
 
@@ -24,7 +25,7 @@ describe('URL Generator', () => {
     it('skips a text value over maxValueLength and reports it', () => {
       const config = { ...mockConfig, maxValueLength: 5 }
 
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john smith' },
         age: { filterType: 'number', type: 'greaterThan', filter: 25 }
       }
@@ -39,7 +40,7 @@ describe('URL Generator', () => {
     })
 
     it('should serialize basic text filter', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
@@ -48,8 +49,8 @@ describe('URL Generator', () => {
     })
 
     it('should serialize number filter', () => {
-      const filterState: FilterState = {
-        age: { filterType: 'number', type: 'eq', filter: 25 }
+      const filterState: FilterModel = {
+        age: { filterType: 'number', type: 'equals', filter: 25 }
       }
 
       const result = serializeFilters(filterState, mockConfig)
@@ -57,8 +58,8 @@ describe('URL Generator', () => {
     })
 
     it('should serialize date filter', () => {
-      const filterState: FilterState = {
-        created: { filterType: 'date', type: 'eq', filter: '2024-01-15' }
+      const filterState: FilterModel = {
+        created: { filterType: 'date', type: 'equals', dateFrom: '2024-01-15' }
       }
 
       const result = serializeFilters(filterState, mockConfig)
@@ -66,7 +67,7 @@ describe('URL Generator', () => {
     })
 
     it('should serialize range filters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         age: {
           filterType: 'number',
           type: 'inRange',
@@ -75,9 +76,9 @@ describe('URL Generator', () => {
         },
         period: {
           filterType: 'date',
-          type: 'dateRange',
-          filter: '2024-01-01',
-          filterTo: '2024-12-31'
+          type: 'inRange',
+          dateFrom: '2024-01-01',
+          dateTo: '2024-12-31'
         }
       }
 
@@ -87,7 +88,7 @@ describe('URL Generator', () => {
     })
 
     it('should serialize blank operations', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         optional: { filterType: 'text', type: 'blank', filter: '' },
         required: { filterType: 'text', type: 'notBlank', filter: '' }
       }
@@ -104,7 +105,7 @@ describe('URL Generator', () => {
       ['+', 'a+b'],
       ['space', 'first name']
     ])('should keep a column id that contains %s', (_label, column) => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         [column]: { filterType: 'text', type: 'contains', filter: 'q' }
       }
 
@@ -113,8 +114,8 @@ describe('URL Generator', () => {
     })
 
     it.each([
-      ['date', { filterType: 'date', type: 'dateAfter', filter: '' } as const],
-      ['text', { filterType: 'text', type: 'contains', filter: '' } as const]
+      ['date', { filterType: 'date', type: 'greaterThan', dateFrom: '' }],
+      ['text', { filterType: 'text', type: 'contains', filter: '' }]
     ])('should skip a %s filter with an empty value', (_label, filter) => {
       const errors = vi.fn()
 
@@ -128,8 +129,8 @@ describe('URL Generator', () => {
     })
 
     it('should keep a number filter with the value 0', () => {
-      const filterState: FilterState = {
-        qty: { filterType: 'number', type: 'eq', filter: 0 }
+      const filterState: FilterModel = {
+        qty: { filterType: 'number', type: 'equals', filter: 0 }
       }
 
       const result = serializeFilters(filterState, mockConfig)
@@ -137,7 +138,7 @@ describe('URL Generator', () => {
     })
 
     it('should keep a text value that contains =', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         expr: { filterType: 'text', type: 'contains', filter: 'a=b' }
       }
 
@@ -146,7 +147,7 @@ describe('URL Generator', () => {
     })
 
     it('should handle special characters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         query: { filterType: 'text', type: 'contains', filter: 'test & more' }
       }
 
@@ -157,7 +158,7 @@ describe('URL Generator', () => {
 
   describe('generateUrl', () => {
     it('should generate URL with filters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
@@ -171,7 +172,7 @@ describe('URL Generator', () => {
     })
 
     it('should preserve existing query parameters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
@@ -186,10 +187,15 @@ describe('URL Generator', () => {
     })
 
     it('should round-trip column ids with special characters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         'a=b': { filterType: 'text', type: 'contains', filter: 'one' },
         'x&y': { filterType: 'number', type: 'greaterThan', filter: 2 },
-        '100%': { filterType: 'date', type: 'dateAfter', filter: '2024-01-15' }
+        '100%': {
+          filterType: 'date',
+          type: 'greaterThan',
+          dateFrom: '2024-01-15',
+          dateTo: null
+        }
       }
 
       const url = generateUrl('https://example.com', filterState, mockConfig)
@@ -197,7 +203,7 @@ describe('URL Generator', () => {
     })
 
     describe('host params', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
@@ -263,7 +269,7 @@ describe('URL Generator', () => {
     // #228: the writer and the parser must read paramPrefix the same way. A
     // prefix without a trailing `_` gets one, and '' means the default `f_`.
     describe('paramPrefix', () => {
-      const state: FilterState = {
+      const state: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
@@ -295,7 +301,7 @@ describe('URL Generator', () => {
     })
 
     describe('stale params from the other mode', () => {
-      const newState: FilterState = {
+      const newState: FilterModel = {
         b: { filterType: 'text', type: 'contains', filter: 'new' }
       }
 

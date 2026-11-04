@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import type { FilterModel } from 'ag-grid-community'
 import {
   serializeGrouped,
   deserializeGrouped,
@@ -18,6 +19,7 @@ import type {
 } from '../types.js'
 import { InvalidSerializationError, InvalidFilterError } from '../types.js'
 import { asGridApi } from '../../test-helpers.js'
+import { stableJson } from '../stable-json.js'
 
 const mockGridApi = asGridApi({
   setFilterModel: () => {},
@@ -44,8 +46,8 @@ const createTestConfig = (
   ...overrides
 })
 
-// Sample filter state for testing
-const sampleFilterState: FilterState = {
+// A sample AG Grid filter model (#225)
+const sampleFilterState: FilterModel = {
   name: {
     filterType: 'text',
     type: 'contains',
@@ -58,8 +60,9 @@ const sampleFilterState: FilterState = {
   },
   created: {
     filterType: 'date',
-    type: 'dateAfter',
-    filter: '2024-01-01'
+    type: 'greaterThan',
+    dateFrom: '2024-01-01',
+    dateTo: null
   }
 }
 
@@ -138,8 +141,9 @@ describe('Grouped Serialization', () => {
       })
       expect(result.created).toEqual({
         filterType: 'date',
-        type: 'dateAfter',
-        filter: '2024-01-01'
+        type: 'greaterThan',
+        dateFrom: '2024-01-01',
+        dateTo: null
       })
     })
 
@@ -330,21 +334,33 @@ describe('Format Serializers', () => {
       ).toEqual(filter)
     })
 
+    // The value holds AG Grid's own model: the grid checks it (#225)
     it.each([
       [
-        'a filter with an unknown operation',
+        'a filter with an operation of its own',
         '{"a":{"filterType":"text","type":"regex","filter":"x"}}'
       ],
       [
         'a number filter with a text value',
-        '{"a":{"filterType":"number","type":"eq","filter":"1"}}'
+        '{"a":{"filterType":"number","type":"equals","filter":"1"}}'
       ],
-      [
-        'a filter type the library does not support',
-        '{"a":{"filterType":"set","values":["x"]}}'
-      ]
-    ])('should reject %s', (_label, value) => {
-      expect(() => serializer.deserialize(value)).toThrow()
+      ['a set filter', '{"a":{"filterType":"set","values":["x"]}}']
+    ])('should keep %s as it is', (_label, value) => {
+      expect(serializer.deserialize(value)).toEqual(JSON.parse(value))
+    })
+
+    // A custom filter's model can be any value (#283 review)
+    it.each([
+      ['a column that is not an object', '{"a":"x"}'],
+      ['a column that is an array', '{"a":[1]}']
+    ])('should keep %s', (_label, value) => {
+      expect(serializer.deserialize(value)).toEqual(JSON.parse(value))
+    })
+
+    it('should read a column that is null as no filter', () => {
+      expect(
+        serializer.deserialize('{"a":null,"b":{"filterType":"set"}}')
+      ).toEqual({ b: { filterType: 'set' } })
     })
 
     it('should serialize and deserialize correctly', () => {
@@ -402,8 +418,9 @@ describe('Format Serializers', () => {
     })
 
     it('should keep the same output for ASCII text', () => {
+      // The keys are sorted, so equal models give equal values (#225)
       expect(serializer.serialize(sampleFilterState)).toBe(
-        btoa(JSON.stringify(sampleFilterState))
+        btoa(stableJson(sampleFilterState))
       )
     })
 
@@ -475,7 +492,8 @@ describe('maxValueLength in json and base64 formats (#213)', () => {
         const { value } = serializeGrouped(state, config)
         const raw = decodeRaw(format, value)
         expect(raw.big).toBeUndefined()
-        expect(Object.keys(raw)).toEqual(['ok', 'blank', 'age'])
+        // The keys are sorted (#225)
+        expect(Object.keys(raw)).toEqual(['age', 'blank', 'ok'])
         expect(onParseError).toHaveBeenCalledTimes(1)
         const err = onParseError.mock.calls[0]?.[0]
         expect(err).toBeInstanceOf(InvalidSerializationError)

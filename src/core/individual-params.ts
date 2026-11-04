@@ -192,6 +192,9 @@ function extractColumnAndOperation(
  * Parses a URL parameter into a column filter. An operation that every
  * filter type has (`eq`, `notEqual`, `blank`, `notBlank`) takes its type from
  * `columnType`. With no type, its value stays text (#224).
+ *
+ * @deprecated It gives the library's own filter, not AG Grid's model (#225).
+ * Use `parseUrlFilters`. This function will be removed in 0.6.0.
  */
 export function parseFilterParam(
   param: string,

@@ -174,8 +174,9 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       const filtersParam = urlObj.searchParams.get('filters')
       expect(filtersParam).toBeTruthy()
 
+      // The value holds AG Grid's model (#225)
       const parsed = JSON.parse(decodeURIComponent(filtersParam!))
-      expect(parsed).toEqual(sampleFilterState)
+      expect(parsed).toEqual(expectedAgGridFormat)
     })
 
     it('should parse URLs with grouped JSON format', () => {
@@ -215,10 +216,10 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       // Should be valid base64
       expect(() => atob(decodeURIComponent(filtersParam!))).not.toThrow()
 
-      // Should decode to original filter state
+      // Should decode to AG Grid's model (#225)
       const decoded = atob(decodeURIComponent(filtersParam!))
       const parsed = JSON.parse(decoded)
-      expect(parsed).toEqual(sampleFilterState)
+      expect(parsed).toEqual(expectedAgGridFormat)
     })
 
     it('should parse URLs with grouped base64 format', () => {
@@ -263,13 +264,14 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
         serialization: 'individual' // Test that utility works regardless of current mode
       })
 
+      // The json and base64 values hold AG Grid's model (#225)
       const jsonFormat = urlSync.getFiltersAsFormat('json')
       const parsed = JSON.parse(jsonFormat)
-      expect(parsed).toEqual(sampleFilterState)
+      expect(parsed).toEqual(expectedAgGridFormat)
 
       const base64Format = urlSync.getFiltersAsFormat('base64')
       const decoded = JSON.parse(atob(base64Format))
-      expect(decoded).toEqual(sampleFilterState)
+      expect(decoded).toEqual(expectedAgGridFormat)
 
       const queryFormat = urlSync.getFiltersAsFormat('querystring')
       expect(queryFormat).toContain('f_name_contains=john')

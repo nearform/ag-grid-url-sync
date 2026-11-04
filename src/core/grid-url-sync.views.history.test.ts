@@ -203,8 +203,8 @@ describe.each(GRID_TIMINGS)(
       const length = window.history.length
 
       const result = sync.applyFilters({
-        age: { filterType: 'number', type: 'eq', filter: 30 },
-        name: { filterType: 'number', type: 'eq', filter: 1 }
+        age: { filterType: 'number', type: 'equals', filter: 30 },
+        name: { filterType: 'number', type: 'equals', filter: 1 }
       })
 
       await tick()
@@ -228,7 +228,7 @@ describe.each(GRID_TIMINGS)(
       await tick()
 
       sync.applyFilters({
-        age: { filterType: 'number', type: 'eq', filter: 30 }
+        age: { filterType: 'number', type: 'equals', filter: 30 }
       })
       await tick()
 
@@ -245,7 +245,7 @@ describe('createGridUrlSync: applyFilters when not ready', () => {
     sync.destroy()
 
     const result = sync.applyFilters({
-      age: { filterType: 'number', type: 'eq', filter: 30 }
+      age: { filterType: 'number', type: 'equals', filter: 30 }
     })
 
     expect(result.issues).toEqual([])

@@ -16,7 +16,12 @@ import {
   isTextFilterOperation
 } from './types.js'
 import { operatorById, operatorFromAgGrid } from './operators.js'
-import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
+import {
+  AgGridFilterSchema,
+  JsonObjectSchema,
+  filterTypeOf,
+  isColumnModel
+} from './schemas.js'
 import { reportIssue, toIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
@@ -101,6 +106,8 @@ export function detectColumnFilterType(
  *
  * @param gridApi - AG Grid API instance
  * @param options - Optional options. Only `onParseError` is read.
+ * @deprecated The public functions take AG Grid's own model (#225): use
+ * `gridApi.getFilterModel()`. This function will be removed in 0.6.0.
  */
 export function getFilterModel(
   gridApi: GridApi,
@@ -338,7 +345,7 @@ export function fromGridModel(
 /**
  * Converts internal filter to AG Grid filter format
  */
-function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
+export function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
   if (filter.filterType === 'date') {
     // Handle date range operations
     if (filter.type === 'dateRange') {
@@ -417,6 +424,9 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
  * @param filterState - Filter state to apply
  * @param gridApi - AG Grid API instance
  * @param options - Optional options. Only `onParseError` is read.
+ * @deprecated The public functions take AG Grid's own model (#225): use
+ * `createGridUrlSync(...).applyFilters(model)` or `gridApi.setFilterModel`.
+ * This function will be removed in 0.6.0.
  */
 export function applyFilterModel(
   filterState: FilterState,
@@ -470,27 +480,60 @@ function writeGridFilters(
 /**
  * TYPE_MISMATCH when a number or date filter is on a column of another type.
  * Null while AG Grid has not inferred the column type: there is nothing to
- * check against, and AG Grid defers the model until it knows (#224).
+ * check against, and AG Grid defers the model until it knows (#224). Other
+ * filter types (text, set, multi, custom) are not checked (#225).
  */
 function typeMismatch(
   gridApi: GridApi,
   column: string,
-  filter: ColumnFilter
+  filterType: string | undefined
 ): InvalidFilterError | null {
+  if (filterType !== 'number' && filterType !== 'date') return null
+
   const columnType = gridColumnType(gridApi, column)
 
-  if (columnType === 'pending' || filter.filterType === 'text') return null
+  if (columnType === 'pending') return null
 
   const expected =
     columnType === 'number' || columnType === 'date' ? columnType : 'text'
 
-  if (filter.filterType === expected) return null
+  if (filterType === expected) return null
 
   return new InvalidFilterError(
-    `Column '${column}' expects a ${expected} filter but received a ${filter.filterType} filter. This may indicate a configuration mismatch in the column definition or filter application.`,
+    `Column '${column}' expects a ${expected} filter but received a ${filterType} filter. This may indicate a configuration mismatch in the column definition or filter application.`,
     undefined,
     { code: 'TYPE_MISMATCH', column }
   )
+}
+
+/**
+ * An AG Grid model with each column that fails the type check left out and
+ * reported (#225). It does not call `setFilterModel`.
+ */
+export function checkColumnTypes(
+  model: FilterModel,
+  gridApi: GridApi,
+  options?: AGGridUrlSyncConfig
+): FilterModel {
+  const resolved = resolveOptions(options)
+
+  // A JavaScript caller can pass null, which clears the grid
+  if (!v.is(JsonObjectSchema, model)) return {}
+
+  const kept = Object.entries(model).filter(([column, entry]) => {
+    // A custom filter's model can be any value: it is not checked (#283
+    // review)
+    if (!isColumnModel(entry)) return true
+
+    const mismatch = typeMismatch(gridApi, column, filterTypeOf(entry))
+
+    if (mismatch) reportIssue(resolved, mismatch)
+
+    return mismatch === null
+  })
+
+  // Object.fromEntries creates own keys, so `__proto__` stays a column
+  return Object.fromEntries(kept)
 }
 
 /**
@@ -512,7 +555,7 @@ export function toGridModel(
     // A JavaScript caller can pass anything here
     if (!v.is(JsonObjectSchema, filter)) continue
 
-    const mismatch = typeMismatch(gridApi, column, filter)
+    const mismatch = typeMismatch(gridApi, column, filter.filterType)
 
     if (mismatch) {
       reportIssue(resolved, mismatch)

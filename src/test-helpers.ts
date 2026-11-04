@@ -194,3 +194,122 @@ export function createRealGrid(
     ...gridOptions
   })
 }
+
+// ============================================================================
+// Grid timings (#273)
+// ============================================================================
+
+/**
+ * When a grid fake takes a setFilterModel call, and when it sends
+ * filterChanged (measured and named in #269):
+ * - `'in-call'`: the model changes at once, and the event comes inside the
+ *   call (older AG Grid).
+ * - `'event-later'`: the model changes at once, and the event comes one tick
+ *   later (AG Grid 36).
+ * - `'deferred'`: the model and the event come one tick later (AG Grid while
+ *   it resolves column types or filter components). Until then
+ *   getFilterModel gives the old model.
+ */
+export type GridTiming = 'in-call' | 'event-later' | 'deferred'
+
+export const GRID_TIMINGS: readonly GridTiming[] = [
+  'in-call',
+  'event-later',
+  'deferred'
+]
+
+/** The columns of a timed grid. It drops the filters of other columns. */
+const TIMED_COLUMNS = new Map([
+  ['name', 'agTextColumnFilter'],
+  ['age', 'agNumberColumnFilter']
+])
+
+export interface TimedGrid {
+  api: GridApi
+  /** The user changes the filters in the grid's UI */
+  userEdit(model: FilterModel): void
+  /**
+   * The app's own setFilterModel that lands at once, with any timing: an
+   * 'api' change while a deferred write of the sync is still pending
+   */
+  apiEdit(model: FilterModel): void
+}
+
+/** A key for a model that does not depend on the order of its columns */
+function modelKey(model: FilterModel): string {
+  return JSON.stringify(
+    Object.entries(model).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  )
+}
+
+/**
+ * A grid fake with state and a timing. Like AG Grid, it sends no
+ * filterChanged when the model does not change.
+ */
+export function createTimedGrid(
+  timing: GridTiming,
+  initial: FilterModel = {}
+): TimedGrid {
+  const listeners = createGridListeners()
+  let current: FilterModel = { ...initial }
+
+  /** Takes the model. False when nothing changed, so no event is sent. */
+  const take = (next: FilterModel): boolean => {
+    if (modelKey(next) === modelKey(current)) return false
+
+    current = next
+
+    return true
+  }
+
+  const fire = (source: string): void =>
+    listeners.fire('filterChanged', { source })
+
+  const later = (run: () => void): void => {
+    globalThis.setTimeout(run, 0)
+  }
+
+  const api = asGridApi({
+    getFilterModel: () => ({ ...current }),
+    setFilterModel(next) {
+      const accepted = Object.fromEntries(
+        Object.entries(next ?? {}).filter(([colId]) => TIMED_COLUMNS.has(colId))
+      )
+
+      if (timing === 'deferred') {
+        later(() => {
+          if (take(accepted)) fire('api')
+        })
+
+        return
+      }
+
+      if (!take(accepted)) return
+
+      if (timing === 'in-call') {
+        fire('api')
+      } else {
+        later(() => fire('api'))
+      }
+    },
+    getColumn(colId) {
+      const filter = TIMED_COLUMNS.get(colId)
+
+      return filter
+        ? { isFilterAllowed: () => true, getColDef: () => ({ filter }) }
+        : null
+    },
+    addEventListener: listeners.addEventListener,
+    removeEventListener: listeners.removeEventListener
+  })
+
+  return {
+    api,
+    userEdit(model) {
+      if (take({ ...model })) fire('columnFilter')
+    },
+    apiEdit(model) {
+      if (take({ ...model })) fire('api')
+    }
+  }
+}

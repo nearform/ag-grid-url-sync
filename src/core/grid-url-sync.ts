@@ -40,6 +40,27 @@ export const IDLE_SNAPSHOT: GridUrlSyncSnapshot = Object.freeze({
  */
 type IssueMode = 'collect' | 'report' | 'throw'
 
+/**
+ * The sync's own latest grid write: the history loop guard (#273). It is set
+ * before setFilterModel, because AG Grid can send filterChanged inside the
+ * call, after it, or one tick later with the model.
+ * - `writing`: inside the call, so an event is the write landing.
+ * - `pending`: the grid did not take the model yet (deferred). `before` is
+ *   the grid's model before the write, and `accepted` the part of the
+ *   filters that the grid has columns for.
+ * - `landed`: the grid shows the model with this key. An event with the
+ *   same model is the write's echo: one write can cause more than one event.
+ */
+type OwnWrite =
+  | { readonly phase: 'writing' }
+  | {
+      readonly phase: 'pending'
+      readonly before: FilterState | null
+      readonly accepted: FilterState
+      readonly acceptedKey: string
+    }
+  | { readonly phase: 'landed'; readonly key: string }
+
 interface Call {
   options: ResolvedOptions
   issues: URLSyncError[]
@@ -89,10 +110,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   let readIssues: readonly URLSyncError[] = NO_ISSUES
   let writeIssues: readonly URLSyncError[] = NO_ISSUES
   const historyMode = options.history ?? 'none'
-  // The filters of the sync's own latest apply, as a key. The filterChanged
-  // that the apply causes comes later, and the app's own setFilterModel uses
-  // the same event source, so the key tells the two apart.
-  let pendingApplied: string | null = null
+  // The sync's own latest grid write. The filterChanged events that it causes
+  // must not be written to history (#273).
+  let own: OwnWrite | null = null
   const listensToPopstate = options.popstate ?? historyMode === 'push'
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
 
@@ -224,12 +244,16 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     }
 
     const applies = filters && !(onCreate && Object.keys(filters).length === 0)
-    const before = applies ? liveKey() : null
+    const before = applies ? liveState() : null
 
     if (filters && applies) {
+      // Before the call, so an event inside it is known as ours (#273)
+      own = { phase: 'writing' }
+
       try {
         applyFilterModel(filters, api, call.options)
       } catch (cause) {
+        own = null
         fail(call, cause, 'GRID_ERROR')
       }
     }
@@ -237,28 +261,108 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     applyIssues = call.issues.length ? call.issues : NO_ISSUES
     readGrid()
 
-    // The marker is the grid's model after the apply, not the parsed filters:
-    // the grid can take only part of them (a column that does not exist).
-    // AG Grid sends no filterChanged for a model that did not change.
-    if (applies) {
-      const after = filtersKey(state)
-      pendingApplied = after === before ? null : after
-    }
+    if (filters && applies) settleWrite(filters, before, call)
 
     publish()
 
     return { issues: call.issues }
   }
 
-  /** The key of the grid's model now, or null when the grid cannot be read */
-  function liveKey(): string | null {
+  /** The grid's filters now, or null when the grid cannot be read */
+  function liveState(): FilterState | null {
     try {
-      return filtersKey(
-        getFilterModel(api, startCall('grid', 'collect').options)
-      )
+      return getFilterModel(api, startCall('grid', 'collect').options)
     } catch {
       return null
     }
+  }
+
+  /**
+   * After the sync's own setFilterModel returns: did the write land, or does
+   * the grid take it later? `state` is the grid's filters after the call.
+   */
+  function settleWrite(
+    filters: FilterState,
+    before: FilterState | null,
+    call: Call
+  ): void {
+    // The grid threw, so nothing was written
+    if (call.issues.some(issue => issue.code === 'GRID_ERROR')) {
+      own = null
+
+      return
+    }
+
+    const after = filtersKey(state)
+    const accepted = acceptedPart(filters)
+    const acceptedKey = filtersKey(accepted)
+
+    // An event inside the call landed it, or the grid shows the filters now
+    // (also a write that changed nothing, for which AG Grid sends no event),
+    // or the grid took them in a form of its own
+    if (
+      own?.phase === 'landed' ||
+      after === acceptedKey ||
+      (before !== null && after !== filtersKey(before))
+    ) {
+      own = { phase: 'landed', key: after }
+
+      return
+    }
+
+    own = { phase: 'pending', before, accepted, acceptedKey }
+  }
+
+  /** The filters of the columns that the grid has */
+  function acceptedPart(filters: FilterState): FilterState {
+    // A test double or an old AG Grid version can lack getColumn
+    if (!('getColumn' in api)) return filters
+
+    return Object.fromEntries(
+      Object.entries(filters).filter(([colId]) => {
+        try {
+          return api.getColumn(colId) !== null
+        } catch {
+          return true
+        }
+      })
+    )
+  }
+
+  /**
+   * Whether a filterChanged comes from the sync's own write. `state` is the
+   * grid's filters at the event. Any other event ends the own write.
+   */
+  function isOwnEvent(source: string | undefined): boolean {
+    if (!own) return false
+
+    const key = filtersKey(state)
+
+    if (own.phase === 'landed') {
+      if (key === own.key) return true
+    } else if (own.phase === 'pending') {
+      const { before, accepted, acceptedKey } = own
+
+      // The grid still shows the model from before the write
+      if (before && key === filtersKey(before)) return true
+
+      // The write lands. An API change that shows the write's filters for
+      // some columns, and the filters from before for the others, is a
+      // write that the grid took only part of. A user's edit in the grid's
+      // UI has another source.
+      if (
+        key === acceptedKey ||
+        (source === 'api' && couldBeLanding(state, accepted, before))
+      ) {
+        own = { phase: 'landed', key }
+
+        return true
+      }
+    }
+
+    own = null
+
+    return false
   }
 
   /** Whether a URL has a param that the codec reads, even one that is bad */
@@ -313,17 +417,10 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
    * Writes a filter change, unless the sync's own apply caused it or the
    * address bar already has the same filters
    */
-  function writeChange(): void {
-    if (historyMode === 'none' || !hasWindow()) return
+  function writeChange(source: string | undefined): void {
+    if (isOwnEvent(source) || historyMode === 'none' || !hasWindow()) return
 
     const key = filtersKey(state)
-
-    // One apply can cause more than one filterChanged, so a match keeps the
-    // marker. The first event with another model is a real change: it clears
-    // the marker and is written.
-    if (key === pendingApplied) return
-
-    pendingApplied = null
 
     const current = parseUrlFilters(
       window.location.href,
@@ -335,11 +432,20 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     write('grid', false)
   }
 
-  function onFilterChanged(): void {
+  function onFilterChanged(event?: { source?: string }): void {
     if (status !== 'active') return
 
+    // Inside the sync's own setFilterModel: the write lands. The apply reads
+    // the grid and publishes after the call.
+    if (own?.phase === 'writing') {
+      const live = liveState()
+      own = live ? { phase: 'landed', key: filtersKey(live) } : null
+
+      return
+    }
+
     readGrid()
-    writeChange()
+    writeChange(event?.source)
     publish()
   }
 
@@ -454,6 +560,34 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   return sync
+}
+
+/**
+ * Whether the grid's filters could be a write landing in which the grid took
+ * only part of the write: each column has the write's filter, or the filter
+ * that the grid had before. At least one column must be the write's, so a
+ * clear-all or another value is a change, not the landing (#274 review).
+ */
+function couldBeLanding(
+  live: FilterState,
+  accepted: FilterState,
+  before: FilterState | null
+): boolean {
+  const columns = Object.keys(live)
+
+  const fromWrite = (colId: string): boolean =>
+    Object.hasOwn(accepted, colId) &&
+    JSON.stringify(live[colId]) === JSON.stringify(accepted[colId])
+
+  const fromBefore = (colId: string): boolean =>
+    before !== null &&
+    Object.hasOwn(before, colId) &&
+    JSON.stringify(live[colId]) === JSON.stringify(before[colId])
+
+  return (
+    columns.some(fromWrite) &&
+    columns.every(colId => fromWrite(colId) || fromBefore(colId))
+  )
 }
 
 /** The key of an issue's content */

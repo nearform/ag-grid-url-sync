@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   getFilterModel,
   applyFilterModel,
-  detectColumnFilterType
+  detectColumnFilterType,
+  toGridModel,
+  fromGridModel
 } from './grid-integration.js'
 
 import { generateUrl } from './url-generator.js'
@@ -884,6 +886,58 @@ describe('Grid Integration', () => {
       expect(onParseError).toHaveBeenCalledWith(
         expect.objectContaining({ code: 'INVALID_PARAM' })
       )
+    })
+  })
+
+  describe('toGridModel / fromGridModel (#223)', () => {
+    it('gives the model for a text filter and does not call setFilterModel', () => {
+      mockGridApi.getColumn.mockReturnValue({
+        getColDef: () => ({ filter: 'agTextColumnFilter' })
+      })
+
+      const model = toGridModel(
+        { name: { filterType: 'text', type: 'contains', filter: 'jo' } },
+        asGridApi(mockGridApi)
+      )
+
+      expect(model).toEqual({
+        name: { filterType: 'text', type: 'contains', filter: 'jo' }
+      })
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
+    })
+
+    it('reports TYPE_MISMATCH for a number filter on a text column', () => {
+      const onParseError = vi.fn()
+      mockGridApi.getColumn.mockReturnValue({
+        getColDef: () => ({ filter: 'agTextColumnFilter' })
+      })
+
+      const model = toGridModel(
+        { name: { filterType: 'number', type: 'eq', filter: 1 } },
+        asGridApi(mockGridApi),
+        { onParseError }
+      )
+
+      expect(model).toEqual({})
+      expect(onParseError).toHaveBeenCalledOnce()
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'TYPE_MISMATCH', column: 'name' })
+      )
+    })
+
+    it('fromGridModel skips set filters', () => {
+      expect(
+        fromGridModel({
+          status: { filterType: 'set', values: ['open'] },
+          name: { filterType: 'text', type: 'contains', filter: 'jo' }
+        })
+      ).toEqual({
+        name: { filterType: 'text', type: 'contains', filter: 'jo' }
+      })
+    })
+
+    it('fromGridModel gives an empty state for null', () => {
+      expect(fromGridModel(null)).toEqual({})
     })
   })
 })

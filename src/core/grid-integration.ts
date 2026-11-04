@@ -20,7 +20,7 @@ import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
 import { reportIssue, toIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
-import type { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 
 /**
  * The AG Grid name of an internal operation. Null (no operation, in AG Grid's
@@ -152,7 +152,7 @@ function readGridFilters(
 ): FilterState {
   // Only the grid call is in the try. An issue report runs outside it, so a
   // handler that throws gets its own error back, not a GRID_ERROR (#220).
-  let model: unknown
+  let model: FilterModel | null
 
   try {
     // AG Grid can hand back null despite the declared return type
@@ -163,6 +163,19 @@ function readGridFilters(
 
     return {}
   }
+
+  return fromGridModel(model, options)
+}
+
+/**
+ * Converts an AG Grid filter model to URL filters. It does not call the grid.
+ * Filter types that the library does not support (set, multi) are skipped.
+ */
+export function fromGridModel(
+  model: FilterModel | null | undefined,
+  options?: AGGridUrlSyncConfig
+): FilterState {
+  const resolved = resolveOptions(options)
 
   // A Map, not a plain object: an assignment to `obj['__proto__']` would
   // call the prototype setter, and the column would be lost (#253)
@@ -210,7 +223,7 @@ function readGridFilters(
         !isNumberFilterOperation(internalOperation)
       ) {
         reportIssue(
-          options,
+          resolved,
           new InvalidFilterError(
             `Unknown number filter operation '${filter.type}' for column '${column}'. ` +
               `Supported operations: ${NUMBER_FILTER_OPERATIONS.map(toAgGridOperation).join(', ')}`,
@@ -253,13 +266,13 @@ function readGridFilters(
           : undefined
 
       if (numericValue instanceof InvalidFilterError) {
-        reportIssue(options, numericValue)
+        reportIssue(resolved, numericValue)
 
         continue
       }
 
       if (numericTo instanceof InvalidFilterError) {
-        reportIssue(options, numericTo)
+        reportIssue(resolved, numericTo)
 
         continue
       }
@@ -462,6 +475,29 @@ function writeGridFilters(
   gridApi: GridApi,
   options: ResolvedOptions
 ): void {
+  const model = toGridModel(filterState, gridApi, options)
+
+  // Only the grid call is in the try. An issue report runs outside it, so a
+  // handler that throws gets its own error back, not a GRID_ERROR (#220).
+  try {
+    gridApi.setFilterModel(model)
+  } catch (error) {
+    // The grid API threw, which is not a problem with a filter
+    reportIssue(options, toIssue(error, 'GRID_ERROR'))
+  }
+}
+
+/**
+ * Converts URL filters to the AG Grid filter model that `applyFilterModel`
+ * would write. It does not call `setFilterModel`.
+ */
+export function toGridModel(
+  filterState: FilterState,
+  gridApi: GridApi,
+  options?: AGGridUrlSyncConfig
+): FilterModel {
+  const resolved = resolveOptions(options)
+
   // A Map, not a plain object: an assignment to `obj['__proto__']` would
   // call the prototype setter, and the column would be lost (#253)
   const model = new Map<string, AGGridFilter>()
@@ -476,7 +512,7 @@ function writeGridFilters(
     // Validate filter type compatibility
     if (filter.filterType === 'date' && expectedType !== 'date') {
       reportIssue(
-        options,
+        resolved,
         new InvalidFilterError(
           `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`,
           undefined,
@@ -488,7 +524,7 @@ function writeGridFilters(
 
     if (filter.filterType === 'number' && expectedType !== 'number') {
       reportIssue(
-        options,
+        resolved,
         new InvalidFilterError(
           `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`,
           undefined,
@@ -506,13 +542,6 @@ function writeGridFilters(
     }
   }
 
-  // Only the grid call is in the try. An issue report runs outside it, so a
-  // handler that throws gets its own error back, not a GRID_ERROR (#220).
-  try {
-    // Object.fromEntries creates own keys, so `__proto__` stays a column
-    gridApi.setFilterModel(Object.fromEntries(model))
-  } catch (error) {
-    // The grid API threw, which is not a problem with a filter
-    reportIssue(options, toIssue(error, 'GRID_ERROR'))
-  }
+  // Object.fromEntries creates own keys, so `__proto__` stays a column
+  return Object.fromEntries(model)
 }

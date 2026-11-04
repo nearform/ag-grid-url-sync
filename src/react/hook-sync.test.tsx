@@ -216,6 +216,29 @@ describe('options after mount (#222)', () => {
     expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
   })
 
+  test('autoApplyOnMount from false to true applies the URL one time', async () => {
+    setPage('?f_name_contains=ann')
+    const grid = createGrid()
+    const { rerender } = renderSync({ grid, options: {} })
+    await waitForEffects()
+
+    expect(grid.api.setFilterModel).not.toHaveBeenCalled()
+
+    rerender({ grid, options: { autoApplyOnMount: true } })
+    await waitForEffects()
+
+    expect(grid.api.setFilterModel).toHaveBeenCalledOnce()
+    expect(grid.api.setFilterModel).toHaveBeenCalledWith(ANN)
+
+    // The URL had its say on this grid
+    rerender({ grid, options: { autoApplyOnMount: false } })
+    await waitForEffects()
+    rerender({ grid, options: { autoApplyOnMount: true } })
+    await waitForEffects()
+
+    expect(grid.api.setFilterModel).toHaveBeenCalledOnce()
+  })
+
   test('a new autoApplyOnMount value makes no new sync', async () => {
     setPage('?f_name_contains=ann')
     const grid = createGrid()

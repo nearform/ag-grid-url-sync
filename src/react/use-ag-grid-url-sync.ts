@@ -6,7 +6,11 @@ import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { generateUrl } from '../core/url-generator.js'
 import { getFilterModel } from '../core/grid-integration.js'
 import { serializeGrouped } from '../core/serialization/grouped.js'
-import { createViewStore, type GridView } from '../core/view-storage.js'
+import {
+  createViewStore,
+  type GridView,
+  type ViewStore
+} from '../core/view-storage.js'
 import { DEFAULT_CONFIG, resolveOptions } from '../core/options.js'
 import { toError } from '../core/to-error.js'
 import { isDataIssue, shouldThrow } from '../core/issues.js'
@@ -48,6 +52,13 @@ interface Session {
   urlApplied: boolean
   /** The active view of the last sync, for the next sync on this grid */
   activeViewId: string | null
+}
+
+/** The live sync, and the URL options and store that it was made for */
+interface LiveSync {
+  sync: GridUrlSync
+  urlOptions: AGGridUrlSyncConfig
+  viewStore: ViewStore | null
 }
 
 function newSession(
@@ -164,12 +175,8 @@ export function useAGGridUrlSync(
     onParseError: coreOptions.onParseError
   })
 
-  // Read only when a sync is made, so a new value alone makes no new sync
-  const autoApplyRef = useRef(autoApplyOnMount)
-
   useEffect(() => {
     callbacksRef.current = { onError, onParseError: coreOptions.onParseError }
-    autoApplyRef.current = autoApplyOnMount
   })
 
   // The hook operation that is calling the sync. An issue that the sync
@@ -177,6 +184,9 @@ export function useAGGridUrlSync(
   const contextRef = useRef('initialization')
 
   const sessionRef = useRef<Session>(newSession(null, undefined))
+
+  // The live sync, with the URL options and the store that it was made for
+  const liveSyncRef = useRef<LiveSync | null>(null)
 
   // Each failure goes to exactly one callback, by its kind (#220). A data issue
   // (a filter that is dropped or not valid) goes to onParseError. Any other
@@ -213,6 +223,20 @@ export function useAGGridUrlSync(
     [reportFailure]
   )
 
+  /**
+   * Destroys the live sync. Its active view stays in the session, for the
+   * next sync on the same grid.
+   */
+  const dropSync = useCallback(
+    (current: LiveSync): void => {
+      sessionRef.current.activeViewId = current.sync.getSnapshot().activeViewId
+      current.sync.destroy()
+      holder.set(null)
+      liveSyncRef.current = null
+    },
+    [holder]
+  )
+
   /** The sync, while it is active */
   const activeSync = useCallback((): GridUrlSync | null => {
     const sync = holder.get()
@@ -222,15 +246,42 @@ export function useAGGridUrlSync(
 
   // Make the sync for each grid, each set of URL-format options and each
   // storageKey. A new grid starts a new session. A new option or storageKey
-  // on the same grid does not apply the URL again (#222).
+  // on the same grid does not apply the URL again (#222). autoApplyOnMount
+  // makes a new sync only when an auto-apply is due on this grid: from false
+  // to true before any auto-apply, as in 0.5.1.
   useEffect(() => {
     const live = gridApi && enabledWhenReady ? gridApi : null
+    const current = liveSyncRef.current
+    const newGrid = live !== sessionRef.current.grid
 
-    if (live !== sessionRef.current.grid) {
+    // A new grid (or none) starts a new session. The old sync goes first, so
+    // its active view stays in the old session.
+    if (newGrid) {
+      if (current) dropSync(current)
+
       sessionRef.current = newSession(live, storageKey)
     }
 
     const session = sessionRef.current
+    const sameKey = session.storageKey === storageKey
+
+    // A new namespace auto-applies again. Not when the store went away: with
+    // no views, auto-apply clears the grid on a URL with no filters.
+    const autoApply =
+      autoApplyOnMount &&
+      (!session.autoApplied || (!sameKey && viewStore !== null))
+
+    if (
+      current &&
+      !newGrid &&
+      current.urlOptions === urlOptions &&
+      current.viewStore === viewStore &&
+      !autoApply
+    ) {
+      return
+    }
+
+    if (current && !newGrid) dropSync(current)
 
     if (!live) {
       // No sync: `views` still shows what is in storage
@@ -239,17 +290,14 @@ export function useAGGridUrlSync(
       return
     }
 
-    const sameKey = session.storageKey === storageKey
     // The active view of the last sync on this grid. A new namespace has none.
     const kept = sameKey ? session.activeViewId : null
     session.storageKey = storageKey
     session.activeViewId = null
 
-    // A new namespace auto-applies again. Not when the store went away: with
-    // no views, auto-apply clears the grid on a URL with no filters.
+    // A new namespace is armed again, also while autoApplyOnMount is false
     if (!sameKey && viewStore) session.autoApplied = false
 
-    const autoApply = autoApplyRef.current && !session.autoApplied
     // With views, the core lands the URL or the stored view, one time per grid
     const landsOnCreate = autoApply && viewStore !== null && !session.urlApplied
 
@@ -292,6 +340,7 @@ export function useAGGridUrlSync(
     }
 
     holder.set(sync)
+    liveSyncRef.current = { sync, urlOptions, viewStore }
 
     if (sync.getSnapshot().status === 'active') {
       if (autoApply) contextRef.current = 'auto-apply-filters'
@@ -318,21 +367,27 @@ export function useAGGridUrlSync(
         sync.loadView(kept)
       }
     }
-
-    return () => {
-      session.activeViewId = sync.getSnapshot().activeViewId
-      sync.destroy()
-      holder.set(null)
-    }
   }, [
     gridApi,
     enabledWhenReady,
     urlOptions,
     viewStore,
     storageKey,
+    autoApplyOnMount,
     holder,
-    reportFailure
+    reportFailure,
+    dropSync
   ])
+
+  // Unmount: the sync goes with the hook
+  useEffect(
+    () => () => {
+      const current = liveSyncRef.current
+
+      if (current) dropSync(current)
+    },
+    [dropSync]
+  )
 
   /** The read options, with data issues reported in the context */
   const readOptions = useCallback(

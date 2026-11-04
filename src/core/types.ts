@@ -4,6 +4,7 @@ import type {
   NumberFilterModel,
   DateFilterModel
 } from 'ag-grid-community'
+import type { GridView, ViewStore } from './view-storage.js'
 import { attachColumn } from './issue-columns.js'
 import { DATA_ISSUE_CODES } from './data-issue-codes.js'
 import {
@@ -710,6 +711,10 @@ export interface GridUrlSyncSnapshot {
   readonly hasFilters: boolean
   /** The issues of the latest apply and of the latest grid read */
   readonly issues: readonly URLSyncError[]
+  /** The saved views, in save order. Empty with no `views` option. */
+  readonly views: readonly GridView[]
+  /** The id of the active saved view, or null */
+  readonly activeViewId: string | null
 }
 
 /**
@@ -755,6 +760,11 @@ export interface GridUrlSyncOptions {
   throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
   /** Gets each issue one time */
   onIssue?: ((event: IssueEvent) => void) | undefined
+  /**
+   * The saved views. Give `createViewStore(key)` from
+   * `ag-grid-url-sync/view-storage`.
+   */
+  views?: ViewStore | undefined
 }
 
 /** A sync between one grid and the URL */
@@ -767,6 +777,16 @@ export interface GridUrlSync {
   applyUrl(url?: string): ApplyResult
   /** The URL with the grid's filters (default base: the address bar) */
   getUrl(baseUrl?: string): string
+  /**
+   * Saves the grid's filters as a view with this name, and makes it active.
+   * The same name updates that view. Returns null with no `views` option or
+   * when the save fails.
+   */
+  saveView(name: string): GridView | null
+  /** Loads a saved view into the grid. `null` clears the filters. */
+  loadView(id: string | null): void
+  /** Deletes a saved view */
+  deleteView(id: string): void
   /** Removes the listeners. The snapshot keeps the last state. */
   destroy(): void
 }

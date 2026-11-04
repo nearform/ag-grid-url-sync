@@ -13,7 +13,9 @@ function createFakeSync() {
     status: 'active',
     url: 'https://example.com/?f_name_contains=jo',
     hasFilters: true,
-    issues: []
+    issues: [],
+    views: [],
+    activeViewId: null
   })
 
   const sync: GridUrlSync = {
@@ -25,6 +27,9 @@ function createFakeSync() {
     },
     applyUrl: () => ({ issues: [] }),
     getUrl: () => '',
+    saveView: () => null,
+    loadView: () => {},
+    deleteView: () => {},
     destroy: () => {}
   }
 

@@ -5,6 +5,7 @@ import type {
   GridUrlSync,
   GridUrlSyncOptions,
   GridUrlSyncSnapshot,
+  IssueCode,
   IssueSource,
   ResolvedOptions,
   SyncStatus
@@ -18,6 +19,7 @@ import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { resolveParamPrefix } from './individual-params.js'
 import { getFilterModel, toGridModel } from './grid-integration.js'
+import type { GridView } from './view-storage.js'
 import type { Columns, OwnWrite } from './own-write.js'
 import { classifyEvent, settleWrite } from './own-write.js'
 
@@ -26,13 +28,16 @@ import { classifyEvent, settleWrite } from './own-write.js'
 // reads window when the module loads.
 
 const NO_ISSUES: readonly URLSyncError[] = Object.freeze([])
+const NO_VIEWS: readonly GridView[] = Object.freeze([])
 
 /** The snapshot when there is no sync yet, for the React hook (#222) */
 export const IDLE_SNAPSHOT: GridUrlSyncSnapshot = Object.freeze({
   status: 'idle',
   url: '',
   hasFilters: false,
-  issues: NO_ISSUES
+  issues: NO_ISSUES,
+  views: NO_VIEWS,
+  activeViewId: null
 })
 
 /**
@@ -79,7 +84,7 @@ function sameIssues(
  * ```
  */
 export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
-  const { api, onIssue } = options
+  const { api, onIssue, views } = options
   const codec = codecOptions(options.codec ?? individual())
   const maxValueLength = options.maxValueLength ?? DEFAULT_CONFIG.maxValueLength
 
@@ -95,6 +100,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   // must not be written to history (#273).
   let own: OwnWrite | null = null
   const listensToPopstate = options.popstate ?? historyMode === 'push'
+  // The tracked saved view. `model` is its landed model, null while pending.
+  let active: { id: string; model: FilterModel | null } | null = null
+  let viewList: readonly GridView[] = NO_VIEWS
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
 
   /**
@@ -132,13 +140,31 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   /** Reports a caught error as an issue of the call */
-  function fail(
-    call: Call,
-    cause: unknown,
-    code: 'INVALID_URL' | 'GRID_ERROR'
-  ) {
+  function fail(call: Call, cause: unknown, code: IssueCode) {
     rethrowIfThrown(cause)
     reportIssue(call.options, toIssue(cause, code))
+  }
+
+  /** Reads the store's list. The old array stays when nothing changed. */
+  function refreshViews(): void {
+    if (!views) return
+
+    const next = views.listViews()
+
+    if (!sameViews(viewList, next)) viewList = Object.freeze(next)
+  }
+
+  /** Reports NOT_READY for a method that needs an active sync */
+  function notReady(): void {
+    const call = startCall('api', 'throw')
+
+    fail(
+      call,
+      new URLSyncError('The sync is destroyed', undefined, {
+        code: 'NOT_READY'
+      }),
+      'NOT_READY'
+    )
   }
 
   /** Builds a new snapshot, and tells the listeners, when something changed */
@@ -146,11 +172,14 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     const list = [...applyIssues, ...readIssues, ...writeIssues]
     const hasFilters = Object.keys(state).length > 0
     const sameList = sameIssues(snapshot.issues, list)
+    const activeViewId = active?.id ?? null
 
     if (
       snapshot.status === status &&
       snapshot.url === url &&
       snapshot.hasFilters === hasFilters &&
+      snapshot.views === viewList &&
+      snapshot.activeViewId === activeViewId &&
       sameList
     ) {
       return
@@ -164,7 +193,14 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
         ? Object.freeze(list)
         : NO_ISSUES
 
-    snapshot = Object.freeze({ status, url, hasFilters, issues })
+    snapshot = Object.freeze({
+      status,
+      url,
+      hasFilters,
+      issues,
+      views: viewList,
+      activeViewId
+    })
 
     // A copy, so a listener that unsubscribes during notify stops no other
     // one. A listener's error is reported out of band, so it stops neither
@@ -448,7 +484,11 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     },
 
     applyUrl(target) {
-      if (status !== 'active') return { issues: NO_ISSUES }
+      if (status !== 'active') {
+        notReady()
+
+        return { issues: NO_ISSUES }
+      }
 
       const href = target ?? (hasWindow() ? window.location.href : undefined)
 
@@ -482,6 +522,68 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       }
     },
 
+    saveView(name) {
+      if (!views) return null
+
+      if (status !== 'active') {
+        notReady()
+
+        return null
+      }
+
+      const call = startCall('api', 'throw')
+      let model: FilterModel
+
+      try {
+        // AG Grid can hand back null despite the declared return type
+        model = api.getFilterModel() ?? {}
+      } catch (cause) {
+        fail(call, cause, 'GRID_ERROR')
+
+        return null
+      }
+
+      let view: GridView
+
+      try {
+        view = views.saveView(name, model)
+      } catch (cause) {
+        fail(call, cause, 'STORAGE_WRITE_FAILED')
+
+        return null
+      }
+
+      active = { id: view.id, model }
+      refreshViews()
+      publish()
+
+      return view
+    },
+
+    loadView() {
+      // Task 4 (#223) writes the view to the grid
+      if (views && status !== 'active') notReady()
+    },
+
+    deleteView(id) {
+      if (!views) return
+
+      const call = startCall('api', 'throw')
+
+      try {
+        views.deleteView(id)
+      } catch (cause) {
+        fail(call, cause, 'STORAGE_WRITE_FAILED')
+
+        return
+      }
+
+      if (active?.id === id) active = null
+
+      refreshViews()
+      publish()
+    },
+
     destroy
   }
 
@@ -497,6 +599,8 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
     return sync
   }
+
+  refreshViews()
 
   api.addEventListener('filterChanged', onFilterChanged)
   api.addEventListener('gridPreDestroyed', destroy)
@@ -526,6 +630,24 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   return sync
+}
+
+/** Two view lists with the same ids, names, times and models */
+function sameViews(a: readonly GridView[], b: readonly GridView[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((view, index) => {
+      const other = b[index]
+
+      return (
+        other !== undefined &&
+        view.id === other.id &&
+        view.name === other.name &&
+        view.updatedAt === other.updatedAt &&
+        JSON.stringify(view.filterModel) === JSON.stringify(other.filterModel)
+      )
+    })
+  )
 }
 
 /** The key of an issue's content */

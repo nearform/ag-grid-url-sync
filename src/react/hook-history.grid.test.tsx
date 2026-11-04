@@ -514,6 +514,26 @@ describe('saved views with history (#270)', () => {
 })
 
 describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
+  test('keeps the view on an option change with autoApplyOnMount', async () => {
+    const store = createViewStore('t')
+    const view = store.saveView('A', NAME_JO)
+    store.persistActiveViewId(null)
+    const { api } = createTimedGrid(timing)
+    const options = { storageKey: 't', autoApplyOnMount: true } as const
+    const { result, rerender } = renderSync({ api, options })
+    await settle()
+    act(() => result.current.loadView(view.id))
+    await settle()
+    await settle()
+
+    rerender({ api, options: { ...options, history: 'push' } })
+    await settle()
+    await settle()
+
+    expect(result.current.activeViewId).toBe(view.id)
+    expect(store.getActiveViewId()).toBe(view.id)
+  })
+
   test('a kept-view restore that fails gets the initialization context', async () => {
     const store = createViewStore('t')
     const view = store.saveView('A', NAME_JO)

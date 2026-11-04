@@ -1,4 +1,4 @@
-import type { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import type {
   ApplyResult,
   FilterState,
@@ -17,7 +17,9 @@ import { toError } from './to-error.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { resolveParamPrefix } from './individual-params.js'
-import { getFilterModel, applyFilterModel } from './grid-integration.js'
+import { getFilterModel, toGridModel } from './grid-integration.js'
+import type { Columns, OwnWrite } from './own-write.js'
+import { classifyEvent, settleWrite } from './own-write.js'
 
 // createGridUrlSync (#221): the framework-free sync. It owns its grid
 // listeners and keeps one snapshot for useSyncExternalStore. Nothing here
@@ -39,27 +41,6 @@ export const IDLE_SNAPSHOT: GridUrlSyncSnapshot = Object.freeze({
  * can throw one (only in methods that the app calls).
  */
 type IssueMode = 'collect' | 'report' | 'throw'
-
-/**
- * The sync's own latest grid write: the history loop guard (#273). It is set
- * before setFilterModel, because AG Grid can send filterChanged inside the
- * call, after it, or one tick later with the model.
- * - `writing`: inside the call, so an event is the write landing.
- * - `pending`: the grid did not take the model yet (deferred). `before` is
- *   the grid's model before the write, and `accepted` the part of the
- *   filters that the grid has columns for.
- * - `landed`: the grid shows the model with this key. An event with the
- *   same model is the write's echo: one write can cause more than one event.
- */
-type OwnWrite =
-  | { readonly phase: 'writing' }
-  | {
-      readonly phase: 'pending'
-      readonly before: FilterState | null
-      readonly accepted: FilterState
-      readonly acceptedKey: string
-    }
-  | { readonly phase: 'landed'; readonly key: string }
 
 interface Call {
   options: ResolvedOptions
@@ -246,22 +227,39 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     const applies = filters && !(onCreate && Object.keys(filters).length === 0)
     const before = applies ? liveState() : null
 
+    let failed = false
+
     if (filters && applies) {
-      // Before the call, so an event inside it is known as ours (#273)
-      own = { phase: 'writing' }
+      let model: FilterModel | undefined
 
       try {
-        applyFilterModel(filters, api, call.options)
+        model = toGridModel(filters, api, call.options)
       } catch (cause) {
         own = null
+        failed = true
         fail(call, cause, 'GRID_ERROR')
+      }
+
+      if (model) {
+        // Before the call, so an event inside it is known as ours (#273)
+        own = { phase: 'writing', kind: 'url' }
+
+        // Only the grid call is in the try. An issue report runs outside it,
+        // so a handler that throws gets its own error back (#220).
+        try {
+          api.setFilterModel(model)
+        } catch (cause) {
+          failed = true
+          own = null
+          fail(call, cause, 'GRID_ERROR')
+        }
       }
     }
 
     applyIssues = call.issues.length ? call.issues : NO_ISSUES
     readGrid()
 
-    if (filters && applies) settleWrite(filters, before, call)
+    if (filters && applies) settleUrlWrite(filters, before, failed)
 
     publish()
 
@@ -281,40 +279,26 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
    * After the sync's own setFilterModel returns: did the write land, or does
    * the grid take it later? `state` is the grid's filters after the call.
    */
-  function settleWrite(
+  function settleUrlWrite(
     filters: FilterState,
     before: FilterState | null,
-    call: Call
+    failed: boolean
   ): void {
-    // The grid threw, so nothing was written
-    if (call.issues.some(issue => issue.code === 'GRID_ERROR')) {
-      own = null
-
-      return
-    }
-
-    const after = filtersKey(state)
     const accepted = acceptedPart(filters)
-    const acceptedKey = filtersKey(accepted)
 
-    // An event inside the call landed it, or the grid shows the filters now
-    // (also a write that changed nothing, for which AG Grid sends no event),
-    // or the grid took them in a form of its own
-    if (
-      own?.phase === 'landed' ||
-      after === acceptedKey ||
-      (before !== null && after !== filtersKey(before))
-    ) {
-      own = { phase: 'landed', key: after }
-
-      return
-    }
-
-    own = { phase: 'pending', before, accepted, acceptedKey }
+    own = settleWrite(own, {
+      kind: 'url',
+      failed,
+      afterKey: filtersKey(state),
+      before,
+      beforeKey: before ? filtersKey(before) : null,
+      accepted,
+      acceptedKey: filtersKey(accepted)
+    }).own
   }
 
   /** The filters of the columns that the grid has */
-  function acceptedPart(filters: FilterState): FilterState {
+  function acceptedPart(filters: Columns): Columns {
     // A test double or an old AG Grid version can lack getColumn
     if (!('getColumn' in api)) return filters
 
@@ -334,35 +318,15 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
    * grid's filters at the event. Any other event ends the own write.
    */
   function isOwnEvent(source: string | undefined): boolean {
-    if (!own) return false
+    const result = classifyEvent(own, {
+      key: filtersKey(state),
+      live: state,
+      source
+    })
 
-    const key = filtersKey(state)
+    own = result.own
 
-    if (own.phase === 'landed') {
-      if (key === own.key) return true
-    } else if (own.phase === 'pending') {
-      const { before, accepted, acceptedKey } = own
-
-      // The grid still shows the model from before the write
-      if (before && key === filtersKey(before)) return true
-
-      // The write lands. An API change that shows the write's filters for
-      // some columns, and the filters from before for the others, is a
-      // write that the grid took only part of. A user's edit in the grid's
-      // UI has another source.
-      if (
-        key === acceptedKey ||
-        (source === 'api' && couldBeLanding(state, accepted, before))
-      ) {
-        own = { phase: 'landed', key }
-
-        return true
-      }
-    }
-
-    own = null
-
-    return false
+    return result.kind !== 'change'
   }
 
   /** Whether a URL has a param that the codec reads, even one that is bad */
@@ -439,7 +403,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     // the grid and publishes after the call.
     if (own?.phase === 'writing') {
       const live = liveState()
-      own = live ? { phase: 'landed', key: filtersKey(live) } : null
+      own = live
+        ? { phase: 'landed', kind: own.kind, key: filtersKey(live) }
+        : null
 
       return
     }
@@ -560,34 +526,6 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   return sync
-}
-
-/**
- * Whether the grid's filters could be a write landing in which the grid took
- * only part of the write: each column has the write's filter, or the filter
- * that the grid had before. At least one column must be the write's, so a
- * clear-all or another value is a change, not the landing (#274 review).
- */
-function couldBeLanding(
-  live: FilterState,
-  accepted: FilterState,
-  before: FilterState | null
-): boolean {
-  const columns = Object.keys(live)
-
-  const fromWrite = (colId: string): boolean =>
-    Object.hasOwn(accepted, colId) &&
-    JSON.stringify(live[colId]) === JSON.stringify(accepted[colId])
-
-  const fromBefore = (colId: string): boolean =>
-    before !== null &&
-    Object.hasOwn(before, colId) &&
-    JSON.stringify(live[colId]) === JSON.stringify(before[colId])
-
-  return (
-    columns.some(fromWrite) &&
-    columns.every(colId => fromWrite(colId) || fromBefore(colId))
-  )
 }
 
 /** The key of an issue's content */

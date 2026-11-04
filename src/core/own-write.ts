@@ -21,9 +21,17 @@ export type Columns = Readonly<FilterState> | Readonly<FilterModel>
  *   the URL form of `accepted`, because the grid can rebuild a model.
  * - `landed`: the grid shows the write with this key. An event with the same
  *   key is the write's echo: one write can cause more than one event.
+ *
+ * `waits`: the URL forms of earlier writes that were still pending when this
+ * write started. A deferred grid lands them first, so their landing events
+ * are echoes of this write, not changes.
  */
 export type OwnWrite =
-  | { readonly phase: 'writing'; readonly kind: WriteKind }
+  | {
+      readonly phase: 'writing'
+      readonly kind: WriteKind
+      readonly waits?: readonly string[] | undefined
+    }
   | {
       readonly phase: 'pending'
       readonly kind: WriteKind
@@ -32,8 +40,11 @@ export type OwnWrite =
       readonly accepted: Columns
       readonly acceptedKey: string
       readonly acceptedUrlKey?: string | undefined
+      readonly waits?: readonly string[] | undefined
     }
   | { readonly phase: 'landed'; readonly kind: WriteKind; readonly key: string }
+
+type Pending = Extract<OwnWrite, { phase: 'pending' }>
 
 export interface AfterCall {
   readonly kind: WriteKind
@@ -60,6 +71,27 @@ export interface Classified {
   readonly write: WriteKind | null
 }
 
+/**
+ * The record of a new write, set before setFilterModel. A write that starts
+ * while another write is pending keeps the URL form of that write (and of
+ * the writes that it waited for) in `waits`.
+ */
+export function startWrite(own: OwnWrite | null, kind: WriteKind): OwnWrite {
+  if (own?.phase !== 'pending') return { phase: 'writing', kind }
+
+  // A URL write's key is in the URL form already
+  const urlForm = own.kind === 'url' ? own.acceptedKey : own.acceptedUrlKey
+
+  const waits = [
+    ...(own.waits ?? []),
+    ...(urlForm === undefined ? [] : [urlForm])
+  ]
+
+  return waits.length
+    ? { phase: 'writing', kind, waits }
+    : { phase: 'writing', kind }
+}
+
 /** After the sync's setFilterModel returns. `landed`: the write is on the grid now. */
 export function settleWrite(own: OwnWrite | null, call: AfterCall): Settled {
   // The grid threw, so nothing was written
@@ -73,12 +105,16 @@ export function settleWrite(own: OwnWrite | null, call: AfterCall): Settled {
     }
   }
 
+  const waits = own?.phase === 'writing' ? own.waits : undefined
+
   // The grid shows the write now (also a write that changed nothing, for
   // which AG Grid sends no event), or the grid took it in a form of its own.
   // A grid that cannot be read gives no proof, so the write stays pending.
+  // While an earlier write waits, only a grid that changed in the call is
+  // proof: the earlier write can still change the grid after the call.
   if (
     call.afterKey !== null &&
-    (call.afterKey === call.acceptedKey ||
+    ((waits === undefined && call.afterKey === call.acceptedKey) ||
       (call.beforeKey !== null && call.afterKey !== call.beforeKey))
   ) {
     return {
@@ -95,7 +131,8 @@ export function settleWrite(own: OwnWrite | null, call: AfterCall): Settled {
       beforeKey: call.beforeKey,
       accepted: call.accepted,
       acceptedKey: call.acceptedKey,
-      acceptedUrlKey: call.acceptedUrlKey
+      acceptedUrlKey: call.acceptedUrlKey,
+      waits
     },
     landed: false
   }
@@ -127,8 +164,16 @@ export function classifyEvent(
   }
 
   if (own?.phase === 'pending') {
-    // The grid still shows the state from before the write
-    if (own.beforeKey !== null && event.key === own.beforeKey) {
+    // The grid shows the write. This comes first: after an earlier write
+    // landed, the write can be the state from before.
+    if (event.key === own.acceptedKey) return landing(own, event.key)
+
+    // The grid still shows the state from before the write, or an earlier
+    // write lands first. The grid's own landing has the source 'api'.
+    if (
+      (own.beforeKey !== null && event.key === own.beforeKey) ||
+      (event.source === 'api' && waitsFor(own, event))
+    ) {
       return { own, kind: 'echo', write: own.kind }
     }
 
@@ -139,20 +184,35 @@ export function classifyEvent(
     // number for a string). A user's edit in the grid's UI has another
     // source, so it is a change.
     if (
-      event.key === own.acceptedKey ||
-      (event.source === 'api' &&
-        (couldBeLanding(event.live, own.accepted, own.before) ||
-          rebuiltLanding(own, event)))
+      event.source === 'api' &&
+      (couldBeLanding(event.live, own.accepted, own.before) ||
+        rebuiltLanding(own, event))
     ) {
-      return {
-        own: { phase: 'landed', kind: own.kind, key: event.key },
-        kind: 'landing',
-        write: own.kind
-      }
+      return landing(own, event.key)
     }
   }
 
   return { own: null, kind: 'change', write: null }
+}
+
+/** The pending write lands with the grid's key */
+function landing(own: Pending, key: string): Classified {
+  return {
+    own: { phase: 'landed', kind: own.kind, key },
+    kind: 'landing',
+    write: own.kind
+  }
+}
+
+/** Whether the event's URL form is that of an earlier write that waits */
+function waitsFor(
+  own: Pending,
+  event: { key: string; urlKey?: string | undefined }
+): boolean {
+  // A URL write's key is in the URL form already
+  const urlForm = own.kind === 'url' ? event.key : event.urlKey
+
+  return urlForm !== undefined && (own.waits ?? []).includes(urlForm)
 }
 
 /**
@@ -161,7 +221,7 @@ export function classifyEvent(
  * before the write
  */
 function rebuiltLanding(
-  own: Extract<OwnWrite, { phase: 'pending' }>,
+  own: Pending,
   event: { key: string; urlKey?: string | undefined }
 ): boolean {
   return (

@@ -4,6 +4,7 @@ import {
   couldBeLanding,
   modelKey,
   settleWrite,
+  startWrite,
   type AfterCall,
   type OwnWrite
 } from './own-write.js'
@@ -264,6 +265,149 @@ describe('classifyEvent', () => {
       own: null,
       kind: 'change',
       write: null
+    })
+  })
+})
+
+// On a deferred grid, two writes in one tick land in order. The second
+// write must wait for the first one's landing (Review Focus 4, #223).
+describe('a write that starts while an earlier write is pending', () => {
+  const viewPending: OwnWrite = {
+    ...pending,
+    kind: 'view',
+    acceptedKey: 'ma',
+    acceptedUrlKey: 'ua'
+  }
+
+  describe('startWrite', () => {
+    it('has no waits with no record or a landed record', () => {
+      expect(startWrite(null, 'view')).toEqual({
+        phase: 'writing',
+        kind: 'view'
+      })
+      expect(
+        startWrite({ phase: 'landed', kind: 'url', key: 'kjo' }, 'url')
+      ).toEqual({ phase: 'writing', kind: 'url' })
+    })
+
+    it('keeps the URL form of a pending model write', () => {
+      expect(startWrite(viewPending, 'view')).toEqual({
+        phase: 'writing',
+        kind: 'view',
+        waits: ['ua']
+      })
+    })
+
+    it('keeps the key of a pending URL write', () => {
+      expect(startWrite(pending, 'url')).toEqual({
+        phase: 'writing',
+        kind: 'url',
+        waits: ['kjo']
+      })
+    })
+
+    it('keeps the waits of the pending write', () => {
+      expect(
+        startWrite({ ...viewPending, waits: ['u0'] }, 'app')
+      ).toMatchObject({ waits: ['u0', 'ua'] })
+    })
+  })
+
+  describe('settleWrite', () => {
+    const writing: OwnWrite = { phase: 'writing', kind: 'view', waits: ['ua'] }
+
+    it('keeps the waits in the pending record', () => {
+      const result = settleWrite(writing, {
+        ...after,
+        kind: 'view',
+        afterKey: 'kx',
+        beforeKey: 'kx'
+      })
+
+      expect(result.own).toMatchObject({ phase: 'pending', waits: ['ua'] })
+    })
+
+    it('does not land a write that the grid shows already, because the earlier write lands later', () => {
+      const result = settleWrite(writing, {
+        ...after,
+        kind: 'view',
+        afterKey: 'kjo',
+        beforeKey: 'kjo'
+      })
+
+      expect(result.landed).toBe(false)
+      expect(result.own).toMatchObject({ phase: 'pending', waits: ['ua'] })
+    })
+
+    it('lands a write that changed the grid in the call', () => {
+      const result = settleWrite(writing, {
+        ...after,
+        kind: 'view',
+        afterKey: 'kjo',
+        beforeKey: 'kx'
+      })
+
+      expect(result).toEqual({
+        own: { phase: 'landed', kind: 'view', key: 'kjo' },
+        landed: true
+      })
+    })
+  })
+
+  describe('classifyEvent', () => {
+    const second: OwnWrite = {
+      ...pending,
+      kind: 'view',
+      acceptedKey: 'mb',
+      acceptedUrlKey: 'ub',
+      waits: ['ua']
+    }
+
+    it("calls the earlier model write's landing an echo", () => {
+      const result = classifyEvent(second, {
+        key: 'ma',
+        live: { name: 'a' },
+        source: 'api',
+        urlKey: 'ua'
+      })
+
+      expect(result).toEqual({ own: second, kind: 'echo', write: 'view' })
+    })
+
+    it("calls the earlier URL write's landing an echo", () => {
+      const own: OwnWrite = { ...pending, acceptedKey: 'kage', waits: ['kjo'] }
+
+      const result = classifyEvent(own, {
+        key: 'kjo',
+        live: accepted,
+        source: 'api'
+      })
+
+      expect(result).toEqual({ own, kind: 'echo', write: 'url' })
+    })
+
+    it("calls a UI edit with the earlier write's URL form a change", () => {
+      const result = classifyEvent(second, {
+        key: 'ma',
+        live: { name: 'a' },
+        source: 'columnFilter',
+        urlKey: 'ua'
+      })
+
+      expect(result).toEqual({ own: null, kind: 'change', write: null })
+    })
+
+    it('calls the accepted key a landing, also when the grid showed it before', () => {
+      const result = classifyEvent(
+        { ...second, beforeKey: 'mb' },
+        { key: 'mb', live: { name: 'b' }, source: 'api', urlKey: 'ub' }
+      )
+
+      expect(result).toEqual({
+        own: { phase: 'landed', kind: 'view', key: 'mb' },
+        kind: 'landing',
+        write: 'view'
+      })
     })
   })
 })

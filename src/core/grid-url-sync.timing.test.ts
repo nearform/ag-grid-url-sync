@@ -18,6 +18,10 @@ const NAME_X = {
   name: { filterType: 'text', type: 'contains', filter: 'x' }
 } as const
 
+const AGE_30 = {
+  age: { filterType: 'number', type: 'equals', filter: 30 }
+} as const
+
 /** One tick, for the timings that send filterChanged later */
 const tick = (): Promise<void> =>
   new Promise(resolve => globalThis.setTimeout(resolve, 0))
@@ -80,6 +84,23 @@ describe.each(GRID_TIMINGS)(
       expect(window.location.search).toBe(
         '?f_name_contains=jo&f_missing_contains=x'
       )
+      expect(window.history.length).toBe(length)
+
+      sync.destroy()
+    })
+
+    it('two applies in one tick write no history, and the grid keeps the second', async () => {
+      const grid = createTimedGrid(timing)
+      const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+      const length = window.history.length
+
+      sync.applyUrl(href('/?f_name_contains=jo'))
+      sync.applyUrl(href('/?f_age_eq=30'))
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual(AGE_30)
+      expect(sync.getSnapshot().url).toContain('f_age_eq=30')
+      expect(window.location.search).toBe('')
       expect(window.history.length).toBe(length)
 
       sync.destroy()

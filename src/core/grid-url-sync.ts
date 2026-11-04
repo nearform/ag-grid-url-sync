@@ -25,7 +25,12 @@ import {
 } from './grid-integration.js'
 import type { GridView } from './view-storage.js'
 import type { Classified, Columns, OwnWrite, WriteKind } from './own-write.js'
-import { classifyEvent, modelKey, settleWrite } from './own-write.js'
+import {
+  classifyEvent,
+  modelKey,
+  settleWrite,
+  startWrite
+} from './own-write.js'
 
 // createGridUrlSync (#221): the framework-free sync. It owns its grid
 // listeners and keeps one snapshot for useSyncExternalStore. Nothing here
@@ -303,8 +308,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
    * grid threw: the call gets GRID_ERROR.
    */
   function setModel(model: FilterModel, kind: WriteKind, call: Call): boolean {
-    // Before the call, so an event inside it is known as ours (#273)
-    own = { phase: 'writing', kind }
+    // Before the call, so an event inside it is known as ours (#273). A
+    // pending write stays known: a deferred grid lands it first.
+    own = startWrite(own, kind)
 
     // Only the grid call is in the try. An issue report runs outside it, so
     // a handler that throws gets its own error back (#220).

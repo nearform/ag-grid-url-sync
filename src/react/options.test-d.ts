@@ -93,3 +93,6 @@ export function ReadmeIssuesExample({
 expectTypeOf<UseAGGridUrlSyncReturn['getSerializationMode']>().toEqualTypeOf<
   () => SerializationMode
 >()
+
+// The deprecated hook takes the column types from the grid only (#224)
+expectTypeOf<UseAGGridUrlSyncOptions>().not.toHaveProperty('columnTypes')

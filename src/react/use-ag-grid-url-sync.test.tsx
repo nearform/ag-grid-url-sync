@@ -277,6 +277,9 @@ describe('useAGGridUrlSync', () => {
     })
 
     test('parseUrlFilters handles date filters', async () => {
+      // A shared operation takes its type from the column (#224)
+      useDateColumns()
+
       const { result } = renderHook(() =>
         useAGGridUrlSync(asGridApi(mockGridApi))
       )

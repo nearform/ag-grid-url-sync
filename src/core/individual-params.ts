@@ -1,7 +1,9 @@
 import type {
   AGGridUrlSyncConfig,
   FilterState,
+  FilterType,
   ColumnFilter,
+  DateFilterOperation,
   ResolvedOptions
 } from './types.js'
 import { InvalidFilterError } from './types.js'
@@ -9,12 +11,12 @@ import {
   operatorById,
   operatorFromUrl,
   isOperationOnlyFor,
-  isSharedOperation
+  isSharedOperation,
+  type SharedOperationId
 } from './operators.js'
 import {
   validateFilterValue,
   validateAndParseNumber,
-  parseExactNumber,
   validateNumberRange,
   validateAndParseDate,
   validateAndParseDateRange,
@@ -149,52 +151,6 @@ export function serializeFilters(
   return params
 }
 
-/**
- * Attempts to parse a value as a date and returns the filter type
- * This is used for shared operations to determine if they should be treated as date filters
- */
-function tryParseAsDate(value: string): 'date' | null {
-  try {
-    validateAndParseDate(value)
-
-    return 'date'
-  } catch {
-    return null
-  }
-}
-
-/**
- * Detects the most appropriate filter type for a shared operation based on the value
- * Priority: Date > Number > Text (if the value can be parsed as date/number, prefer that type)
- */
-function detectFilterTypeForSharedOperation(
-  operation: string,
-  value: string
-): 'text' | 'number' | 'date' {
-  // Blank operations default to text (most common case)
-  if (operation === 'blank' || operation === 'notBlank') {
-    return 'text'
-  }
-
-  // For eq/notEqual operations, try to detect the most specific type
-  if (operation === 'eq' || operation === 'notEqual') {
-    // Try date first (most specific format)
-    if (tryParseAsDate(value) === 'date') {
-      return 'date'
-    }
-
-    // Try number second
-    if (parseExactNumber(value) !== null) {
-      return 'number'
-    }
-
-    // Default to text
-    return 'text'
-  }
-
-  return 'text'
-}
-
 /** A filter param name split into its column and its URL operation */
 interface FilterParamName {
   column: string
@@ -233,23 +189,31 @@ function extractColumnAndOperation(
 }
 
 /**
- * Parses a URL parameter into a column filter
+ * Parses a URL parameter into a column filter. An operation that every
+ * filter type has (`eq`, `notEqual`, `blank`, `notBlank`) takes its type from
+ * `columnType`. With no type, its value stays text (#224).
  */
 export function parseFilterParam(
   param: string,
   value: string,
-  expectedPrefix?: string
+  expectedPrefix?: string,
+  columnType?: FilterType
 ): ColumnFilter {
   const { operation } = extractColumnAndOperation(param, expectedPrefix)
 
-  return parseFilterOperation(operation, value)
+  return parseFilterOperation(operation, value, () => columnType)
 }
 
 /**
  * Parses a filter value for an operation that is already split from its
- * parameter name
+ * parameter name. `typeOf` is called only for a shared operation, so a
+ * lookup sees only the columns whose type it decides.
  */
-function parseFilterOperation(operation: string, value: string): ColumnFilter {
+function parseFilterOperation(
+  operation: string,
+  value: string,
+  typeOf: () => FilterType | undefined
+): ColumnFilter {
   const filterOp = operatorFromUrl(operation)?.id
 
   if (!filterOp) {
@@ -311,25 +275,10 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
 
   // Handle date-specific operations
   if (isOperationOnlyFor(filterOp, 'date')) {
-    try {
-      const dateValue = validateAndParseDate(value)
-      const validation = validateDateFilter(dateValue, filterOp)
-
-      if (!validation.valid) {
-        throw new InvalidFilterError(validation.error || 'Invalid date filter')
-      }
-
-      return {
-        filterType: 'date',
-        type: filterOp,
-        filter: dateValue
-      }
-    } catch (error) {
-      throw new InvalidFilterError(
-        error instanceof Error ? error.message : 'Invalid date filter',
-        undefined,
-        { code: 'INVALID_DATE' }
-      )
+    return {
+      filterType: 'date',
+      type: filterOp,
+      filter: parseDateValue(value, filterOp)
     }
   }
 
@@ -344,42 +293,10 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
     }
   }
 
-  // Handle shared operations (eq, notEqual, blank, notBlank)
+  // Shared operations (eq, notEqual, blank, notBlank): the URL has no type,
+  // so it comes from the column (#224)
   if (isSharedOperation(filterOp)) {
-    const detectedType = detectFilterTypeForSharedOperation(filterOp, value)
-
-    if (detectedType === 'date') {
-      try {
-        const dateValue = validateAndParseDate(value)
-
-        return {
-          filterType: 'date',
-          type: filterOp,
-          filter: dateValue
-        }
-      } catch {
-        // If date parsing fails, fall back to text
-      }
-    }
-
-    if (detectedType === 'number') {
-      const numValue = parseExactNumber(value)
-
-      if (numValue !== null) {
-        return {
-          filterType: 'number',
-          type: filterOp,
-          filter: numValue
-        }
-      }
-    }
-
-    // Handle as text filter (default for shared operations)
-    return {
-      filterType: 'text',
-      type: filterOp,
-      filter: filterOp === 'blank' || filterOp === 'notBlank' ? '' : value || ''
-    }
+    return parseSharedOperation(filterOp, value, typeOf())
   }
 
   // Handle text-specific operations (existing logic)
@@ -387,6 +304,59 @@ function parseFilterOperation(operation: string, value: string): ColumnFilter {
     filterType: 'text',
     type: filterOp,
     filter: value || ''
+  }
+}
+
+/**
+ * Parses the value of an operation that every filter type has, as the type
+ * of its column. With no type, the value stays text. A value that the type
+ * cannot read throws, as for an operation that has one type.
+ */
+function parseSharedOperation(
+  operation: SharedOperationId,
+  value: string,
+  columnType: FilterType | undefined
+): ColumnFilter {
+  const blank = operation === 'blank' || operation === 'notBlank'
+
+  if (columnType === 'number') {
+    // A blank filter has no value. A number filter needs a number, so it
+    // gets 0, which nothing reads (#260).
+    return {
+      filterType: 'number',
+      type: operation,
+      filter: blank ? 0 : validateAndParseNumber(value)
+    }
+  }
+
+  if (columnType === 'date') {
+    return {
+      filterType: 'date',
+      type: operation,
+      filter: blank ? '' : parseDateValue(value, operation)
+    }
+  }
+
+  return { filterType: 'text', type: operation, filter: blank ? '' : value }
+}
+
+/** A date value for a date operation. Throws INVALID_DATE. */
+function parseDateValue(value: string, operation: DateFilterOperation): string {
+  try {
+    const dateValue = validateAndParseDate(value)
+    const validation = validateDateFilter(dateValue, operation)
+
+    if (!validation.valid) {
+      throw new InvalidFilterError(validation.error || 'Invalid date filter')
+    }
+
+    return dateValue
+  } catch (error) {
+    throw new InvalidFilterError(
+      error instanceof Error ? error.message : 'Invalid date filter',
+      undefined,
+      { code: 'INVALID_DATE' }
+    )
   }
 }
 
@@ -416,7 +386,9 @@ export function parseIndividualParams(
       columnName = parts.column
       const { operation } = parts
 
-      const filterParam = parseFilterOperation(operation, value)
+      const filterParam = parseFilterOperation(operation, value, () =>
+        config.columnTypes?.(parts.column)
+      )
 
       // Apply validation based on filter type
       if (filterParam.filterType === 'text') {

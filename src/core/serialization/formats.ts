@@ -120,6 +120,8 @@ function innerConfig(config?: AGGridUrlSyncConfig): ResolvedOptions {
   return {
     ...DEFAULT_CONFIG,
     maxValueLength: outer.maxValueLength,
+    // The params inside name the same columns (#224)
+    columnTypes: outer.columnTypes,
     // Errors for parameters inside the grouped value are wrapped like the
     // other grouped serialization errors. The original error is the cause.
     onParseError: error =>

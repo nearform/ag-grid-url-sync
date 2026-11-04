@@ -13,11 +13,15 @@ import type {
 import type { GridView } from '../core/view-storage.js'
 
 /**
- * Configuration options for the React hook
+ * Configuration options for the React hook. It takes the column types from
+ * the grid, so it has no `columnTypes` (#224).
  *
  * @deprecated Use `useGridUrlSync` and its types. Removed in 0.6.0.
  */
-export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
+export interface UseAGGridUrlSyncOptions extends Omit<
+  AGGridUrlSyncConfig,
+  'columnTypes'
+> {
   /**
    * Enables saved views, persisted to localStorage under this key.
    *

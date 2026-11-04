@@ -226,16 +226,6 @@ export function readNumber(value: string): number | InvalidFilterError {
 }
 
 /**
- * The number in the value, or null when readNumber gives an error. The type
- * guess for shared operations uses this, so such a value stays text.
- */
-export function parseExactNumber(value: string): number | null {
-  const number = readNumber(value)
-
-  return number instanceof InvalidFilterError ? null : number
-}
-
-/**
  * Validates a parsed number from string input
  *
  * @param value - String representation of number

@@ -3,7 +3,7 @@ import {
   validateFilterValue,
   validateNumberFilter,
   validateAndParseNumber,
-  parseExactNumber,
+  readNumber,
   validateAndParseDate,
   validateNumberRange,
   validateDateFilter,
@@ -165,7 +165,7 @@ describe('Validation Functions', () => {
   // A number is exact when the double that parseFloat gives, written with as
   // many significant digits as the text has, gives the text's digits back.
   // The form of the text does not matter (#238).
-  describe('parseExactNumber (#238)', () => {
+  describe('readNumber (#238)', () => {
     it.each([
       ['42', 42],
       ['-3.14', -3.14],
@@ -195,7 +195,7 @@ describe('Validation Functions', () => {
       ['2194262264886248.2', 2194262264886248.25],
       ['2194262264886248.3', 2194262264886248.25]
     ])('should parse %s as %s', (value, expected) => {
-      expect(parseExactNumber(value)).toBe(expected)
+      expect(readNumber(value)).toBe(expected)
     })
 
     it.each([
@@ -226,8 +226,8 @@ describe('Validation Functions', () => {
       '1 e21',
       '1e  21',
       '1 21'
-    ])('should give null for %s', value => {
-      expect(parseExactNumber(value)).toBeNull()
+    ])('should give an error for %s', value => {
+      expect(readNumber(value)).toBeInstanceOf(InvalidFilterError)
     })
   })
 

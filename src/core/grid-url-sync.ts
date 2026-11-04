@@ -1011,6 +1011,11 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     // filters: restore the view with its full model
     if (stored && (!claims || holdsView(href, stored))) {
       restore(stored)
+    } else if (views && !claims) {
+      // With views, a URL that gives no filters says nothing: the grid stays
+      // and its bad params are not reported, as in the 0.5.1 hook
+      readGrid()
+      publish()
     } else {
       apply(href, 'url', 'report', true)
 

@@ -195,6 +195,47 @@ describe('options after mount (#222)', () => {
     expect(result.current.activeViewId).toBe(id)
   })
 
+  test('an option change does not load a view that another tab deleted', async () => {
+    const onError = vi.fn()
+    const grid = createGrid(ANN)
+    const options = { storageKey: 'hook-sync-views', onError }
+    const { result, rerender } = renderSync({ grid, options })
+    await waitForEffects()
+    let id = ''
+
+    act(() => {
+      id = result.current.saveView('v')!.id
+    })
+    createViewStore('hook-sync-views').deleteView(id)
+    const writes = grid.api.setFilterModel.mock.calls.length
+
+    rerender({ grid, options: { ...options, paramPrefix: 'g_' } })
+    await waitForEffects()
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
+  })
+
+  test('a new autoApplyOnMount value makes no new sync', async () => {
+    setPage('?f_name_contains=ann')
+    const grid = createGrid()
+
+    const { rerender } = renderSync({
+      grid,
+      options: { autoApplyOnMount: true }
+    })
+
+    await waitForEffects()
+    const adds = grid.listeners.addEventListener.mock.calls.length
+    const writes = grid.api.setFilterModel.mock.calls.length
+
+    rerender({ grid, options: { autoApplyOnMount: false } })
+    await waitForEffects()
+
+    expect(grid.listeners.addEventListener).toHaveBeenCalledTimes(adds)
+    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
+  })
+
   test('resets for a new grid when the grid and an option change together', async () => {
     setPage('?f_name_contains=ann')
     const oldGrid = createGrid()
@@ -293,6 +334,24 @@ describe('grid destroyed (#222)', () => {
       'apply-url-filters'
     )
     expect(grid.api.setFilterModel).not.toHaveBeenCalled()
+  })
+
+  test('a grid destroyed before mount reports NOT_READY as initialization', async () => {
+    const onError = vi.fn()
+    const grid = createGrid()
+    grid.destroyGrid()
+
+    renderSync({ grid, options: { autoApplyOnMount: true, onError } })
+    await waitForEffects()
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'NOT_READY' }),
+      'initialization'
+    )
+    expect(onError).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'auto-apply-filters'
+    )
   })
 
   test('is ready again with a new grid after the old one is destroyed', async () => {

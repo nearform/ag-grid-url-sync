@@ -237,11 +237,13 @@ describe('useAGGridUrlSync', () => {
       await waitForEffects()
 
       act(() => {
-        result.current.applyUrlFilters('http://test.com')
+        result.current.applyUrlFilters('http://test.com?f_name_contains=arg')
       })
 
-      // The URL has no filters, so the grid gets an empty model
-      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({})
+      // The filter of the URL argument, which the page URL does not have
+      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(
+        nameContains('arg')
+      )
     })
 
     test('clearFilters calls core method', async () => {
@@ -2235,6 +2237,34 @@ describe('useAGGridUrlSync', () => {
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(savedModel)
       expect(result.current.activeViewId).toBe(id)
       expect(createViewStore(STORAGE_KEY).getActiveViewId()).toBe(id)
+    })
+
+    // With no stored view, a URL that gives no filters says nothing: the
+    // grid stays and nothing is reported, as in 0.5.1
+    test.each([
+      ['a prefixed param the parser rejects', '?f_name_regex=abc'],
+      [
+        'a prefixed param over maxValueLength',
+        `?f_name_contains=${'x'.repeat(250)}`
+      ],
+      ['a grouped param that does not decode', '?grid_filters=recent']
+    ])('%s with no stored view reports nothing', async (_name, search) => {
+      setSearch(search)
+      const onParseError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), {
+          storageKey: STORAGE_KEY,
+          autoApplyOnMount: true,
+          onParseError
+        })
+      )
+
+      await waitForEffects()
+
+      expect(onParseError).not.toHaveBeenCalled()
+      expect(result.current.issues).toEqual([])
+      expect(mockGridApi.setFilterModel).not.toHaveBeenCalled()
     })
 
     test('a prefixed param over maxValueLength is not a filter claim', async () => {

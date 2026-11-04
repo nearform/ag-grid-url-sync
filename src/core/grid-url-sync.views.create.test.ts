@@ -197,6 +197,35 @@ describe.each(GRID_TIMINGS)(
       }
     )
 
+    // With views, a URL that gives no filters is no claim, and with no stored
+    // view there is nothing to restore: the grid stays and nothing is
+    // reported, as in the 0.5.1 hook
+    it.each([
+      ['a prefixed param that the parser rejects', '/?f_name_regex=abc'],
+      [
+        'a prefixed param over maxValueLength',
+        `/?f_name_contains=${'x'.repeat(250)}`
+      ],
+      ['a grouped param that does not decode', '/?grid_filters=recent']
+    ])(
+      '%s with no stored view keeps the grid and reports nothing',
+      async (_name, path) => {
+        const { store } = seed()
+        window.history.replaceState(null, '', path)
+        const search = window.location.search
+
+        const { grid, sync, onIssue } = create(timing, store, 'push', AGE_30)
+        await tick()
+
+        expect(grid.api.getFilterModel()).toEqual(AGE_30)
+        expect(onIssue).not.toHaveBeenCalled()
+        expect(sync.getSnapshot().issues).toEqual([])
+        expect(window.location.search).toBe(search)
+
+        sync.destroy()
+      }
+    )
+
     it('a pointer to a missing view is ignored', async () => {
       const { store } = seed()
       store.persistActiveViewId('missing')

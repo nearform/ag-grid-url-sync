@@ -164,8 +164,12 @@ export function useAGGridUrlSync(
     onParseError: coreOptions.onParseError
   })
 
+  // Read only when a sync is made, so a new value alone makes no new sync
+  const autoApplyRef = useRef(autoApplyOnMount)
+
   useEffect(() => {
     callbacksRef.current = { onError, onParseError: coreOptions.onParseError }
+    autoApplyRef.current = autoApplyOnMount
   })
 
   // The hook operation that is calling the sync. An issue that the sync
@@ -245,7 +249,7 @@ export function useAGGridUrlSync(
     // no views, auto-apply clears the grid on a URL with no filters.
     if (!sameKey && viewStore) session.autoApplied = false
 
-    const autoApply = autoApplyOnMount && !session.autoApplied
+    const autoApply = autoApplyRef.current && !session.autoApplied
     // With views, the core lands the URL or the stored view, one time per grid
     const landsOnCreate = autoApply && viewStore !== null && !session.urlApplied
 
@@ -254,16 +258,22 @@ export function useAGGridUrlSync(
 
     if (landsOnCreate) session.urlApplied = true
 
-    // A grid-read issue gets the context of the state update, as before
+    // A grid-read issue gets the context of the state update, as before. The
+    // hook's sync gets a 'url' issue only from its landing on create.
     const onIssue = ({ issue, source }: IssueEvent): void =>
       reportFailure(
         issue,
-        source === 'grid' ? 'update-state' : contextRef.current
+        source === 'grid'
+          ? 'update-state'
+          : source === 'url'
+            ? 'auto-apply-filters'
+            : contextRef.current
       )
 
     let sync: GridUrlSync
 
-    contextRef.current = autoApply ? 'auto-apply-filters' : 'initialization'
+    // A grid that is already destroyed is an initialization failure
+    contextRef.current = 'initialization'
 
     try {
       sync = createGridUrlSync(
@@ -284,6 +294,8 @@ export function useAGGridUrlSync(
     holder.set(sync)
 
     if (sync.getSnapshot().status === 'active') {
+      if (autoApply) contextRef.current = 'auto-apply-filters'
+
       if (autoApply && !viewStore) {
         // No saved views: the URL is the only source, so apply it always. An
         // empty URL clears the grid, as in 0.5.1 (D4).
@@ -296,8 +308,13 @@ export function useAGGridUrlSync(
         if (sync.getSnapshot().views.some(view => view.id === pointer)) {
           sync.loadView(pointer)
         }
-      } else if (kept !== null && !autoApply) {
-        // The grid still shows the view: the new sync tracks it too
+      } else if (
+        kept !== null &&
+        !autoApply &&
+        sync.getSnapshot().views.some(view => view.id === kept)
+      ) {
+        // The grid still shows the view: the new sync tracks it too. Not a
+        // view that another tab deleted: 0.5.1 made no call to the store here.
         sync.loadView(kept)
       }
     }
@@ -313,7 +330,6 @@ export function useAGGridUrlSync(
     urlOptions,
     viewStore,
     storageKey,
-    autoApplyOnMount,
     holder,
     reportFailure
   ])

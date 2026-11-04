@@ -121,11 +121,42 @@ export function urlForm(
     return stateToModel(modelToState(model, options))
   }
 
+  return objectColumns(model, options)
+}
+
+/**
+ * The columns of a model whose model is a JSON object: what the json and
+ * base64 formats hold. A custom filter's model can be any value. One that
+ * is not an object (an array, a string) is reported as UNSUPPORTED_FILTER.
+ * Null is no filter.
+ */
+export function objectColumns(
+  model: FilterModel | null | undefined,
+  config?: AGGridUrlSyncConfig
+): FilterModel {
   if (!(model instanceof Object)) return {}
 
-  return Object.fromEntries(
-    Object.entries(model).filter(([, entry]) => isColumnModel(entry))
-  )
+  const options = resolveOptions(config)
+
+  const kept = Object.entries(model).filter(([column, entry]) => {
+    if (isColumnModel(entry)) return true
+
+    if (entry !== null && entry !== undefined) {
+      reportIssue(
+        options,
+        new InvalidFilterError(
+          `Column '${column}' has a custom filter model that is not an object, which this URL format cannot hold.`,
+          undefined,
+          { code: 'UNSUPPORTED_FILTER', column }
+        )
+      )
+    }
+
+    return false
+  })
+
+  // Own keys, so a column named `__proto__` stays a column
+  return Object.fromEntries(kept)
 }
 
 /**
@@ -137,7 +168,7 @@ export function mergeUrlModel(
   url: FilterModel,
   options: ResolvedOptions
 ): FilterModel {
-  if (live === null || holdsAnyModel(options)) return url
+  if (live === null) return url
 
   // The read is only for the column list: its issues are not reported here
   const held = urlForm(live, {

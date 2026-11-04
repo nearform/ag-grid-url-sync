@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { FilterModel } from 'ag-grid-community'
 import { createGridUrlSync } from './grid-url-sync.js'
-import { grouped } from './codecs.js'
+import { grouped, individual } from './codecs.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { createViewStore } from './view-storage.js'
 import type { IssueEvent } from './types.js'
 import {
+  asGridApi,
+  createGridListeners,
   createTimedGrid,
   GRID_TIMINGS,
   useRealLocation
@@ -305,3 +307,56 @@ describe.each(GRID_TIMINGS)(
     })
   }
 )
+
+// A custom filter's model can be any value, for example an array (#283
+// review). applyFilters keeps it, and a URL apply does not clear it.
+const TAGS: FilterModel = { tags: ['a', 'b'] }
+
+/** A grid fake that keeps any model, also one with an array column */
+function anyModelGrid(initial: FilterModel) {
+  const listeners = createGridListeners()
+  let model: FilterModel = { ...initial }
+
+  const setFilterModel = vi.fn((next: FilterModel | null) => {
+    model = next ?? {}
+  })
+
+  const api = asGridApi({
+    getFilterModel: () => model,
+    setFilterModel,
+    addEventListener: listeners.addEventListener,
+    removeEventListener: listeners.removeEventListener
+  })
+
+  return { api, setFilterModel, model: () => model }
+}
+
+describe('a custom filter model that is an array', () => {
+  it('applyFilters passes it to the grid', () => {
+    const grid = anyModelGrid({})
+    const sync = createGridUrlSync({ api: grid.api })
+
+    sync.applyFilters({ ...TAGS, ...NAME_JO })
+
+    expect(grid.setFilterModel).toHaveBeenLastCalledWith({
+      ...TAGS,
+      ...NAME_JO
+    })
+
+    sync.destroy()
+  })
+
+  it.each([
+    ['individual', individual(), {}],
+    ['json', grouped({ format: 'json' }), JSON_CODEC]
+  ])('a URL apply with the %s codec keeps it', (_name, codec, config) => {
+    const grid = anyModelGrid(TAGS)
+    const sync = createGridUrlSync({ api: grid.api, codec })
+
+    sync.applyUrl(generateUrl('http://x.test/', NAME_JO, config))
+
+    expect(grid.model()).toEqual({ ...TAGS, ...NAME_JO })
+
+    sync.destroy()
+  })
+})

@@ -521,8 +521,9 @@ export function checkColumnTypes(
   if (!v.is(JsonObjectSchema, model)) return {}
 
   const kept = Object.entries(model).filter(([column, entry]) => {
-    // A JavaScript caller can pass anything here
-    if (!isColumnModel(entry)) return false
+    // A custom filter's model can be any value: it is not checked (#283
+    // review)
+    if (!isColumnModel(entry)) return true
 
     const mismatch = typeMismatch(gridApi, column, filterTypeOf(entry))
 

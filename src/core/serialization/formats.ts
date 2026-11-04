@@ -19,16 +19,43 @@ import { ColumnFilterSchema, JsonObjectSchema } from '../schemas.js'
 import { convertToAGGridFilter } from '../grid-integration.js'
 import type { ColumnModel } from '../schemas.js'
 import { isColumnModel } from '../schemas.js'
-import { modelToState, stateToModel } from '../model-form.js'
+import { modelToState, objectColumns, stateToModel } from '../model-form.js'
 import { stableJson } from '../stable-json.js'
 import { toError } from '../to-error.js'
 
-/** The text values of a column model, also in conditions and multi filters */
+/** The filter types whose strings are not all values */
+const BUILT_IN_TYPES: ReadonlySet<unknown> = new Set([
+  'text',
+  'number',
+  'date',
+  'set',
+  'multi'
+])
+
+/** Each string in a JSON value, at any level */
+function allStrings(value: ColumnModel[string]): string[] {
+  if (v.is(v.string(), value)) return [value]
+
+  if (Array.isArray(value)) return value.flatMap(allStrings)
+
+  return isColumnModel(value) ? Object.values(value).flatMap(allStrings) : []
+}
+
+/**
+ * The values of a column model that maxValueLength limits: a text filter's
+ * value, a set filter's values, and each string of a custom filter's model,
+ * also in conditions and multi filters (#283 review). Dates, numbers and
+ * operation names are not limited.
+ */
 function textValues(model: ColumnModel): string[] {
+  if (!BUILT_IN_TYPES.has(model.filterType)) return allStrings(model)
+
   const own =
     model.filterType === 'text' && v.is(v.string(), model.filter)
       ? [model.filter]
-      : []
+      : model.filterType === 'set' && Array.isArray(model.values)
+        ? model.values.filter(value => v.is(v.string(), value))
+        : []
 
   const nested = [model.conditions, model.filterModels].flatMap(list =>
     Array.isArray(list) ? list.filter(isColumnModel).flatMap(textValues) : []
@@ -69,15 +96,6 @@ function dropOverLengthTextValues(
   // Own keys, so a column named `__proto__` stays a column (see
   // parseAndValidateJson)
   return Object.fromEntries(kept)
-}
-
-/** The columns of a model that are column models (JSON objects) */
-function columnModels(model: FilterModel): FilterModel {
-  if (!(model instanceof Object)) return {}
-
-  return Object.fromEntries(
-    Object.entries(model).filter(([, entry]) => isColumnModel(entry))
-  )
 }
 
 /**
@@ -133,7 +151,7 @@ function toJson(
   format: SerializationFormat
 ): string {
   return stableJson(
-    dropOverLengthTextValues(columnModels(model), config, format)
+    dropOverLengthTextValues(objectColumns(model, config), config, format)
   )
 }
 

@@ -126,6 +126,7 @@ const ColumnModelSchema = v.looseObject({
   dateFrom: v.optional(v.unknown()),
   dateTo: v.optional(v.unknown()),
   filterTo: v.optional(v.unknown()),
+  values: v.optional(v.unknown()),
   conditions: v.optional(v.unknown()),
   filterModels: v.optional(v.unknown())
 })

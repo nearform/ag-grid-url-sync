@@ -114,6 +114,7 @@ The library uses AG Grid's own `FilterModel` (the value of `gridApi.getFilterMod
 - **A URL apply changes only the columns that the format holds.** With `individual()`, a set filter or combined conditions on the grid stay when the user opens a link. A URL filter on the same column replaces it.
 - **A filter that the format cannot hold is an issue.** When the grid has one, the sync reports `UNSUPPORTED_FILTER` (a warning) one time, and leaves it out of the URL. This includes AG Grid's custom `filterOptions`. Use `grouped({ format: 'json' })` to keep it in the URL. The issue stays in `issues` while the grid has the filter, so with `throwOnError: true` the React hook throws again after each reset of the error boundary. To not throw for it, give `throwOnError: issue => issue.code !== 'UNSUPPORTED_FILTER'`. The deprecated `useAGGridUrlSync` and `AGGridUrlSync` do not report it.
 - `applyFilters(model)` replaces the full model, as `gridApi.setFilterModel(model)` does.
+- `json` and `base64` hold a column whose model is an object. A custom filter whose model is another value (for example an array) is `UNSUPPORTED_FILTER`, and a URL apply keeps it on the grid.
 - The JSON and base64 values have the keys in sorted order, so the same filters give the same URL.
 - Links from 0.5 in the `json` and `base64` formats still open: the old form of a filter (for example `type: 'eq'`) is read as AG Grid's form.
 
@@ -559,7 +560,7 @@ const urlSync = createUrlSync(gridApi, {
 
 In grouped mode, an error that comes from the grouped URL value is an `InvalidSerializationError`, and the original error is in `error.cause`. When the original error is an issue with one filter (for example a value over `maxValueLength`), the wrapper has the same `code` and `column`. So a check on `error.code` works the same in both modes. `INVALID_GROUPED` means that the grouped value itself does not decode.
 
-In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onParseError`, both when the URL is generated and when it is parsed.
+In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onParseError`, both when the URL is generated and when it is parsed. In `json` and `base64`, the limit is also for each set filter value and each string of a custom filter's model, and the column with the long value is dropped.
 
 #### Dropped Filters in the Result
 

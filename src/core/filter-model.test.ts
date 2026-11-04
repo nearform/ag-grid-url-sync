@@ -292,3 +292,75 @@ describe('the individual codec: simple filters that it cannot read', () => {
     })
   })
 })
+
+// maxValueLength in json and base64 covers each string value that a filter
+// keeps: text, set values, and the strings of a custom model (#283 review)
+describe.each(['json', 'base64'] as const)(
+  '%s: maxValueLength for other filters',
+  format => {
+    it.each([
+      ['a set value', { filterType: 'set', values: ['ok', 'x'.repeat(30)] }],
+      [
+        'a custom model string',
+        { mode: 'after', value: { note: 'x'.repeat(30) } }
+      ],
+      [
+        'a set value in a multi filter',
+        {
+          filterType: 'multi',
+          filterModels: [null, { filterType: 'set', values: ['x'.repeat(30)] }]
+        }
+      ]
+    ])('drops a column with %s over the limit', (_name, column) => {
+      const onParseError = vi.fn<(error: Error) => void>()
+      const config = { ...grouped(format), maxValueLength: 20, onParseError }
+
+      expect(serializeGrouped({ ...SET, col: column }, config).value).toBe(
+        serializeGrouped(SET, grouped(format)).value
+      )
+      expect(onParseError.mock.calls[0]?.[0]).toMatchObject({
+        code: 'VALUE_TOO_LONG',
+        column: 'col'
+      })
+    })
+
+    it('keeps a date column with a short limit', () => {
+      const onParseError = vi.fn<(error: Error) => void>()
+
+      const date = {
+        born: {
+          filterType: 'date',
+          type: 'lessThan',
+          dateFrom: '2024-01-15 00:00:00'
+        }
+      }
+
+      const config = { ...grouped(format), maxValueLength: 5, onParseError }
+
+      expect(
+        deserializeGrouped(serializeGrouped(date, config).value, format)
+      ).toEqual(date)
+      expect(onParseError).not.toHaveBeenCalled()
+    })
+  }
+)
+
+// A custom filter's model can be any value, for example an array (#283
+// review). JSON keeps a column model that is an object.
+describe('a custom filter with a model that is not an object', () => {
+  it('json reports it as UNSUPPORTED_FILTER and leaves it out', () => {
+    const onParseError = vi.fn<(error: Error) => void>()
+
+    const url = generateUrl(
+      'http://x.test/',
+      { ...SET, tags: ['a', 'b'] },
+      { ...grouped('json'), onParseError }
+    )
+
+    expect(parseUrlFilters(url, grouped('json'))).toEqual(SET)
+    expect(onParseError.mock.calls[0]?.[0]).toMatchObject({
+      code: 'UNSUPPORTED_FILTER',
+      column: 'tags'
+    })
+  })
+})

@@ -1,7 +1,6 @@
 import type { FilterModel, GridApi } from 'ag-grid-community'
 import type {
   ApplyResult,
-  FilterState,
   GridUrlSync,
   GridUrlSyncOptions,
   GridUrlSyncSnapshot,
@@ -19,11 +18,8 @@ import { parseUrlFilters } from './url-parser.js'
 import { gridColumnType, gridColumnTypes } from './column-types.js'
 import { generateUrl } from './url-generator.js'
 import { resolveParamPrefix } from './individual-params.js'
-import {
-  fromGridModel,
-  getFilterModel,
-  toGridModel
-} from './grid-integration.js'
+import { checkColumnTypes } from './grid-integration.js'
+import { keyForm, mergeUrlModel, urlForm as urlFormOf } from './model-form.js'
 import type { GridView } from './view-storage.js'
 import type {
   Classified,
@@ -177,7 +173,8 @@ export function createSync(
 
   const listeners = new Set<() => void>()
   let status: SyncStatus = 'active'
-  let state: FilterState = {}
+  // The URL form of the grid's model: the part that the codec holds (#225)
+  let state: FilterModel = {}
   let url = ''
   let applyIssues: readonly URLSyncError[] = NO_ISSUES
   let readIssues: readonly URLSyncError[] = NO_ISSUES
@@ -317,12 +314,17 @@ export function createSync(
    */
   function readGrid(): void {
     const call = startCall('grid', 'collect')
+    let model: FilterModel | null = null
 
     try {
-      state = getFilterModel(api, call.options)
+      // AG Grid can hand back null despite the declared return type
+      model = api.getFilterModel()
     } catch (cause) {
       fail(call, cause, 'GRID_ERROR')
     }
+
+    // A column that the codec cannot hold is an issue of the read (#225)
+    state = urlFormOf(model, call.options)
 
     url = hasWindow()
       ? generateUrl(window.location.href, state, call.options)
@@ -356,7 +358,7 @@ export function createSync(
     unpark()
 
     const call = startCall(source, mode)
-    let filters: FilterState | undefined
+    let filters: FilterModel | undefined
 
     try {
       filters = parseUrlFilters(target, call.options)
@@ -373,7 +375,12 @@ export function createSync(
       let model: FilterModel | undefined
 
       try {
-        model = toGridModel(filters, api, call.options)
+        // The URL changes only the columns that the codec holds (#225)
+        model = mergeUrlModel(
+          liveModel(),
+          checkColumnTypes(filters, api, call.options),
+          call.options
+        )
       } catch (cause) {
         own = null
         failed = true
@@ -525,13 +532,11 @@ export function createSync(
     return true
   }
 
-  /** The grid's filters now, or null when the grid cannot be read */
-  function liveState(): FilterState | null {
-    try {
-      return getFilterModel(api, startCall('grid', 'collect').options)
-    } catch {
-      return null
-    }
+  /** The URL form of the grid's filters now, or null when the grid cannot be read */
+  function liveState(): FilterModel | null {
+    const live = liveModel()
+
+    return live === null ? null : urlForm(live)
   }
 
   /** The grid's AG Grid model now, or null when the grid cannot be read */
@@ -577,8 +582,8 @@ export function createSync(
   }
 
   /** The filters that the codec makes of a model */
-  function urlForm(model: Columns): FilterState {
-    return fromGridModel(model, startCall('grid', 'collect').options)
+  function urlForm(model: Columns): FilterModel {
+    return urlFormOf(model, startCall('grid', 'collect').options)
   }
 
   /** The URL form of each column that the URL can hold */
@@ -705,8 +710,8 @@ export function createSync(
    * True when the write landed.
    */
   function settleUrlWrite(
-    filters: FilterState,
-    before: FilterState | null,
+    filters: FilterModel,
+    before: FilterModel | null,
     failed: boolean
   ): boolean {
     const accepted = acceptedPart(filters)
@@ -803,14 +808,13 @@ export function createSync(
    * A key for a filter state that does not depend on the order of the
    * filters or of the page's params
    */
-  function filtersKey(filters: FilterState): string {
-    const sorted = Object.fromEntries(Object.entries(filters).sort(byColumnId))
+  function filtersKey(filters: FilterModel): string {
+    const { options } = startCall('grid', 'collect')
+    // The json form compares in a normal form, as the individual form does
+    const normal = keyForm(filters, options)
+    const sorted = Object.fromEntries(Object.entries(normal).sort(byColumnId))
 
-    return generateUrl(
-      'http://key.invalid/',
-      sorted,
-      startCall('grid', 'collect').options
-    )
+    return generateUrl('http://key.invalid/', sorted, options)
   }
 
   /** Writes the snapshot's URL to the address bar, or gives it to the router */
@@ -1007,15 +1011,15 @@ export function createSync(
       }
 
       const call = startCall('api', 'throw')
-      let model: FilterModel | undefined
+      let checked: FilterModel | undefined
 
       try {
-        model = toGridModel(filters, api, call.options)
+        checked = checkColumnTypes(filters, api, call.options)
       } catch (cause) {
         fail(call, cause, 'GRID_ERROR')
       }
 
-      if (model) writeModel(model, 'app', call)
+      if (checked) writeModel(checked, 'app', call)
 
       applyIssues = call.issues.length ? call.issues : NO_ISSUES
       publish()
@@ -1033,7 +1037,8 @@ export function createSync(
 
       if (status === 'active') {
         try {
-          filters = getFilterModel(api, call.options)
+          // The read reports its issues (#225), so this call does not
+          filters = urlForm(api.getFilterModel())
         } catch (cause) {
           fail(call, cause, 'GRID_ERROR')
         }

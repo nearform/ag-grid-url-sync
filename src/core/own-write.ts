@@ -3,13 +3,16 @@
 // the record means after a call and at each filterChanged.
 
 import type { FilterModel } from 'ag-grid-community'
-import type { FilterState } from './types.js'
+import { stableJson } from './stable-json.js'
 
 /** What a write is. It decides the key form and the history write at the landing. */
 export type WriteKind = 'url' | 'view' | 'restore' | 'app'
 
-/** Per-column values: a FilterState ('url') or an AG Grid model (the others) */
-export type Columns = Readonly<FilterState> | Readonly<FilterModel>
+/**
+ * Per-column values: an AG Grid model. For a 'url' write, it is the URL form
+ * (what a URL of the model decodes to, #225).
+ */
+export type Columns = Readonly<FilterModel>
 
 /**
  * The sync's own latest grid write. It is set before setFilterModel, because
@@ -319,17 +322,6 @@ export function takeOver(
  */
 export function modelKey(columns: Columns): string {
   return stableJson(columns)
-}
-
-/** JSON with the keys of each object sorted */
-function stableJson(value: Columns | Columns[string]): string {
-  return JSON.stringify(value, (_key, part) =>
-    part instanceof Object && !Array.isArray(part)
-      ? Object.fromEntries(
-          Object.entries(part).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        )
-      : part
-  )
 }
 
 /**

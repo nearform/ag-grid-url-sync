@@ -1,6 +1,6 @@
 import * as v from 'valibot'
+import type { FilterModel } from 'ag-grid-community'
 import type {
-  FilterState,
   SerializationFormat,
   FormatSerializer,
   GroupedSerializationResult,
@@ -28,14 +28,17 @@ const FORMAT_SERIALIZERS: Record<SerializationFormat, FormatSerializer> = {
 }
 
 /**
- * Serialize filter state using grouped serialization
- * @param filterState - The filter state to serialize
+ * Serialize an AG Grid filter model using grouped serialization. The json and
+ * base64 formats hold any model. The querystring format holds simple text,
+ * number and date filters, and reports each other column as
+ * UNSUPPORTED_FILTER (#225).
+ * @param model - The filter model to serialize
  * @param config - Options (no grid needed). An option that is left out gets
  *   its default.
  * @returns Grouped serialization result with parameter name and value
  */
 export function serializeGrouped(
-  filterState: FilterState,
+  model: FilterModel,
   config: AGGridUrlSyncConfig = {}
 ): GroupedSerializationResult {
   const options = resolveOptions(config)
@@ -47,7 +50,7 @@ export function serializeGrouped(
       throw new Error(`Unknown serialization format: ${options.format}`)
     }
 
-    const value = serializer.serialize(filterState, options)
+    const value = serializer.serialize(model, options)
 
     return {
       paramName: options.groupedParam,
@@ -78,13 +81,13 @@ export function serializeGrouped(
  * @param format - The serialization format to use
  * @param config - Options for validation and error handling (no grid
  *   needed). An option that is left out gets its default.
- * @returns Deserialized filter state
+ * @returns The AG Grid filter model
  */
 export function deserializeGrouped(
   value: string,
   format: SerializationFormat,
   config: AGGridUrlSyncConfig = {}
-): FilterState {
+): FilterModel {
   const options = resolveOptions(config)
 
   try {

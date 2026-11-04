@@ -11,5 +11,6 @@ export const DATA_ISSUE_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'VALUE_TOO_LONG',
   'INVALID_GROUPED',
   'TYPE_MISMATCH',
-  'INVALID_URL'
+  'INVALID_URL',
+  'UNSUPPORTED_FILTER'
 ])

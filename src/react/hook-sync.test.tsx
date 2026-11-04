@@ -21,7 +21,7 @@ const ANN: FilterModel = {
 }
 
 const BAD: FilterModel = {
-  age: { filterType: 'number', type: 'unknownOperation', filter: 1 }
+  age: { filterType: 'number', type: 'equals', filter: 'abc' }
 }
 
 function createGrid(initial: FilterModel = {}) {

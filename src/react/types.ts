@@ -1,4 +1,4 @@
-import type { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import type {
   AGGridUrlSyncConfig,
   ApplyResult,
@@ -303,8 +303,11 @@ export interface UseGridUrlSyncOptions extends Omit<
 export interface UseGridUrlSyncResult extends GridUrlSyncSnapshot {
   /** Applies the filters of a URL (default: the address bar) to the grid */
   applyUrl: (url?: string) => ApplyResult
-  /** Applies filters to the grid, as the app's own write */
-  applyFilters: (filters: FilterState) => ApplyResult
+  /**
+   * Writes an AG Grid filter model to the grid, as the app's own write. It
+   * replaces the full model, as `setFilterModel` does (#225).
+   */
+  applyFilters: (model: FilterModel) => ApplyResult
   /** The URL with the grid's filters (default base: the address bar) */
   getUrl: (baseUrl?: string) => string
   /** Saves the grid's filters as a view, and makes it active */

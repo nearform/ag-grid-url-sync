@@ -11,6 +11,7 @@ import {
   Base64Serializer
 } from './serialization/formats.js'
 import { DEFAULT_CONFIG, validateFilterValue } from './validation.js'
+import type { FilterModel } from 'ag-grid-community'
 import type { FilterState, ParseConfig, SerializationFormat } from './types.js'
 import { InvalidFilterError, InvalidSerializationError } from './types.js'
 
@@ -20,10 +21,15 @@ import { InvalidFilterError, InvalidSerializationError } from './types.js'
 
 const BASE_URL = 'https://example.com/grid'
 
-const sampleFilterState: FilterState = {
+const sampleFilterState: FilterModel = {
   name: { filterType: 'text', type: 'contains', filter: 'john' },
   age: { filterType: 'number', type: 'greaterThan', filter: 25 },
-  created: { filterType: 'date', type: 'dateAfter', filter: '2024-01-01' }
+  created: {
+    filterType: 'date',
+    type: 'greaterThan',
+    dateFrom: '2024-01-01',
+    dateTo: null
+  }
 }
 
 function withThrowingGridApi(config: ParseConfig): ParseConfig {

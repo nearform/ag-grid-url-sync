@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { parseFilterParam, parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { InvalidFilterError, InvalidURLError } from './types.js'
-import type { FilterState, InternalConfig } from './types.js'
+import type { InternalConfig } from './types.js'
 import { asGridApi } from '../test-helpers.js'
 
 describe('URL Parser', () => {
@@ -150,7 +150,12 @@ describe('URL Parser', () => {
       expect(result).toEqual({
         name: { filterType: 'text', type: 'contains', filter: 'john' },
         age: { filterType: 'number', type: 'greaterThanOrEqual', filter: 25 },
-        created: { filterType: 'date', type: 'dateAfter', filter: '2024-01-01' }
+        created: {
+          filterType: 'date',
+          type: 'greaterThan',
+          dateFrom: '2024-01-01',
+          dateTo: null
+        }
       })
     })
 
@@ -179,7 +184,7 @@ describe('URL Parser', () => {
         })
       ).toEqual({
         a: { filterType: 'number', type: 'greaterThan', filter: 2 ** 53 },
-        b: { filterType: 'number', type: 'eq', filter: 1e21 }
+        b: { filterType: 'number', type: 'equals', filter: 1e21 }
       })
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
     })
@@ -252,27 +257,27 @@ describe('URL Parser', () => {
       ).toEqual({
         a: { filterType: 'number', type: 'greaterThan', filter: 1e21 },
         b: { filterType: 'number', type: 'lessThan', filter: 1e5 },
-        c: { filterType: 'text', type: 'eq', filter: '1e 21' }
+        c: { filterType: 'text', type: 'equals', filter: '1e 21' }
       })
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
     })
 
     it('should round-trip a text value shaped like a number with a space (#238)', () => {
-      const state: FilterState = {
-        code: { filterType: 'text', type: 'eq', filter: '2E 5' }
+      const model = {
+        code: { filterType: 'text', type: 'equals', filter: '2E 5' }
       }
 
       expect(
         parseUrlFilters(
-          generateUrl('https://x.test/', state, mockConfig),
+          generateUrl('https://x.test/', model, mockConfig),
           mockConfig
         )
-      ).toEqual(state)
+      ).toEqual(model)
     })
 
     it('should keep a value that only starts with a number as text (#214)', () => {
       expect(parseUrlFilters('?f_name_eq=3M', mockConfig)).toEqual({
-        name: { filterType: 'text', type: 'eq', filter: '3M' }
+        name: { filterType: 'text', type: 'equals', filter: '3M' }
       })
     })
 

@@ -10,7 +10,8 @@ import {
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { gridColumnTypes } from '../core/column-types.js'
 import { generateUrl } from '../core/url-generator.js'
-import { getFilterModel } from '../core/grid-integration.js'
+import { fromGridModel, getFilterModel } from '../core/grid-integration.js'
+import { stateToModel } from '../core/model-form.js'
 import { serializeGrouped } from '../core/serialization/grouped.js'
 import {
   createViewStore,
@@ -148,7 +149,7 @@ function urlWithFilters(
   base: string,
   options: ResolvedOptions
 ): string {
-  return generateUrl(base, getFilterModel(api, options), options)
+  return generateUrl(base, stateToModel(getFilterModel(api, options)), options)
 }
 
 /** The grid's filters in a grouped format, as the class gave them */
@@ -159,7 +160,7 @@ function filtersAsFormat(
 ): string {
   const filters = getFilterModel(api, options)
 
-  return serializeGrouped(filters, {
+  return serializeGrouped(stateToModel(filters), {
     ...options,
     format,
     serialization: 'grouped'
@@ -457,6 +458,10 @@ export function useAGGridUrlSync(
     // pointer or address-bar write that fails after a grid change gets
     // 'filter-change', as in 0.5.1.
     const onIssue = ({ issue, source }: IssueEvent): void => {
+      // The deprecated hook keeps its 0.5 behaviour: a filter that the URL
+      // format cannot hold is left out with no issue (#225)
+      if (issue.code === 'UNSUPPORTED_FILTER') return
+
       if (source === 'api' && LOAD_STOP_CODES.has(issue.code)) {
         loadStoppedRef.current = true
       }
@@ -695,15 +700,19 @@ export function useAGGridUrlSync(
       }
 
       try {
-        // The parser fills in the defaults of the options that are not set
-        return parseFilters(url, {
+        const options = {
           ...urlOptions,
           // A shared operation takes its type from the grid's column (#224)
           columnTypes: gridColumnTypes(gridApi),
           // The latest callback, so a new one on each render keeps this
           // function stable (#222)
-          onParseError: issue => callbacksRef.current.onParseError?.(issue)
-        })
+          onParseError: (issue: Error) =>
+            callbacksRef.current.onParseError?.(issue)
+        }
+
+        // The parser fills in the defaults of the options that are not set.
+        // The deprecated hook keeps its own filter state (#225).
+        return fromGridModel(parseFilters(url, options), options)
       } catch (error) {
         reportFailure(error, 'parse-url-filters')
 
@@ -724,7 +733,7 @@ export function useAGGridUrlSync(
       }
 
       contextRef.current = 'apply-filters'
-      keepApplyIssues(sync.applyFilters(filters).issues)
+      keepApplyIssues(sync.applyFilters(stateToModel(filters)).issues)
     },
     [activeSync, reportNotReady, keepApplyIssues]
   )
@@ -835,7 +844,12 @@ export function useAGGridUrlSync(
   // onError. The snapshot keeps its issues array while the content is the
   // same, so this changes only with it.
   const issues = useMemo(() => {
-    const data = isReady ? snapshot.issues.filter(isDataIssue) : NO_ISSUES
+    // UNSUPPORTED_FILTER is new in 0.6.0, so the deprecated hook leaves it out
+    const data = isReady
+      ? snapshot.issues.filter(
+          issue => isDataIssue(issue) && issue.code !== 'UNSUPPORTED_FILTER'
+        )
+      : NO_ISSUES
 
     return data.length ? data : NO_ISSUES
   }, [isReady, snapshot.issues])

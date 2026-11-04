@@ -109,3 +109,37 @@ export const AgGridFilterSchema = v.variant('filterType', [
     dateTo: agGridDate
   })
 ])
+
+// ----------------------------------------------------------------------------
+// One column of any AG Grid filter model (#225)
+// ----------------------------------------------------------------------------
+
+/**
+ * The model of one column: a JSON object that is not an array. AG Grid types
+ * it as `any`. Only the keys that the library reads are named. Checked with
+ * `v.is`, so the value is kept as it is (a parse would drop a `__proto__` key).
+ */
+const ColumnModelSchema = v.looseObject({
+  filterType: v.optional(v.unknown()),
+  type: v.optional(v.unknown()),
+  filter: v.optional(v.unknown()),
+  dateFrom: v.optional(v.unknown()),
+  dateTo: v.optional(v.unknown()),
+  filterTo: v.optional(v.unknown()),
+  conditions: v.optional(v.unknown()),
+  filterModels: v.optional(v.unknown())
+})
+
+/** The model of one column, as the library reads it */
+export type ColumnModel = v.InferOutput<typeof ColumnModelSchema>
+
+/** Whether a value is the model of one column (a JSON object) */
+export function isColumnModel(value: unknown): value is ColumnModel {
+  // Before the schema: an object schema takes an array's entries as keys
+  return !Array.isArray(value) && v.is(ColumnModelSchema, value)
+}
+
+/** The filter type of a column model, when it is a string */
+export function filterTypeOf(model: ColumnModel): string | undefined {
+  return v.is(v.string(), model.filterType) ? model.filterType : undefined
+}

@@ -4,7 +4,8 @@ import { serializeGrouped } from './serialization/grouped.js'
 import type { FilterType, URLSyncError } from './types.js'
 
 // The type of a shared operation (eq, notEqual, blank, notBlank) comes from
-// the column, not from the value (#224)
+// the column, not from the value (#224). parseUrlFilters gives AG Grid's
+// model (#225).
 
 const TYPES = new Map<string, FilterType>([
   ['zip', 'text'],
@@ -20,9 +21,9 @@ describe('parseUrlFilters: shared operations with no column types', () => {
     expect(
       parseUrlFilters('?f_zip_eq=01234&f_code_neq=007&f_d_eq=2024-01-15')
     ).toEqual({
-      zip: { filterType: 'text', type: 'eq', filter: '01234' },
+      zip: { filterType: 'text', type: 'equals', filter: '01234' },
       code: { filterType: 'text', type: 'notEqual', filter: '007' },
-      d: { filterType: 'text', type: 'eq', filter: '2024-01-15' }
+      d: { filterType: 'text', type: 'equals', filter: '2024-01-15' }
     })
   })
 
@@ -34,7 +35,7 @@ describe('parseUrlFilters: shared operations with no column types', () => {
 
   it('keeps a column that the lookup does not know as text', () => {
     expect(parseUrlFilters('?f_other_eq=5', { columnTypes })).toEqual({
-      other: { filterType: 'text', type: 'eq', filter: '5' }
+      other: { filterType: 'text', type: 'equals', filter: '5' }
     })
   })
 })
@@ -43,7 +44,7 @@ describe('parseUrlFilters: shared operations with column types', () => {
   it('keeps the value as text on a text column', () => {
     expect(parseUrlFilters('?f_zip_eq=01234', { columnTypes }).zip).toEqual({
       filterType: 'text',
-      type: 'eq',
+      type: 'equals',
       filter: '01234'
     })
   })
@@ -59,7 +60,12 @@ describe('parseUrlFilters: shared operations with column types', () => {
   it('reads a date on a date column', () => {
     expect(
       parseUrlFilters('?f_dob_eq=2024-01-15', { columnTypes }).dob
-    ).toEqual({ filterType: 'date', type: 'eq', filter: '2024-01-15' })
+    ).toEqual({
+      filterType: 'date',
+      type: 'equals',
+      dateFrom: '2024-01-15',
+      dateTo: null
+    })
   })
 
   it('gives the blank filter of the column type', () => {
@@ -71,8 +77,13 @@ describe('parseUrlFilters: shared operations with column types', () => {
         }
       )
     ).toEqual({
-      age: { filterType: 'number', type: 'blank', filter: 0 },
-      dob: { filterType: 'date', type: 'notBlank', filter: '' },
+      age: { filterType: 'number', type: 'blank', filter: null },
+      dob: {
+        filterType: 'date',
+        type: 'notBlank',
+        dateFrom: null,
+        dateTo: null
+      },
       zip: { filterType: 'text', type: 'blank', filter: '' }
     })
   })
@@ -86,7 +97,7 @@ describe('parseUrlFilters: shared operations with column types', () => {
     })
 
     expect(filters).toEqual({
-      zip: { filterType: 'text', type: 'eq', filter: '1' }
+      zip: { filterType: 'text', type: 'equals', filter: '1' }
     })
     expect(onParseError).toHaveBeenCalledTimes(1)
     expect(onParseError.mock.calls[0]?.[0]).toMatchObject({
@@ -119,8 +130,8 @@ describe('parseUrlFilters: shared operations with column types', () => {
   it('uses the column types inside a grouped querystring value', () => {
     const { value } = serializeGrouped(
       {
-        zip: { filterType: 'text', type: 'eq', filter: '01234' },
-        age: { filterType: 'number', type: 'eq', filter: 30 }
+        zip: { filterType: 'text', type: 'equals', filter: '01234' },
+        age: { filterType: 'number', type: 'equals', filter: 30 }
       },
       { format: 'querystring' }
     )
@@ -130,8 +141,8 @@ describe('parseUrlFilters: shared operations with column types', () => {
         columnTypes
       })
     ).toEqual({
-      zip: { filterType: 'text', type: 'eq', filter: '01234' },
-      age: { filterType: 'number', type: 'eq', filter: 30 }
+      zip: { filterType: 'text', type: 'equals', filter: '01234' },
+      age: { filterType: 'number', type: 'equals', filter: 30 }
     })
   })
 })

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import type { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import { useSyncExternalStore } from 'use-sync-external-store/shim'
 import {
   createSync,
@@ -15,7 +15,6 @@ import {
   URLSyncError,
   type ApplyResult,
   type Codec,
-  type FilterState,
   type GridUrlSync,
   type GridUrlSyncSnapshot,
   type HistoryMode,
@@ -312,7 +311,7 @@ export function useGridUrlSync(
   )
 
   const applyFilters = useCallback(
-    (filters: FilterState): ApplyResult => {
+    (filters: FilterModel): ApplyResult => {
       const sync = holder.get()
 
       if (sync) return sync.applyFilters(filters)

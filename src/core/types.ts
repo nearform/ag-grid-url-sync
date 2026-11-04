@@ -118,6 +118,17 @@ export interface AGGridUrlSyncConfig {
    * @default false
    */
   throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
+
+  /**
+   * The filter type of each column, for the operations that every type has
+   * (`eq`, `notEqual`, `blank`, `notBlank`): the URL does not say the type
+   * of those (#224). With no type (undefined, or no lookup), the value stays
+   * text, so `?f_zip_eq=01234` keeps its leading zero. A number column reads
+   * the value as a number, and a date column as a date. `createGridUrlSync`
+   * and `AGGridUrlSync` take the types from the grid's columns.
+   * @example `column => (column === 'age' ? 'number' : undefined)`
+   */
+  columnTypes?: ((column: string) => FilterType | undefined) | undefined
 }
 
 /**
@@ -129,16 +140,17 @@ export interface AGGridUrlSyncConfig {
  * it keeps the undefined.
  */
 export type ResolvedOptions = {
-  [K in Exclude<keyof AGGridUrlSyncConfig, 'throwOnError'>]-?: Exclude<
-    AGGridUrlSyncConfig[K],
-    undefined
-  >
+  [
+    K in Exclude<keyof AGGridUrlSyncConfig, 'throwOnError' | 'columnTypes'>
+  ]-?: Exclude<AGGridUrlSyncConfig[K], undefined>
 } & {
   /**
    * Optional, so that ParseConfig and InternalConfig, which extend this type,
    * get no new required key (#229). resolveOptions always sets it.
    */
   throwOnError?: Exclude<AGGridUrlSyncConfig['throwOnError'], undefined>
+  /** No lookup: a shared operation's value stays text (#224) */
+  columnTypes?: AGGridUrlSyncConfig['columnTypes']
 }
 
 /**

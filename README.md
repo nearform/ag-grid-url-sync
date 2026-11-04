@@ -69,17 +69,37 @@ Supports **all AG Grid text, number, and date filter operations** (26 total) wit
 
 > **🗓️ Date Format Note**: Date filters require strict ISO format (`YYYY-MM-DD`). All date values are validated for real calendar dates, including leap years and month boundaries. Invalid or non-ISO dates will be rejected.
 
-### Filter Detection
+### Filter Types of `eq`, `neq`, `blank` and `notBlank`
 
-The library automatically works with:
+Most operations have one filter type, so the URL gives it: `contains` is text, `gt` is a number, `before` is a date. Four operations work on every type: `eq`, `neq`, `blank` and `notBlank`. The URL does not say their type, so the library takes it from the grid's column (0.6.0, #224):
 
-- **Text columns** configured with `filter: 'agTextColumnFilter'`
-- **Number columns** configured with `filter: 'agNumberColumnFilter'`
-- **Auto-detection** based on `cellDataType: 'number'` configuration
-- Columns with `filter: true` (AG Grid's default text filter)
-- Any column where users apply text, number, or date-based filters
-- All AG Grid text, number, and date filter operations through the filter menu
-- **Mixed filter types** - combine text, number, and date filters in the same URL
+- A **text** column keeps the value as text: `f_zip_eq=01234` stays `"01234"`, with its leading zero.
+- A **number** column reads the value as a number. A value that is not a number is an `INVALID_NUMBER` issue.
+- A **date** column reads the value as a `YYYY-MM-DD` date. A date that is not valid is an `INVALID_DATE` issue.
+
+The column type comes from the column definition that AG Grid resolved:
+
+1. A built-in filter name: `agTextColumnFilter`, `agNumberColumnFilter` or `agDateColumnFilter`.
+2. Else the `cellDataType`, set by you or inferred by AG Grid 31+ from the data: `number` is a number; `date`, `dateString`, `dateTime` and `dateTimeString` are dates; a custom data type uses its `baseDataType`; all others are text.
+3. Else text.
+
+AG Grid infers the data types from the first row. Before the first row data arrives, the types are not known, and AG Grid holds a filter model until then. So `createGridUrlSync` waits too: a URL with `eq`, `neq`, `blank` or `notBlank` on such a column is applied at the first `rowDataUpdated` with rows. The React hooks keep the wait across a new sync on the same grid (StrictMode, an option change).
+
+- A newer apply, a filter write, a user filter change or `destroy` cancels the wait.
+- An `applyUrl` that waits returns no issues and does not throw. The issues of the URL go to `onIssue` and the snapshot when it is applied.
+- The wait is only for the client-side row model.
+- The deprecated `AGGridUrlSync` class does not wait. Before the first row data, it reads these values as text.
+
+With no grid (`parseUrlFilters`, `parseFilterParam`), the value of these four operations stays text. Give `columnTypes` to read it as a number or a date:
+
+```typescript
+parseUrlFilters('?f_age_eq=30', {
+  columnTypes: column => (column === 'age' ? 'number' : undefined)
+})
+// { age: { filterType: 'number', type: 'eq', filter: 30 } }
+```
+
+> **Breaking change in 0.6.0:** before 0.6.0, the library guessed the type from the value, so `f_zip_eq=01234` became the number `1234`, and `f_note_eq=2024-01-15` on a text column became a date filter that the grid then rejected (`TYPE_MISMATCH`).
 
 ### URL Examples
 
@@ -279,17 +299,17 @@ sync.destroy()
 
 `applyFilters` writes filters to the grid as the app's own write. When they land, the sync writes the URL in the `history` mode, as it does for a user edit. `applyUrl` writes no history, because the URL already holds those filters.
 
-| Option             | Default                   | Meaning                                                                                                                                                                                                   |
-| ------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api`              | (required)                | The AG Grid API                                                                                                                                                                                           |
-| `codec`            | `individual()`            | How the filters are written in the URL. `individual({ prefix })` writes one param for each filter; `grouped({ param, format })` writes all filters in one param                                           |
-| `maxValueLength`   | `200`                     | The longest text value that is kept                                                                                                                                                                       |
-| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL, for a router. The page's other params, the `#hash` and `history.state` stay          |
-| `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                                  |
-| `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace            |
-| `views`            | none                      | The saved views. Give `createViewStore(key)` from `ag-grid-url-sync/view-storage`. See [Saved Views](#saved-views)                                                                                        |
-| `throwOnError`     | `false`                   | Throw an issue instead of reporting it, in the methods that the app calls (`applyUrl`, `getUrl`, `applyFilters`, `saveView`, `loadView`, `deleteView`). `createGridUrlSync` and its listeners never throw |
-| `onIssue`          | none                      | Gets each issue one time, as `{ issue, source }`. `source` is `'url'` (the sync read the address bar), `'grid'` (it read the grid) or `'api'` (a method that the app called)                              |
+| Option             | Default                   | Meaning                                                                                                                                                                                                                                                                        |
+| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `api`              | (required)                | The AG Grid API                                                                                                                                                                                                                                                                |
+| `codec`            | `individual()`            | How the filters are written in the URL. `individual({ prefix })` writes one param for each filter; `grouped({ param, format })` writes all filters in one param                                                                                                                |
+| `maxValueLength`   | `200`                     | The longest text value that is kept                                                                                                                                                                                                                                            |
+| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL, for a router. The page's other params, the `#hash` and `history.state` stay                                                                               |
+| `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                                                                                                       |
+| `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace                                                                                 |
+| `views`            | none                      | The saved views. Give `createViewStore(key)` from `ag-grid-url-sync/view-storage`. See [Saved Views](#saved-views)                                                                                                                                                             |
+| `throwOnError`     | `false`                   | Throw an issue instead of reporting it, in the methods that the app calls (`applyUrl`, `getUrl`, `applyFilters`, `saveView`, `loadView`, `deleteView`). `createGridUrlSync` and its listeners never throw, and an `applyUrl` that waits for the row data does not throw either |
+| `onIssue`          | none                      | Gets each issue one time, as `{ issue, source }`. `source` is `'url'` (the sync read the address bar), `'grid'` (it read the grid) or `'api'` (a method that the app called)                                                                                                   |
 
 The snapshot `status` is `'active'` from create, and `'destroyed'` after `destroy()` or after the grid is destroyed. After that, `applyUrl`, `applyFilters`, `saveView` and `loadView` report `NOT_READY` to `onIssue`. `deleteView` needs only storage, so it still works. `IDLE_SNAPSHOT` (`status: 'idle'`) is the snapshot for a time when there is no sync yet. `getSnapshot()` returns the same object until something changes, so it works with React's `useSyncExternalStore`. The sync writes no history for an `applyUrl` apply, because the URL holds those filters already. `applyFilters` and `loadView` write the URL as a user edit does. Nothing reads `window` when the module loads, and a sync made with no `window` does nothing to the address bar.
 
@@ -307,7 +327,7 @@ const urlSync = createUrlSync(gridApi)
 const shareableUrl = urlSync.generateUrl()
 // Result: https://app.com/data?f_name_contains=john&f_salary_gte=80000&f_age_range=25,45
 
-// Apply filters from URL (automatically detects text vs number columns)
+// Apply filters from URL (the column types come from the grid)
 urlSync.applyFromUrl(
   'https://app.com/data?f_name_contains=manager&f_salary_gt=75000'
 )
@@ -1275,6 +1295,10 @@ interface AGGridUrlSyncConfig {
   // Optional error handler for parsing errors
   // Called when URLs contain invalid filter parameters
   onParseError?: (error: Error) => void
+
+  // The filter type of each column, for eq, neq, blank and notBlank (0.6.0)
+  // undefined means text. The grid APIs take the types from the grid.
+  columnTypes?: (column: string) => 'text' | 'number' | 'date' | undefined
 }
 ```
 

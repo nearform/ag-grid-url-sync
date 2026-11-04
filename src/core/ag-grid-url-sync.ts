@@ -9,6 +9,7 @@ import type {
   UrlState
 } from './types.js'
 import { resolveOptions } from './options.js'
+import { gridColumnTypes } from './column-types.js'
 import { collectIssues } from './issues.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
@@ -34,8 +35,12 @@ export class AGGridUrlSync {
   constructor(gridApi: GridApi, config: AGGridUrlSyncConfig = {}) {
     this.gridApi = gridApi
     // Options set to undefined (for example `format: props.format` when the
-    // prop is not set) keep their default
-    this.options = resolveOptions(config)
+    // prop is not set) keep their default. A shared operation takes its
+    // type from the grid's column, unless the config gives the types (#224).
+    this.options = {
+      ...resolveOptions(config),
+      columnTypes: config.columnTypes ?? gridColumnTypes(gridApi)
+    }
   }
 
   /**

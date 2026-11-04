@@ -35,7 +35,7 @@ describe('URL Parser', () => {
     })
 
     it('should parse number operations', () => {
-      expect(parseFilterParam('f_age_eq', '25', 'f_')).toEqual({
+      expect(parseFilterParam('f_age_eq', '25', 'f_', 'number')).toEqual({
         filterType: 'number',
         type: 'eq',
         filter: 25
@@ -52,7 +52,7 @@ describe('URL Parser', () => {
     describe.each([
       ['eq', 'eq'],
       ['neq', 'notEqual']
-    ])('shared operation %s with a guessed type', (op, type) => {
+    ])('shared operation %s on a number column (#224)', (op, type) => {
       it.each([
         '3M',
         '1e',
@@ -65,7 +65,10 @@ describe('URL Parser', () => {
         '12345678901234567890',
         '-12345678901234567891',
         '0.12345678901234567891'
-      ])('should keep %s as text', value => {
+      ])('should report %s, and keep it as text with no type', value => {
+        expect(() =>
+          parseFilterParam(`f_age_${op}`, value, 'f_', 'number')
+        ).toThrow(expect.objectContaining({ code: 'INVALID_NUMBER' }))
         expect(parseFilterParam(`f_name_${op}`, value, 'f_')).toEqual({
           filterType: 'text',
           type,
@@ -88,7 +91,7 @@ describe('URL Parser', () => {
         ['.5', 0.5],
         ['2e3', 2000]
       ])('should parse %s as a number', (value, expected) => {
-        expect(parseFilterParam(`f_age_${op}`, value, 'f_')).toEqual({
+        expect(parseFilterParam(`f_age_${op}`, value, 'f_', 'number')).toEqual({
           filterType: 'number',
           type,
           filter: expected
@@ -97,7 +100,9 @@ describe('URL Parser', () => {
     })
 
     it('should parse date operations', () => {
-      expect(parseFilterParam('f_created_eq', '2024-01-15', 'f_')).toEqual({
+      expect(
+        parseFilterParam('f_created_eq', '2024-01-15', 'f_', 'date')
+      ).toEqual({
         filterType: 'date',
         type: 'eq',
         filter: '2024-01-15'
@@ -168,7 +173,10 @@ describe('URL Parser', () => {
 
     it('should parse numbers outside the safe integer range (#238)', () => {
       expect(
-        parseUrlFilters('?f_a_gt=9007199254740992&f_b_eq=1e%2B21', mockConfig)
+        parseUrlFilters('?f_a_gt=9007199254740992&f_b_eq=1e%2B21', {
+          ...mockConfig,
+          columnTypes: () => 'number'
+        })
       ).toEqual({
         a: { filterType: 'number', type: 'greaterThan', filter: 2 ** 53 },
         b: { filterType: 'number', type: 'eq', filter: 1e21 }

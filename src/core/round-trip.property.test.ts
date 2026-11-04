@@ -175,8 +175,9 @@ const dateFilter = fc.oneof(
 )
 
 /**
- * Filters whose type the URL keeps: the parser finds the same filter type
- * from the operation or from the value.
+ * Filters whose type the URL keeps: the operation gives the type, or the
+ * column types give it (#224). Text values that look like a number or a date
+ * are left out, so these properties do not depend on the lookup for them.
  */
 const unambiguousFilter: fc.Arbitrary<ColumnFilter> = fc.oneof(
   textFilter(unambiguousTextValue),
@@ -276,8 +277,15 @@ const TYPED_MODES = MODES.filter(
 /** Modes that write prefixed params, which have no filter type */
 const UNTYPED_MODES = MODES.filter(mode => !TYPED_MODES.includes(mode))
 
+/**
+ * Encode, then decode with the column types of the state, as the grid gives
+ * them (#224)
+ */
 const roundTrip = (state: FilterState, base: string, config: ParseConfig) =>
-  parseUrlFilters(generateUrl(base, state, config), config)
+  parseUrlFilters(generateUrl(base, state, config), {
+    ...config,
+    columnTypes: column => state[column]?.filterType
+  })
 
 const isFilterParam = (key: string, config: ParseConfig) =>
   key === config.groupedParam ||
@@ -376,9 +384,25 @@ describe('URL round-trip properties (#216)', () => {
   })
 
   describe.each(UNTYPED_MODES)('$name', ({ config }) => {
-    // Known failure: the prefixed format does not record the filter type, so
-    // the parser guesses it from the value. Fixed by #224.
-    it.fails('round-trips every filter type, also for shared operations (#224)', () => {
+    // With no column types, a value stays text: "007" and "2024-01-15" come
+    // back as text, not as a number or a date (#224)
+    it('round-trips any text value with no column types (#224)', () => {
+      fc.assert(
+        fc.property(
+          filterState(textFilter(textValue)),
+          baseUrl,
+          (state, base) => {
+            expect(
+              parseUrlFilters(generateUrl(base.url, state, config), config)
+            ).toEqual(state)
+          }
+        )
+      )
+    })
+
+    // The prefixed format does not record the filter type of a shared
+    // operation: the decoder takes it from the column (#224)
+    it('round-trips every filter type, also for shared operations (#224)', () => {
       fc.assert(
         fc.property(
           filterState(typeLosingFilter).filter(

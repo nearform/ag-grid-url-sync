@@ -8,6 +8,7 @@ import {
   type Handover
 } from '../core/grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
+import { gridColumnTypes } from '../core/column-types.js'
 import { generateUrl } from '../core/url-generator.js'
 import { getFilterModel } from '../core/grid-integration.js'
 import { serializeGrouped } from '../core/serialization/grouped.js'
@@ -697,6 +698,8 @@ export function useAGGridUrlSync(
         // The parser fills in the defaults of the options that are not set
         return parseFilters(url, {
           ...urlOptions,
+          // A shared operation takes its type from the grid's column (#224)
+          columnTypes: gridColumnTypes(gridApi),
           // The latest callback, so a new one on each render keeps this
           // function stable (#222)
           onParseError: issue => callbacksRef.current.onParseError?.(issue)

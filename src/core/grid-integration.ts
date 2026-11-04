@@ -20,6 +20,7 @@ import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
 import { reportIssue, toIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
+import { gridColumnType } from './column-types.js'
 import type { FilterModel, GridApi } from 'ag-grid-community'
 
 /**
@@ -80,38 +81,17 @@ function toIsoDateString(val: string | undefined): string {
 }
 
 /**
- * Detects the expected filter type for a column based on AG Grid configuration
+ * The filter type of a grid column, from the column definition that AG Grid
+ * resolved (#224). Text for a column that the grid does not have, or whose
+ * type AG Grid has not inferred yet.
  */
 export function detectColumnFilterType(
   gridApi: GridApi,
   columnId: string
 ): 'text' | 'number' | 'date' {
-  try {
-    const column = gridApi.getColumn(columnId)
+  const type = gridColumnType(gridApi, columnId)
 
-    if (!column) return 'text' // Default to text for unknown columns
-
-    const colDef = column.getColDef()
-
-    // 1. Explicit filter configuration takes priority
-    if (colDef.filter === 'agDateColumnFilter') return 'date'
-
-    if (colDef.filter === 'agNumberColumnFilter') return 'number'
-
-    if (colDef.filter === 'agTextColumnFilter') return 'text'
-
-    // 2. Cell data type configuration
-    if (colDef.cellDataType === 'date') return 'date'
-
-    if (colDef.cellDataType === 'number') return 'number'
-
-    if (colDef.cellDataType === 'text') return 'text'
-
-    // 3. Default to text for backward compatibility
-    return 'text'
-  } catch {
-    return 'text' // Safe fallback
-  }
+  return type === 'number' || type === 'date' ? type : 'text'
 }
 
 /**
@@ -488,6 +468,32 @@ function writeGridFilters(
 }
 
 /**
+ * TYPE_MISMATCH when a number or date filter is on a column of another type.
+ * Null while AG Grid has not inferred the column type: there is nothing to
+ * check against, and AG Grid defers the model until it knows (#224).
+ */
+function typeMismatch(
+  gridApi: GridApi,
+  column: string,
+  filter: ColumnFilter
+): InvalidFilterError | null {
+  const columnType = gridColumnType(gridApi, column)
+
+  if (columnType === 'pending' || filter.filterType === 'text') return null
+
+  const expected =
+    columnType === 'number' || columnType === 'date' ? columnType : 'text'
+
+  if (filter.filterType === expected) return null
+
+  return new InvalidFilterError(
+    `Column '${column}' expects a ${expected} filter but received a ${filter.filterType} filter. This may indicate a configuration mismatch in the column definition or filter application.`,
+    undefined,
+    { code: 'TYPE_MISMATCH', column }
+  )
+}
+
+/**
  * Converts URL filters to the AG Grid filter model that `applyFilterModel`
  * would write. It does not call `setFilterModel`.
  */
@@ -506,31 +512,11 @@ export function toGridModel(
     // A JavaScript caller can pass anything here
     if (!v.is(JsonObjectSchema, filter)) continue
 
-    // Detect expected filter type for this column
-    const expectedType = detectColumnFilterType(gridApi, column)
+    const mismatch = typeMismatch(gridApi, column, filter)
 
-    // Validate filter type compatibility
-    if (filter.filterType === 'date' && expectedType !== 'date') {
-      reportIssue(
-        resolved,
-        new InvalidFilterError(
-          `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`,
-          undefined,
-          { code: 'TYPE_MISMATCH', column }
-        )
-      )
-      continue
-    }
+    if (mismatch) {
+      reportIssue(resolved, mismatch)
 
-    if (filter.filterType === 'number' && expectedType !== 'number') {
-      reportIssue(
-        resolved,
-        new InvalidFilterError(
-          `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`,
-          undefined,
-          { code: 'TYPE_MISMATCH', column }
-        )
-      )
       continue
     }
 

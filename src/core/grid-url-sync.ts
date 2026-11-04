@@ -112,17 +112,20 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
  * (#276). `keys` names the options that the record's keys were made with.
  */
 export interface Handover {
-  readonly own: OwnWrite
+  /** The latest own write, or null (none, or inside a call) */
+  readonly own: OwnWrite | null
   readonly source: IssueSource
   readonly keys: string
+  /** The issues of the latest apply (#271 review) */
+  readonly applyIssues: readonly URLSyncError[]
 }
 
 /** The handover of each sync that createSync made. Not public. */
 const handovers = new WeakMap<GridUrlSync, () => Handover | null>()
 
 /**
- * Not public: the latest own write of a sync, for the next sync on the same
- * grid (#276). Null when there is none, or inside a call.
+ * Not public: the state of a sync that the next sync on the same grid can
+ * take (#276). Null for a sync that createSync did not make.
  */
 export function handOver(sync: GridUrlSync): Handover | null {
   return handovers.get(sync)?.() ?? null
@@ -144,6 +147,12 @@ export interface SyncStart {
    * options, the keys do not match, and the sync does not take it.
    */
   readonly handover?: Handover | null | undefined
+  /**
+   * Show the earlier sync's apply issues until this sync's own next apply,
+   * as one sync would (the 0.6.0 hook, #271 review). An apply on create
+   * replaces them.
+   */
+  readonly keepApplyIssues?: boolean | undefined
 }
 
 /**
@@ -1105,16 +1114,21 @@ export function createSync(
   // The earlier sync's own write is this sync's own now (#276), while the
   // grid agrees with it. Before the create's writes, so a write that it
   // makes waits for that one.
-  if (start.handover?.keys === keys) {
-    own = takeOver(start.handover.own, liveKeys(start.handover.own.kind))
-    ownSource = start.handover.source
+  const handed = start.handover
+
+  if (handed?.own && handed.keys === keys) {
+    own = takeOver(handed.own, liveKeys(handed.own.kind))
+    ownSource = handed.source
   }
 
-  handovers.set(sync, () =>
-    own === null || own.phase === 'writing'
-      ? null
-      : { own, source: ownSource, keys }
-  )
+  if (handed && start.keepApplyIssues) applyIssues = handed.applyIssues
+
+  handovers.set(sync, () => ({
+    own: own?.phase === 'writing' ? null : own,
+    source: ownSource,
+    keys,
+    applyIssues
+  }))
 
   // The view that the stored pointer names. A pointer to a missing view is
   // the same as no pointer. Read before the listeners, so a store that

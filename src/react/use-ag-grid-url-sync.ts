@@ -176,6 +176,9 @@ function pageUrl(): string {
 /**
  * React hook for AG Grid URL synchronization
  *
+ * @deprecated Use `useGridUrlSync({ api, ...options })` (#271). This hook
+ * will be removed in 0.6.0.
+ *
  * @param gridApi - AG Grid API instance (can be null during initialization)
  * @param options - Configuration options for the hook
  * @returns Hook API for URL synchronization

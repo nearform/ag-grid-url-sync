@@ -1,6 +1,12 @@
+// The 0.6.0 hook (#271)
+export { useGridUrlSync } from './use-grid-url-sync.js'
+
+// Deprecated: use useGridUrlSync. Removed in 0.6.0.
 export { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 
 export type {
+  UseGridUrlSyncOptions,
+  UseGridUrlSyncResult,
   UseAGGridUrlSyncOptions,
   UseAGGridUrlSyncReturn
 } from './types.js'

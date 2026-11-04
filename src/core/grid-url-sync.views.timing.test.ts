@@ -444,6 +444,29 @@ describe('createGridUrlSync: loadView while the write is pending', () => {
     sync.destroy()
   })
 
+  it('a user edit with the URL form of a pending view is a change, not the landing', async () => {
+    const { more, grid, store, sync } = setup('deferred', [
+      ['Set', { ...NAME_JO, age: { filterType: 'set', values: ['30'] } }]
+    ])
+
+    const view = extraView(more)
+    sync.loadView(view.id)
+
+    expect(sync.getSnapshot().activeViewId).toBe(view.id)
+
+    // The URL form leaves out the set filter, so it is the view's URL form
+    grid.userEdit(NAME_JO)
+
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(store.getActiveViewId()).toBeNull()
+
+    sync.destroy()
+  })
+
   it('an app setFilterModel with another model while a load is pending is not the landing', async () => {
     const { a, grid, sync } = setup('deferred')
     sync.loadView(a.id)

@@ -134,14 +134,15 @@ export function classifyEvent(
 
     // The write lands. An API change that shows the write's columns for
     // some columns, and the columns from before for the others, is a write
-    // that the grid took only part of. A user's edit in the grid's UI has
-    // another source. A model that the grid rebuilt (its own key order, a
-    // number for a string) has the URL form of the write.
+    // that the grid took only part of. An API change with the URL form of a
+    // model write is a model that the grid rebuilt (its own key order, a
+    // number for a string). A user's edit in the grid's UI has another
+    // source, so it is a change.
     if (
       event.key === own.acceptedKey ||
       (event.source === 'api' &&
-        couldBeLanding(event.live, own.accepted, own.before)) ||
-      rebuiltLanding(own, event)
+        (couldBeLanding(event.live, own.accepted, own.before) ||
+          rebuiltLanding(own, event)))
     ) {
       return {
         own: { phase: 'landed', kind: own.kind, key: event.key },

@@ -196,11 +196,11 @@ describe('classifyEvent', () => {
       acceptedUrlKey: 'ujo'
     }
 
-    it('calls the URL form of the write a landing, from any source', () => {
+    it('calls the URL form of the write from the API a landing', () => {
       const result = classifyEvent(modelPending, {
         key: 'krebuilt',
         live: { name: 'rebuilt' },
-        source: 'columnFilter',
+        source: 'api',
         urlKey: 'ujo'
       })
 
@@ -209,6 +209,17 @@ describe('classifyEvent', () => {
         kind: 'landing',
         write: 'view'
       })
+    })
+
+    it('calls the URL form of the write from the UI a change', () => {
+      const result = classifyEvent(modelPending, {
+        key: 'krebuilt',
+        live: { name: 'rebuilt' },
+        source: 'columnFilter',
+        urlKey: 'ujo'
+      })
+
+      expect(result).toEqual({ own: null, kind: 'change', write: null })
     })
 
     it('calls another URL form a change', () => {
@@ -239,7 +250,7 @@ describe('classifyEvent', () => {
         {
           key: 'krebuilt',
           live: { name: 'rebuilt' },
-          source: 'columnFilter',
+          source: 'api',
           urlKey: 'ujo'
         }
       )

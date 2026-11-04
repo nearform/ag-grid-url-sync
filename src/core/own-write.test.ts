@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyEvent,
   couldBeLanding,
+  modelKey,
   settleWrite,
   type AfterCall,
   type OwnWrite
@@ -78,6 +79,46 @@ describe('settleWrite', () => {
     expect(result).toEqual({ own: pending, landed: false })
   })
 
+  it('stays pending when the grid cannot be read after the call', () => {
+    const result = settleWrite(
+      { phase: 'writing', kind: 'view' },
+      { ...after, kind: 'view', afterKey: null, beforeKey: 'kx' }
+    )
+
+    expect(result.landed).toBe(false)
+    expect(result.own).toMatchObject({ phase: 'pending', kind: 'view' })
+  })
+
+  it('keeps the key of an event inside the call when the grid cannot be read after it', () => {
+    const result = settleWrite(
+      { phase: 'landed', kind: 'view', key: 'kjo' },
+      { ...after, kind: 'view', afterKey: null }
+    )
+
+    expect(result).toEqual({
+      own: { phase: 'landed', kind: 'view', key: 'kjo' },
+      landed: true
+    })
+  })
+
+  it('keeps the URL form of a pending model write', () => {
+    const result = settleWrite(
+      { phase: 'writing', kind: 'view' },
+      {
+        ...after,
+        kind: 'view',
+        afterKey: 'kx',
+        beforeKey: 'kx',
+        acceptedUrlKey: 'ujo'
+      }
+    )
+
+    expect(result.own).toMatchObject({
+      phase: 'pending',
+      acceptedUrlKey: 'ujo'
+    })
+  })
+
   it('stays pending when the state from before is not known', () => {
     const result = settleWrite(
       { phase: 'writing', kind: 'url' },
@@ -148,6 +189,65 @@ describe('classifyEvent', () => {
     expect(result).toEqual({ own: null, kind: 'change', write: null })
   })
 
+  describe('a model write that the grid rebuilds', () => {
+    const modelPending: OwnWrite = {
+      ...pending,
+      kind: 'view',
+      acceptedUrlKey: 'ujo'
+    }
+
+    it('calls the URL form of the write a landing, from any source', () => {
+      const result = classifyEvent(modelPending, {
+        key: 'krebuilt',
+        live: { name: 'rebuilt' },
+        source: 'columnFilter',
+        urlKey: 'ujo'
+      })
+
+      expect(result).toEqual({
+        own: { phase: 'landed', kind: 'view', key: 'krebuilt' },
+        kind: 'landing',
+        write: 'view'
+      })
+    })
+
+    it('calls another URL form a change', () => {
+      const result = classifyEvent(modelPending, {
+        key: 'kother',
+        live: { name: 'other' },
+        source: 'api',
+        urlKey: 'uother'
+      })
+
+      expect(result).toEqual({ own: null, kind: 'change', write: null })
+    })
+
+    it('calls the model from before an echo, even with the URL form of the write', () => {
+      const result = classifyEvent(modelPending, {
+        key: 'kx',
+        live: before,
+        source: 'api',
+        urlKey: 'ujo'
+      })
+
+      expect(result.kind).toBe('echo')
+    })
+
+    it('is not a landing for a record with no URL form', () => {
+      const result = classifyEvent(
+        { ...pending, kind: 'view' },
+        {
+          key: 'krebuilt',
+          live: { name: 'rebuilt' },
+          source: 'columnFilter',
+          urlKey: 'ujo'
+        }
+      )
+
+      expect(result.kind).toBe('change')
+    })
+  })
+
   it('calls any event with no record a change', () => {
     expect(classifyEvent(null, event)).toEqual({
       own: null,
@@ -166,9 +266,41 @@ describe('couldBeLanding', () => {
     expect(couldBeLanding({ name: 'other' }, accepted, before)).toBe(false)
   })
 
+  it("is true when the grid gives a column's keys in another order", () => {
+    expect(
+      couldBeLanding(
+        { name: { type: 'contains', filterType: 'text', filter: 'jo' } },
+        { name: { filterType: 'text', type: 'contains', filter: 'jo' } },
+        null
+      )
+    ).toBe(true)
+  })
+
   it('is true for the write on one column and the old value on another', () => {
     expect(
       couldBeLanding({ name: 'jo', age: 3 }, accepted, { name: 'x', age: 3 })
     ).toBe(true)
+  })
+})
+
+describe('modelKey', () => {
+  it('does not depend on the key order at any level', () => {
+    expect(
+      modelKey({
+        name: { filterType: 'text', type: 'contains', filter: 'jo' },
+        age: { filterType: 'number', type: 'equals', filter: 30 }
+      })
+    ).toBe(
+      modelKey({
+        age: { filter: 30, type: 'equals', filterType: 'number' },
+        name: { filter: 'jo', filterType: 'text', type: 'contains' }
+      })
+    )
+  })
+
+  it('differs for another value', () => {
+    expect(modelKey({ age: { filterType: 'number', filter: 30 } })).not.toBe(
+      modelKey({ age: { filterType: 'number', filter: '30' } })
+    )
   })
 })

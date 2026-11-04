@@ -50,7 +50,11 @@ interface Setup {
 function setup(
   timing: GridTiming,
   more: ReadonlyArray<readonly [string, FilterModel]> = [],
-  options: { store?: ViewStore; throwOnError?: boolean } = {}
+  options: {
+    store?: ViewStore
+    throwOnError?: boolean
+    normalize?: boolean
+  } = {}
 ): Setup {
   const seed = createViewStore('t')
   const a = seed.saveView('A', NAME_JO)
@@ -59,7 +63,7 @@ function setup(
   seed.persistActiveViewId(null)
 
   const store = options.store ?? seed
-  const grid = createTimedGrid(timing)
+  const grid = createTimedGrid(timing, {}, { normalize: options.normalize })
   const onIssue = vi.fn()
 
   const sync = createGridUrlSync({
@@ -70,6 +74,20 @@ function setup(
   })
 
   return { store, a, b, more: extra, grid, sync, onIssue }
+}
+
+/** The sync as a JavaScript caller sees it: no type stops an undefined id */
+interface JavaScriptCaller {
+  loadView(id: string | null | undefined): void
+}
+
+/** The one extra view of a setup. A missing view fails the test. */
+function extraView(more: readonly GridView[]): GridView {
+  const [view] = more
+
+  if (view === undefined) throw new Error('The setup has no extra view')
+
+  return view
 }
 
 /** The code and source of each onIssue call */
@@ -132,6 +150,73 @@ describe.each(GRID_TIMINGS)(
       sync.destroy()
     })
 
+    it('loadView(undefined) from JavaScript clears as loadView(null) does', async () => {
+      const { a, grid, store, sync } = setup(timing)
+      sync.loadView(a.id)
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+
+      const fromJavaScript: JavaScriptCaller = sync
+
+      fromJavaScript.loadView(undefined)
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual({})
+      expect(sync.getSnapshot().activeViewId).toBeNull()
+      expect(store.getActiveViewId()).toBeNull()
+
+      sync.destroy()
+    })
+
+    it('a view that the grid rebuilds with another key order stays active, and its pointer stays', async () => {
+      const { a, grid, store, sync } = setup(timing, [], { normalize: true })
+
+      sync.loadView(a.id)
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+      expect(sync.getSnapshot().activeViewId).toBe(a.id)
+      expect(store.getActiveViewId()).toBe(a.id)
+
+      sync.destroy()
+    })
+
+    it('a view stored with a number as a string stays active after the grid rebuilds it, and its pointer stays', async () => {
+      const { more, grid, store, sync } = setup(
+        timing,
+        [
+          ['S', { age: { filterType: 'number', type: 'equals', filter: '30' } }]
+        ],
+        { normalize: true }
+      )
+
+      const s = extraView(more)
+
+      sync.loadView(s.id)
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual(AGE_30)
+      expect(sync.getSnapshot().activeViewId).toBe(s.id)
+      expect(store.getActiveViewId()).toBe(s.id)
+
+      sync.destroy()
+    })
+
+    it('a user edit after a rebuilt landing clears the active view', async () => {
+      const { a, grid, sync } = setup(timing, [], { normalize: true })
+      sync.loadView(a.id)
+      await tick()
+
+      expect(sync.getSnapshot().activeViewId).toBe(a.id)
+
+      grid.userEdit(NAME_X)
+
+      expect(sync.getSnapshot().activeViewId).toBeNull()
+
+      sync.destroy()
+    })
+
     it('loadView clears the apply issues', async () => {
       const { a, sync } = setup(timing)
       sync.applyUrl(href('/?f_age_gt=abc'))
@@ -187,25 +272,25 @@ describe.each(GRID_TIMINGS)(
         ]
       ])
 
-      const c = more[0]
+      const c = extraView(more)
 
-      sync.loadView(c?.id ?? null)
+      sync.loadView(c.id)
       await tick()
 
       expect(grid.api.getFilterModel()).toEqual(NAME_JO)
-      expect(sync.getSnapshot().activeViewId).toBe(c?.id)
+      expect(sync.getSnapshot().activeViewId).toBe(c.id)
 
       sync.destroy()
     })
 
     it('two views with the same model: the loaded one is active', async () => {
       const { a, more, sync } = setup(timing, [['A2', NAME_JO]])
-      const a2 = more[0]
+      const a2 = extraView(more)
 
-      sync.loadView(a2?.id ?? null)
+      sync.loadView(a2.id)
       await tick()
 
-      expect(sync.getSnapshot().activeViewId).toBe(a2?.id)
+      expect(sync.getSnapshot().activeViewId).toBe(a2.id)
 
       sync.loadView(a.id)
       await tick()

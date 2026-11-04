@@ -18,10 +18,14 @@ import { toError } from './to-error.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { resolveParamPrefix } from './individual-params.js'
-import { getFilterModel, toGridModel } from './grid-integration.js'
+import {
+  fromGridModel,
+  getFilterModel,
+  toGridModel
+} from './grid-integration.js'
 import type { GridView } from './view-storage.js'
 import type { Classified, Columns, OwnWrite, WriteKind } from './own-write.js'
-import { classifyEvent, settleWrite } from './own-write.js'
+import { classifyEvent, modelKey, settleWrite } from './own-write.js'
 
 // createGridUrlSync (#221): the framework-free sync. It owns its grid
 // listeners and keeps one snapshot for useSyncExternalStore. Nothing here
@@ -331,15 +335,17 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     if (!setModel(model, kind, call)) return false
 
     const accepted = acceptedPart(model)
+    const after = liveModel()
 
     const settled = settleWrite(own, {
       kind,
       failed: false,
-      afterKey: modelKey(liveModel() ?? {}),
+      afterKey: after ? modelKey(after) : null,
       before,
       beforeKey: before ? modelKey(before) : null,
       accepted,
-      acceptedKey: modelKey(accepted)
+      acceptedKey: modelKey(accepted),
+      acceptedUrlKey: urlKey(accepted)
     })
 
     own = settled.own
@@ -380,6 +386,13 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     const live = liveModel()
 
     return live ? modelKey(live) : null
+  }
+
+  /** The key of a model's URL form: the filters that the codec makes of it */
+  function urlKey(model: Columns): string {
+    return filtersKey(
+      fromGridModel(model, startCall('grid', 'collect').options)
+    )
   }
 
   /** Whether the grid shows this model now */
@@ -466,8 +479,8 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   /**
    * What a filterChanged is: an echo or the landing of the sync's own write,
    * or a change. The key has the form of the write's kind: `state` (the URL
-   * form) for a URL write, the grid's model for the others. A change ends
-   * the own write.
+   * form) for a URL write, the grid's model for the others (and its URL form
+   * while the write is pending). A change ends the own write.
    */
   function classify(source: string | undefined): Classified {
     const modelForm = own !== null && own.kind !== 'url'
@@ -476,7 +489,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     const result = classifyEvent(own, {
       key: modelForm ? modelKey(live) : filtersKey(state),
       live,
-      source
+      source,
+      // Only a pending model write needs the URL form
+      urlKey: modelForm && own?.phase === 'pending' ? urlKey(live) : undefined
     })
 
     own = result.own
@@ -837,11 +852,6 @@ function sameViews(a: readonly GridView[], b: readonly GridView[]): boolean {
 /** Sorts entries by column id */
 function byColumnId([a]: [string, unknown], [b]: [string, unknown]): number {
   return a < b ? -1 : a > b ? 1 : 0
-}
-
-/** A key for an AG Grid model that does not depend on the order of its columns */
-function modelKey(model: Columns): string {
-  return JSON.stringify(Object.entries(model).sort(byColumnId))
 }
 
 /** The key of an issue's content */

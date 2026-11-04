@@ -585,6 +585,39 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     if (kind !== 'url') writeChange(source, kind === 'restore')
   }
 
+  /**
+   * Whether the filters of a URL are the URL form of a view (D7). The
+   * compare is in the URL form, so the order of the params has no effect.
+   */
+  function holdsView(target: string, view: GridView): boolean {
+    try {
+      const filters = parseUrlFilters(
+        target,
+        startCall('url', 'collect').options
+      )
+
+      return filtersKey(filters) === urlKey(view.filterModel)
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Restores the stored view on create: an own write of its full model. The
+   * pointer stays. With history on, the URL write replaces the entry.
+   */
+  function restore(view: GridView): void {
+    // Before the write, so no snapshot shows null while a deferred write is
+    // pending (D2)
+    active = { id: view.id, model: null }
+
+    if (!writeModel(view.filterModel, 'restore', startCall('url', 'report'))) {
+      active = null
+    }
+
+    publish()
+  }
+
   function onFilterChanged(event?: { source?: string }): void {
     if (status !== 'active') return
 
@@ -852,6 +885,15 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
   refreshViews()
 
+  // The view that the stored pointer names. A pointer to a missing view is
+  // the same as no pointer. Read before the listeners, so a store that
+  // throws leaks none.
+  const pointer = views?.getActiveViewId()
+
+  const stored = pointer
+    ? viewList.find(view => view.id === pointer)
+    : undefined
+
   api.addEventListener('filterChanged', onFilterChanged)
   api.addEventListener('gridPreDestroyed', destroy)
 
@@ -861,13 +903,26 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
   if (options.applyUrlOnCreate !== false && hasWindow()) {
     const href = window.location.href
-    apply(href, 'url', 'report', true)
+    const claims = hasFilterParams(href)
+
+    // A URL that holds the stored view (D7), or a URL with no filter
+    // params: restore the view with its full model
+    if (stored && (!claims || holdsView(href, stored))) {
+      restore(stored)
+    } else {
+      apply(href, 'url', 'report', true)
+
+      // The URL wins over the stored view: clear the pointer, or the next
+      // load restores a view that the user did not choose here
+      if (claims) persistPointer(null, startCall('url', 'report'))
+    }
 
     // The URL has no filter params, so the grid's own filters stay: show them
     // in the address bar too, with no new history entry. A URL with only bad
     // filter params is left as it is until the user changes a filter.
     if (
-      !hasFilterParams(href) &&
+      !stored &&
+      !claims &&
       historyMode !== 'none' &&
       Object.keys(state).length > 0
     ) {

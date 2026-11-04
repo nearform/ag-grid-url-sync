@@ -424,6 +424,21 @@ describe.each(GRID_TIMINGS)(
 
       sync.destroy()
     })
+
+    it('a user edit keeps a pointer that another tab moved to another view', async () => {
+      const { a, b, grid, store, sync } = setup(timing)
+      sync.loadView(a.id)
+      await tick()
+
+      // Another tab loads B
+      store.persistActiveViewId(b.id)
+      grid.userEdit(NAME_X)
+
+      expect(sync.getSnapshot().activeViewId).toBeNull()
+      expect(store.getActiveViewId()).toBe(b.id)
+
+      sync.destroy()
+    })
   }
 )
 
@@ -551,6 +566,24 @@ describe('createGridUrlSync: loadView while the write is pending', () => {
 
     expect(grid.api.getFilterModel()).toEqual(NAME_JO)
     expect(sync.getSnapshot().activeViewId).toBeNull()
+
+    sync.destroy()
+  })
+
+  it('saveView while a load is pending saves the grid model, and the late landing clears it', async () => {
+    const { a, grid, store, sync } = setup('deferred')
+    sync.loadView(a.id)
+
+    const saved = sync.saveView('S')
+
+    expect(saved?.filterModel).toEqual({})
+    expect(sync.getSnapshot().activeViewId).toBe(saved?.id)
+
+    await tick()
+
+    expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(store.getActiveViewId()).toBeNull()
 
     sync.destroy()
   })

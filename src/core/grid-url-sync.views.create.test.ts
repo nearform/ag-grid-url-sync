@@ -261,3 +261,39 @@ describe.each(GRID_TIMINGS)(
     })
   }
 )
+
+describe('createGridUrlSync: edge cases of the landing on create', () => {
+  it('a restore whose grid write throws keeps no active view and reports GRID_ERROR', () => {
+    const { store, a } = seed()
+    store.persistActiveViewId(a.id)
+    const grid = createTimedGrid('in-call')
+    const onIssue = vi.fn()
+
+    vi.spyOn(grid.api, 'setFilterModel').mockImplementation(() => {
+      throw new Error('boom')
+    })
+
+    const sync = createGridUrlSync({ api: grid.api, views: store, onIssue })
+
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(grid.api.getFilterModel()).toEqual({})
+    expect(
+      onIssue.mock.calls.map(([event]) => [event.issue.code, event.source])
+    ).toEqual([['GRID_ERROR', 'url']])
+
+    sync.destroy()
+  })
+
+  it('a URL with filters writes no pointer when none is stored', () => {
+    const { store } = seed()
+    const persist = vi.spyOn(store, 'persistActiveViewId')
+    window.history.replaceState(null, '', '/?f_age_eq=30')
+
+    const { grid, sync } = create('in-call', store)
+
+    expect(grid.api.getFilterModel()).toEqual(AGE_30)
+    expect(persist).not.toHaveBeenCalled()
+
+    sync.destroy()
+  })
+})

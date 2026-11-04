@@ -185,12 +185,37 @@ describe('createGridUrlSync: saved views', () => {
   })
 
   it('the snapshot keeps its object when nothing changed', () => {
+    const store = createViewStore('t')
+    store.saveView('A', NAME_JO)
+
     const sync = createGridUrlSync({
       api: createTimedGrid('in-call').api,
-      views: createViewStore('t')
+      views: store
     })
 
-    expect(sync.getSnapshot()).toBe(sync.getSnapshot())
+    const before = sync.getSnapshot()
+
+    // The store changes nothing for an unknown id
+    sync.deleteView('missing')
+
+    expect(sync.getSnapshot()).toBe(before)
+    expect(sync.getSnapshot().views).toBe(before.views)
+
+    sync.destroy()
+  })
+
+  it('deleteView of the active view clears the stored pointer', () => {
+    const store = createViewStore('t')
+    const grid = createTimedGrid('in-call', NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, views: store })
+
+    const view = sync.saveView('Mine')
+
+    expect(store.getActiveViewId()).toBe(view?.id)
+
+    sync.deleteView(view?.id ?? '')
+
+    expect(store.getActiveViewId()).toBeNull()
 
     sync.destroy()
   })

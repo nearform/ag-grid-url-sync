@@ -304,3 +304,75 @@ describe('createGridUrlSync: two view loads in one tick', () => {
     sync.destroy()
   })
 })
+
+// A grid that rebuilds the model sends no event for a second write of the
+// same view, so the URL is written when the first write lands (#223)
+describe('createGridUrlSync: loads in one tick on a grid that rebuilds the model', () => {
+  /** A store with A = NAME_JO and B = age 30 stored as a string */
+  function rebuiltSetup() {
+    const store = createViewStore('t')
+    const a = store.saveView('A', NAME_JO)
+
+    const b = store.saveView('B', {
+      age: { filterType: 'number', type: 'equals', filter: '30' }
+    })
+
+    store.persistActiveViewId(null)
+
+    const grid = createTimedGrid('deferred', {}, { normalize: true })
+
+    const sync = createGridUrlSync({
+      api: grid.api,
+      views: store,
+      history: 'push'
+    })
+
+    return { a, b, grid, sync }
+  }
+
+  it('B: one entry is written for B', async () => {
+    const { b, sync } = rebuiltSetup()
+    const length = window.history.length
+
+    sync.loadView(b.id)
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBe(b.id)
+    expect(window.history.length).toBe(length + 1)
+    expect(window.location.search).toBe('?f_age_eq=30')
+
+    sync.destroy()
+  })
+
+  it('B, B in one tick: one entry is written for B', async () => {
+    const { b, sync } = rebuiltSetup()
+    const length = window.history.length
+
+    sync.loadView(b.id)
+    sync.loadView(b.id)
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBe(b.id)
+    expect(window.history.length).toBe(length + 1)
+    expect(window.location.search).toBe('?f_age_eq=30')
+
+    sync.destroy()
+  })
+
+  it('A, B, B in one tick: one entry is written for B', async () => {
+    const { a, b, grid, sync } = rebuiltSetup()
+    const length = window.history.length
+
+    sync.loadView(a.id)
+    sync.loadView(b.id)
+    sync.loadView(b.id)
+    await tick()
+
+    expect(grid.api.getFilterModel()).toEqual(AGE_30)
+    expect(sync.getSnapshot().activeViewId).toBe(b.id)
+    expect(window.history.length).toBe(length + 1)
+    expect(window.location.search).toBe('?f_age_eq=30')
+
+    sync.destroy()
+  })
+})

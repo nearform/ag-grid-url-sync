@@ -452,7 +452,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   /**
    * Whether the grid shows the pending active view: its model, or (for the
    * grid's own change, source 'api') a model with the same URL form, which
-   * the grid rebuilt
+   * the grid rebuilt. In a queued echo, an earlier write with the same URL
+   * form can put its model into the view for one event. The view's own
+   * landing then writes its model over it.
    */
   function landsActive(
     view: ActiveView,
@@ -510,8 +512,21 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
     if (seen === 'queued' || shows(active.model)) return
 
+    const { id } = active
     active = null
-    persistPointer(null, startCall('grid', 'report'))
+    clearPointer(id, startCall('grid', 'report'))
+  }
+
+  /**
+   * Clears the stored pointer while it names this view: another tab can
+   * have moved it to another view. A storage error is an issue of the call.
+   */
+  function clearPointer(id: string, call: Call): void {
+    try {
+      if (views?.getActiveViewId() === id) views.persistActiveViewId(null)
+    } catch (cause) {
+      fail(call, cause, 'STORAGE_WRITE_FAILED')
+    }
   }
 
   /** Writes the stored pointer. A storage error is an issue of the call. */
@@ -744,7 +759,30 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       writeLanding(result.write, ownSource)
     }
 
+    if (result.queued && shownWhilePending(own)) {
+      writeLanding(own.kind, ownSource)
+    }
+
     publish()
+  }
+
+  /**
+   * Whether a pending model write has no earlier write left to wait for, and
+   * the grid shows its URL form. Then a queued echo writes the URL: a grid
+   * that rebuilds the model sends no event for a write that changes nothing,
+   * so the write's own event can never come. The record stays pending. If
+   * the event does come, the address bar has the URL already: no new entry.
+   */
+  function shownWhilePending(
+    record: OwnWrite | null
+  ): record is Extract<OwnWrite, { phase: 'pending' }> {
+    return (
+      record?.phase === 'pending' &&
+      record.kind !== 'url' &&
+      (record.waits?.length ?? 0) === 0 &&
+      record.acceptedUrlKey !== undefined &&
+      urlKey(liveModel() ?? {}) === record.acceptedUrlKey
+    )
   }
 
   /** The back or forward button: apply the new address bar */
@@ -871,6 +909,16 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
         fail(call, cause, 'STORAGE_WRITE_FAILED')
 
         return null
+      }
+
+      // A pending view load or restore is no longer the active view's write.
+      // Its landing is a change against the saved view. A pending URL write
+      // stays known, so its landing writes no history (#273).
+      if (
+        own?.phase === 'pending' &&
+        (own.kind === 'view' || own.kind === 'restore')
+      ) {
+        own = null
       }
 
       active = { ...pendingView(view.id, model), model }
@@ -1021,7 +1069,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
       // The URL wins over the stored view: clear the pointer, or the next
       // load restores a view that the user did not choose here
-      if (claims) persistPointer(null, startCall('url', 'report'))
+      if (claims && pointer) persistPointer(null, startCall('url', 'report'))
     }
 
     // The URL has no filter params, so the grid's own filters stay: show them

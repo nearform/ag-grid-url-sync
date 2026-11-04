@@ -35,7 +35,8 @@ import {
   classifyEvent,
   modelKey,
   settleWrite,
-  startWrite
+  startWrite,
+  takeOver
 } from './own-write.js'
 
 // createGridUrlSync (#221): the framework-free sync. It owns its grid
@@ -107,20 +108,57 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 }
 
 /**
- * Not public: createGridUrlSync, and the React hook's sync (#270).
- * `keptViewId` is the saved view that an earlier sync on the same grid
- * tracked. With `applyUrlOnCreate: false`, the sync restores it as it
- * restores a stored view on create: an own write of its full model, and a
- * URL write that replaces the entry. So a new sync for a new option, or a
- * StrictMode remount, adds no history entry.
+ * The own write of a sync, as it hands it to the next sync on the same grid
+ * (#276). `keys` names the options that the record's keys were made with.
+ */
+export interface Handover {
+  readonly own: OwnWrite
+  readonly source: IssueSource
+  readonly keys: string
+}
+
+/** The handover of each sync that createSync made. Not public. */
+const handovers = new WeakMap<GridUrlSync, () => Handover | null>()
+
+/**
+ * Not public: the latest own write of a sync, for the next sync on the same
+ * grid (#276). Null when there is none, or inside a call.
+ */
+export function handOver(sync: GridUrlSync): Handover | null {
+  return handovers.get(sync)?.() ?? null
+}
+
+/** How the next sync on the same grid starts (#270, #276). Not public. */
+export interface SyncStart {
+  /**
+   * The saved view that an earlier sync on the same grid tracked. With
+   * `applyUrlOnCreate: false`, the sync restores it as it restores a stored
+   * view on create: an own write of its full model, and a URL write that
+   * replaces the entry. So a new sync adds no history entry for it.
+   */
+  readonly keptViewId?: string | null | undefined
+  /**
+   * The own write of the earlier sync. With the same codec and
+   * maxValueLength, the sync takes it as its own: a late filterChanged of
+   * that write is its landing or its echo, not a user edit. With other
+   * options, the keys do not match, and the sync does not take it.
+   */
+  readonly handover?: Handover | null | undefined
+}
+
+/**
+ * Not public: createGridUrlSync, and the React hook's sync (#270), which
+ * starts a new sync on the same grid from the earlier one
  */
 export function createSync(
   options: GridUrlSyncOptions,
-  keptViewId: string | null = null
+  start: SyncStart = {}
 ): GridUrlSync {
   const { api, onIssue, views } = options
   const codec = codecOptions(options.codec ?? individual())
   const maxValueLength = options.maxValueLength ?? DEFAULT_CONFIG.maxValueLength
+  // The options that the keys of an own write depend on
+  const keys = JSON.stringify({ ...codec, maxValueLength })
 
   const listeners = new Set<() => void>()
   let status: SyncStatus = 'active'
@@ -423,6 +461,20 @@ export function createSync(
     const live = liveModel()
 
     return live ? modelKey(live) : null
+  }
+
+  /**
+   * The keys of the grid now in the form of the write kind, and for a model
+   * write its URL form. Null when the grid cannot be read.
+   */
+  function liveKeys(kind: WriteKind): { key: string; urlKey?: string } | null {
+    const key = liveKey(kind)
+
+    if (key === null) return null
+
+    if (kind === 'url') return { key }
+
+    return { key, urlKey: urlKey(liveModel() ?? {}) }
   }
 
   /** The key of a model's URL form: the filters that the codec makes of it */
@@ -1050,6 +1102,20 @@ export function createSync(
 
   refreshViews()
 
+  // The earlier sync's own write is this sync's own now (#276), while the
+  // grid agrees with it. Before the create's writes, so a write that it
+  // makes waits for that one.
+  if (start.handover?.keys === keys) {
+    own = takeOver(start.handover.own, liveKeys(start.handover.own.kind))
+    ownSource = start.handover.source
+  }
+
+  handovers.set(sync, () =>
+    own === null || own.phase === 'writing'
+      ? null
+      : { own, source: ownSource, keys }
+  )
+
   // The view that the stored pointer names. A pointer to a missing view is
   // the same as no pointer. Read before the listeners, so a store that
   // throws leaks none.
@@ -1102,6 +1168,8 @@ export function createSync(
       publish()
     }
   } else {
+    const keptViewId = start.keptViewId ?? null
+
     const kept =
       keptViewId === null
         ? undefined

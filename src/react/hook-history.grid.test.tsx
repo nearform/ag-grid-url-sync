@@ -1,5 +1,5 @@
-import { StrictMode } from 'react'
-import { renderHook, act } from '@testing-library/react'
+import { Activity, StrictMode } from 'react'
+import { render, renderHook, act } from '@testing-library/react'
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { FilterModel, GridApi } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
@@ -631,5 +631,118 @@ describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
 
     expect(result.current.activeViewId).toBe(view.id)
     expect(push).not.toHaveBeenCalled()
+  })
+})
+
+// A new sync on the same grid before the old sync's write lands (#276). The
+// late filterChanged is the old write's landing, not a user edit.
+describe.each(GRID_TIMINGS)(
+  'a new sync before a landing, %s grid (#276)',
+  timing => {
+    // The grid drops the filter of a column that it does not have, so the grid
+    // state and the address bar differ
+    const URL_WITH_DROPPED = '/?f_name_contains=jo&f_nosuch_contains=a'
+
+    test.each([undefined, 't'])(
+      'a StrictMode remount adds no entry (storageKey %s)',
+      async storageKey => {
+        window.history.replaceState(null, '', URL_WITH_DROPPED)
+        const push = vi.spyOn(window.history, 'pushState')
+        const { api } = createTimedGrid(timing)
+
+        renderSync(
+          {
+            api,
+            options: { history: 'push', autoApplyOnMount: true, storageKey }
+          },
+          true
+        )
+        await settle()
+        await settle()
+
+        expect(api.getFilterModel()).toMatchObject(NAME_JO)
+        expect(push).not.toHaveBeenCalled()
+        expect(window.location.search).toBe(
+          '?f_name_contains=jo&f_nosuch_contains=a'
+        )
+      }
+    )
+
+    test('a new sync for a non-codec option in the mount tick adds no entry', async () => {
+      window.history.replaceState(null, '', URL_WITH_DROPPED)
+      const push = vi.spyOn(window.history, 'pushState')
+      const { api } = createTimedGrid(timing)
+      const options = { history: 'push', autoApplyOnMount: true } as const
+
+      const { rerender } = renderSync({ api, options })
+      rerender({ api, options: { ...options, popstate: false } })
+      await settle()
+      await settle()
+
+      expect(api.getFilterModel()).toMatchObject(NAME_JO)
+      expect(push).not.toHaveBeenCalled()
+    })
+
+    test('a user edit after the landing still adds one entry', async () => {
+      window.history.replaceState(null, '', URL_WITH_DROPPED)
+      const { api, userEdit } = createTimedGrid(timing)
+
+      renderSync(
+        { api, options: { history: 'push', autoApplyOnMount: true } },
+        true
+      )
+      await settle()
+      await settle()
+      const length = window.history.length
+
+      act(() => userEdit(NAME_X))
+      await settle()
+      await settle()
+
+      expect(window.history.length).toBe(length + 1)
+      expect(params().get('f_name_contains')).toBe('x')
+    })
+  }
+)
+
+// React's <Activity> runs the effect cleanups while it hides the tree, and
+// the grid stays. A write can land while no sync listens (#276 review).
+describe.each(GRID_TIMINGS)('a hidden Activity, %s grid (#276)', timing => {
+  function Probe(props: Props) {
+    useAGGridUrlSync(props.api, props.options)
+
+    return null
+  }
+
+  function renderActivity(props: Props, mode: 'visible' | 'hidden') {
+    return (
+      <Activity mode={mode}>
+        <Probe {...props} />
+      </Activity>
+    )
+  }
+
+  test('a user edit after the tree shows again writes the URL', async () => {
+    window.history.replaceState(null, '', '/?f_name_contains=jo')
+    const { api, userEdit } = createTimedGrid(timing)
+
+    const props = {
+      api,
+      options: { history: 'push', autoApplyOnMount: true }
+    } as const
+
+    const view = render(renderActivity(props, 'visible'))
+    view.rerender(renderActivity(props, 'hidden'))
+    await settle()
+    await settle()
+    view.rerender(renderActivity(props, 'visible'))
+    await settle()
+
+    act(() => userEdit({}))
+    await settle()
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({})
+    expect(window.location.search).toBe('')
   })
 })

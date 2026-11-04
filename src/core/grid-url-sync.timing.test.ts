@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createGridUrlSync } from './grid-url-sync.js'
+import { createGridUrlSync, createSync, handOver } from './grid-url-sync.js'
 import {
   createTimedGrid,
   GRID_TIMINGS,
@@ -201,6 +201,137 @@ describe('createGridUrlSync: an app write while an own write is pending', () => 
     })
 
     expect(window.location.search).toBe('?f_name_contains=other')
+
+    sync.destroy()
+  })
+})
+
+// A new sync on the same grid takes the earlier sync's own write (#276)
+describe.each(GRID_TIMINGS)('createSync: a handover (%s timing)', timing => {
+  const DROPPED = '/?f_name_contains=jo&f_missing_contains=x'
+
+  /** Sync 1 applies a URL that the grid takes only in part, then goes */
+  function firstSync() {
+    const grid = createTimedGrid(timing)
+    const first = createGridUrlSync({ api: grid.api, history: 'push' })
+    first.applyUrl(href(DROPPED))
+    const handover = handOver(first)
+    first.destroy()
+
+    return { grid, handover }
+  }
+
+  it('a late event of the earlier write writes no history', async () => {
+    window.history.replaceState(null, '', DROPPED)
+    const { grid, handover } = firstSync()
+    const length = window.history.length
+
+    const sync = createSync(
+      { api: grid.api, history: 'push', applyUrlOnCreate: false },
+      { handover }
+    )
+
+    await tick()
+
+    expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+    expect(window.location.search).toBe(
+      '?f_name_contains=jo&f_missing_contains=x'
+    )
+    expect(window.history.length).toBe(length)
+
+    sync.destroy()
+  })
+
+  it('a user edit after the handover writes history', async () => {
+    window.history.replaceState(null, '', DROPPED)
+    const { grid, handover } = firstSync()
+
+    const sync = createSync(
+      { api: grid.api, history: 'push', applyUrlOnCreate: false },
+      { handover }
+    )
+
+    await tick()
+    const length = window.history.length
+
+    grid.userEdit(NAME_X)
+    await tick()
+
+    expect(window.location.search).toBe('?f_name_contains=x')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+})
+
+// The write can land, or the user can edit, while no sync listens: for
+// example while React's <Activity> hides the tree (#276 review)
+describe.each(GRID_TIMINGS)(
+  'createSync: a stale handover (%s timing)',
+  timing => {
+    it('a user edit after the write landed with no listener writes history', async () => {
+      const grid = createTimedGrid(timing)
+      const first = createGridUrlSync({ api: grid.api, history: 'push' })
+      window.history.replaceState(null, '', '/?f_name_contains=jo')
+      first.applyUrl()
+      const handover = handOver(first)
+      first.destroy()
+      await tick()
+
+      const sync = createSync(
+        { api: grid.api, history: 'push', applyUrlOnCreate: false },
+        { handover }
+      )
+
+      grid.userEdit({})
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual({})
+      expect(window.location.search).toBe('')
+
+      sync.destroy()
+    })
+
+    it('a user edit back to the write after an edit with no listener writes history', async () => {
+      const grid = createTimedGrid(timing)
+      const first = createGridUrlSync({ api: grid.api, history: 'push' })
+      first.applyUrl(href('/?f_name_contains=jo'))
+      await tick()
+      const handover = handOver(first)
+      first.destroy()
+      grid.userEdit(NAME_X)
+      await tick()
+
+      const sync = createSync(
+        { api: grid.api, history: 'push', applyUrlOnCreate: false },
+        { handover }
+      )
+
+      grid.userEdit(NAME_JO)
+      await tick()
+
+      expect(window.location.search).toBe('?f_name_contains=jo')
+
+      sync.destroy()
+    })
+  }
+)
+
+describe('handOver', () => {
+  it('gives null for a sync with no own write', () => {
+    const grid = createTimedGrid('in-call')
+    const sync = createGridUrlSync({ api: grid.api, applyUrlOnCreate: false })
+
+    expect(handOver(sync)).toBeNull()
+
+    sync.destroy()
+  })
+
+  it('gives null for a sync that createSync did not make', () => {
+    const grid = createTimedGrid('in-call')
+    const sync = createGridUrlSync({ api: grid.api })
+
+    expect(handOver({ ...sync })).toBeNull()
 
     sync.destroy()
   })

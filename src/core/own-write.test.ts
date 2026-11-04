@@ -3,6 +3,7 @@ import {
   classifyEvent,
   couldBeLanding,
   modelKey,
+  takeOver,
   settleWrite,
   startWrite,
   type AfterCall,
@@ -641,5 +642,66 @@ describe('modelKey', () => {
     expect(modelKey({ age: { filterType: 'number', filter: 30 } })).not.toBe(
       modelKey({ age: { filterType: 'number', filter: '30' } })
     )
+  })
+})
+
+// A new sync takes an earlier sync's record only while the grid agrees with
+// it (#276): the write can land, or the user can edit, while no sync listens
+describe('takeOver', () => {
+  const landed: OwnWrite = { phase: 'landed', kind: 'url', key: 'kjo' }
+
+  it('keeps a pending write while the grid shows the state from before', () => {
+    expect(takeOver(pending, { key: 'kx' })).toBe(pending)
+  })
+
+  it('lands a pending write that the grid shows now', () => {
+    expect(takeOver(pending, { key: 'kjo' })).toEqual({
+      phase: 'landed',
+      kind: 'url',
+      key: 'kjo'
+    })
+  })
+
+  it('lands a pending model write that the grid rebuilt', () => {
+    const model: OwnWrite = {
+      ...pending,
+      kind: 'view',
+      acceptedUrlKey: 'ujo'
+    }
+
+    expect(takeOver(model, { key: 'rebuilt', urlKey: 'ujo' })).toEqual({
+      phase: 'landed',
+      kind: 'view',
+      key: 'rebuilt'
+    })
+  })
+
+  it('drops a pending write when the grid shows another state', () => {
+    expect(takeOver(pending, { key: 'kother' })).toBeNull()
+  })
+
+  it('drops a pending write with no state from before that has not landed', () => {
+    expect(
+      takeOver({ ...pending, before: null, beforeKey: null }, { key: 'kx' })
+    ).toBeNull()
+  })
+
+  it('keeps a landed write while the grid shows it', () => {
+    expect(takeOver(landed, { key: 'kjo' })).toBe(landed)
+  })
+
+  it('drops a landed write when the grid changed', () => {
+    expect(takeOver(landed, { key: 'kother' })).toBeNull()
+  })
+
+  it('drops any write when the grid cannot be read', () => {
+    expect(takeOver(pending, null)).toBeNull()
+    expect(takeOver(landed, null)).toBeNull()
+  })
+
+  it('drops a write inside a call', () => {
+    expect(
+      takeOver({ phase: 'writing', kind: 'url' }, { key: 'kx' })
+    ).toBeNull()
   })
 })

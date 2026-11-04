@@ -1,18 +1,11 @@
 import { StrictMode } from 'react'
 import { renderHook, act } from '@testing-library/react'
-import {
-  describe,
-  test,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-  type MockInstance
-} from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { FilterModel } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import type { UseAGGridUrlSyncOptions } from './types.js'
-import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
+import * as classModule from '../core/ag-grid-url-sync.js'
+import { createViewStore } from '../core/view-storage.js'
 import {
   asGridApi,
   createGridListeners,
@@ -84,11 +77,8 @@ function renderStrict(props: Props) {
   return renderHook(useSync, { initialProps: props, wrapper: StrictMode })
 }
 
-let applyFromUrl: MockInstance<AGGridUrlSync['applyFromUrl']>
-
 beforeEach(() => {
   window.localStorage.clear()
-  applyFromUrl = vi.spyOn(AGGridUrlSync.prototype, 'applyFromUrl')
 })
 
 afterEach(() => {
@@ -129,7 +119,9 @@ describe('options after mount (#222)', () => {
     rerender({ grid, options: { autoApplyOnMount: true, paramPrefix: 'g_' } })
     await waitForEffects()
 
-    expect(applyFromUrl).toHaveBeenCalledOnce()
+    // The URL was applied one time, on mount
+    expect(writes).toBe(1)
+    expect(grid.api.setFilterModel).toHaveBeenCalledWith(ANN)
     expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
   })
 
@@ -223,7 +215,10 @@ describe('options after mount (#222)', () => {
 
     expect(oldGrid.listeners.count('gridPreDestroyed')).toBe(0)
     expect(newGrid.listeners.count('gridPreDestroyed')).toBe(1)
-    expect(applyFromUrl).toHaveBeenCalledTimes(2)
+    // The URL is applied to each grid. With the g_ prefix the URL has no
+    // filters, so the new grid is cleared.
+    expect(oldGrid.api.setFilterModel).toHaveBeenCalledWith(ANN)
+    expect(newGrid.api.setFilterModel).toHaveBeenCalledWith({})
   })
 
   test('makes one live sync in StrictMode', async () => {
@@ -297,7 +292,7 @@ describe('grid destroyed (#222)', () => {
       expect.objectContaining({ code: 'NOT_READY' }),
       'apply-url-filters'
     )
-    expect(applyFromUrl).not.toHaveBeenCalled()
+    expect(grid.api.setFilterModel).not.toHaveBeenCalled()
   })
 
   test('is ready again with a new grid after the old one is destroyed', async () => {
@@ -405,6 +400,59 @@ describe('final review (#222)', () => {
       expect.objectContaining({ code: 'NOT_READY' }),
       'apply-url-filters'
     )
-    expect(applyFromUrl).not.toHaveBeenCalled()
+    expect(grid.api.setFilterModel).not.toHaveBeenCalled()
+  })
+})
+
+// The hook's saved views come from createGridUrlSync (#223). With no sync,
+// `views` still shows what is in storage.
+describe('saved views on the core (#223)', () => {
+  const KEY = 'hook-sync-core-views'
+
+  /** Puts 2 views in the store, as an earlier session did */
+  function storeTwoViews(): void {
+    const store = createViewStore(KEY)
+    store.saveView('A', ANN)
+    store.saveView('B', {})
+  }
+
+  test('views lists the stored views before the grid is ready', async () => {
+    storeTwoViews()
+
+    const { result } = renderHook(() =>
+      useAGGridUrlSync(null, { storageKey: KEY })
+    )
+
+    await waitForEffects()
+
+    expect(result.current.views).toHaveLength(2)
+    expect(result.current.activeViewId).toBeNull()
+  })
+
+  test('views lists the stored views with enabledWhenReady: false', async () => {
+    storeTwoViews()
+
+    const { result } = renderSync({
+      grid: createGrid(),
+      options: { storageKey: KEY, enabledWhenReady: false }
+    })
+
+    await waitForEffects()
+
+    expect(result.current.views).toHaveLength(2)
+    expect(result.current.isReady).toBe(false)
+  })
+
+  test('makes no AGGridUrlSync', async () => {
+    const made = vi.spyOn(classModule, 'AGGridUrlSync')
+
+    renderSync({
+      grid: createGrid(ANN),
+      options: { storageKey: KEY, autoApplyOnMount: true }
+    })
+
+    await waitForEffects()
+
+    expect(made).not.toHaveBeenCalled()
   })
 })

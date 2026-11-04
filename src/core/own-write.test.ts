@@ -374,7 +374,8 @@ describe('a write that starts while an earlier write is pending', () => {
       expect(result).toEqual({
         own: { ...second, waits: [] },
         kind: 'echo',
-        write: 'view'
+        write: 'view',
+        queued: true
       })
     })
 
@@ -390,7 +391,8 @@ describe('a write that starts while an earlier write is pending', () => {
       expect(result).toEqual({
         own: { ...own, waits: [] },
         kind: 'echo',
-        write: 'url'
+        write: 'url',
+        queued: true
       })
     })
 
@@ -451,7 +453,8 @@ describe('waits as a queue', () => {
     expect(classifyEvent(own, api('ma'))).toEqual({
       own: { ...own, waits: ['ub'] },
       kind: 'echo',
-      write: 'view'
+      write: 'view',
+      queued: true
     })
   })
 
@@ -461,7 +464,8 @@ describe('waits as a queue', () => {
     expect(classifyEvent(own, api('mb'))).toEqual({
       own: { ...own, waits: [] },
       kind: 'echo',
-      write: 'view'
+      write: 'view',
+      queued: true
     })
   })
 
@@ -546,6 +550,75 @@ describe('couldBeLanding', () => {
     expect(
       couldBeLanding({ name: 'jo', age: 3 }, accepted, { name: 'x', age: 3 })
     ).toBe(true)
+  })
+  // A column that the grid rebuilt in its own form is the write's when its
+  // URL form is the write's (#223, the per-column rebuilt landing)
+  describe('with the URL form of each column', () => {
+    const rebuilt = { created: 'normalised', age: 3 }
+    const written = { created: 'hand built' }
+
+    const forms = (live: string) => ({
+      live: new Map([['created', live]]),
+      written: new Map([['created', 'u-created']])
+    })
+
+    it('is true for a column with the URL form of the write', () => {
+      expect(
+        couldBeLanding(rebuilt, written, { age: 3 }, forms('u-created'))
+      ).toBe(true)
+    })
+
+    it('is false for a column with another URL form', () => {
+      expect(
+        couldBeLanding(rebuilt, written, { age: 3 }, forms('u-other'))
+      ).toBe(false)
+    })
+
+    it('is false for a clear-all', () => {
+      expect(couldBeLanding({}, written, { age: 3 }, forms('u-created'))).toBe(
+        false
+      )
+    })
+  })
+})
+
+describe('classifyEvent with the URL form of each column (#223)', () => {
+  const model: OwnWrite = {
+    phase: 'pending',
+    kind: 'restore',
+    before: { age: 3 },
+    beforeKey: 'mage',
+    accepted: { created: 'hand built' },
+    acceptedKey: 'mhand',
+    acceptedUrlKey: 'u-created',
+    acceptedColumnUrlKeys: new Map([['created', 'u-created']])
+  }
+
+  it('lands a rebuilt column beside a column from before', () => {
+    const result = classifyEvent(model, {
+      key: 'mrebuilt-age',
+      live: { created: 'normalised', age: 3 },
+      source: 'api',
+      urlKey: 'u-created-age',
+      columnUrlKeys: new Map([
+        ['created', 'u-created'],
+        ['age', 'u-age']
+      ])
+    })
+
+    expect(result.kind).toBe('landing')
+  })
+
+  it('is a change for the user, in the same form', () => {
+    const result = classifyEvent(model, {
+      key: 'mrebuilt-age',
+      live: { created: 'normalised', age: 3 },
+      source: 'columnFilter',
+      urlKey: 'u-created-age',
+      columnUrlKeys: new Map([['created', 'u-created']])
+    })
+
+    expect(result.kind).toBe('change')
   })
 })
 

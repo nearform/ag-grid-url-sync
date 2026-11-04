@@ -41,11 +41,24 @@ export type OwnWrite =
       readonly accepted: Columns
       readonly acceptedKey: string
       readonly acceptedUrlKey?: string | undefined
+      readonly acceptedColumnUrlKeys?: ColumnUrlKeys | undefined
       readonly waits?: readonly string[] | undefined
     }
   | { readonly phase: 'landed'; readonly kind: WriteKind; readonly key: string }
 
 type Pending = Extract<OwnWrite, { phase: 'pending' }>
+
+/**
+ * The URL form of each column of a model, by column id. A column that the
+ * URL cannot hold (a set filter) has no entry.
+ */
+export type ColumnUrlKeys = ReadonlyMap<string, string>
+
+/** The URL form of each column of the grid now and of the write */
+export interface ColumnUrlForms {
+  readonly live: ColumnUrlKeys
+  readonly written: ColumnUrlKeys
+}
 
 export interface AfterCall {
   readonly kind: WriteKind
@@ -59,6 +72,8 @@ export interface AfterCall {
   readonly acceptedKey: string
   /** A model write: the URL form of `accepted` */
   readonly acceptedUrlKey?: string | undefined
+  /** A model write: the URL form of each column of `accepted` */
+  readonly acceptedColumnUrlKeys?: ColumnUrlKeys | undefined
 }
 
 export interface Settled {
@@ -70,6 +85,11 @@ export interface Classified {
   readonly own: OwnWrite | null
   readonly kind: EventKind
   readonly write: WriteKind | null
+  /**
+   * An echo in which the grid lands an earlier write from `waits`: the grid
+   * passes through the state of that write
+   */
+  readonly queued?: boolean | undefined
 }
 
 /**
@@ -133,6 +153,7 @@ export function settleWrite(own: OwnWrite | null, call: AfterCall): Settled {
       accepted: call.accepted,
       acceptedKey: call.acceptedKey,
       acceptedUrlKey: call.acceptedUrlKey,
+      acceptedColumnUrlKeys: call.acceptedColumnUrlKeys,
       waits
     },
     landed: false
@@ -149,7 +170,8 @@ export type EventKind = 'echo' | 'landing' | 'change'
 
 /**
  * A filterChanged outside the call. `key` and `live` are in the form of
- * `own.kind`. For a pending model write, `urlKey` is the URL form of `live`.
+ * `own.kind`. For a pending model write, `urlKey` is the URL form of `live`,
+ * and `columnUrlKeys` the URL form of each of its columns.
  */
 export function classifyEvent(
   own: OwnWrite | null,
@@ -158,6 +180,7 @@ export function classifyEvent(
     live: Columns
     source: string | undefined
     urlKey?: string | undefined
+    columnUrlKeys?: ColumnUrlKeys | undefined
   }
 ): Classified {
   if (own?.phase === 'landed' && event.key === own.key) {
@@ -188,9 +211,14 @@ export function classifyEvent(
     // model write is a model that the grid rebuilt (its own key order, a
     // number for a string). A user's edit in the grid's UI has another
     // source, so it is a change.
+    const forms =
+      own.acceptedColumnUrlKeys && event.columnUrlKeys
+        ? { live: event.columnUrlKeys, written: own.acceptedColumnUrlKeys }
+        : undefined
+
     if (
       event.source === 'api' &&
-      (couldBeLanding(event.live, own.accepted, own.before) ||
+      (couldBeLanding(event.live, own.accepted, own.before, forms) ||
         rebuiltLanding(own, event))
     ) {
       return landing(own, event.key)
@@ -237,7 +265,7 @@ function afterWait(
     return landing(next, event.key)
   }
 
-  return { own: next, kind: 'echo', write: own.kind }
+  return { own: next, kind: 'echo', write: own.kind, queued: true }
 }
 
 /**
@@ -280,17 +308,28 @@ function stableJson(value: Columns | Columns[string]): string {
  * only part of the write: each column has the write's value, or the value
  * that the grid had before. At least one column must be the write's, so a
  * clear-all or another value is a change, not the landing (#274 review).
+ *
+ * With `forms`, a column that the grid rebuilt is the write's too when its
+ * URL form is the URL form of the write's column (#223).
  */
 export function couldBeLanding(
   live: Columns,
   accepted: Columns,
-  before: Columns | null
+  before: Columns | null,
+  forms?: ColumnUrlForms
 ): boolean {
   const columns = Object.keys(live)
 
+  const sameUrlForm = (colId: string): boolean => {
+    const written = forms?.written.get(colId)
+
+    return written !== undefined && forms?.live.get(colId) === written
+  }
+
   const fromWrite = (colId: string): boolean =>
     Object.hasOwn(accepted, colId) &&
-    stableJson(live[colId]) === stableJson(accepted[colId])
+    (stableJson(live[colId]) === stableJson(accepted[colId]) ||
+      sameUrlForm(colId))
 
   const fromBefore = (colId: string): boolean =>
     before !== null &&

@@ -1,5 +1,6 @@
 import { IDLE_SNAPSHOT } from '../core/grid-url-sync.js'
 import type { GridUrlSync, GridUrlSyncSnapshot } from '../core/types.js'
+import type { GridView } from '../core/view-storage.js'
 
 // The hook makes its sync in an effect, not during render, so React needs a
 // store that exists before the sync does (#222). The holder is that store: its
@@ -11,15 +12,29 @@ export interface SyncHolder {
   set(sync: GridUrlSync | null): void
   /** The current sync, or null */
   get(): GridUrlSync | null
+  /**
+   * The stored views to show while there is no sync (#223). The listeners
+   * hear of it only when no sync is in the holder and the views changed.
+   */
+  setIdleViews(views: readonly GridView[]): void
   subscribe(listener: () => void): () => void
-  /** The current sync's snapshot, or IDLE_SNAPSHOT */
+  /** The current sync's snapshot, or the idle snapshot */
   getSnapshot(): GridUrlSyncSnapshot
+}
+
+/**
+ * Two view lists with the same content. Compares all of it: a save under the
+ * same name keeps the id, and two saves in one millisecond keep updatedAt.
+ */
+function sameViews(a: readonly GridView[], b: readonly GridView[]): boolean {
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b)
 }
 
 export function createSyncHolder(): SyncHolder {
   const listeners = new Set<() => void>()
   let current: GridUrlSync | null = null
   let stopForwarding: (() => void) | null = null
+  let idle: GridUrlSyncSnapshot = IDLE_SNAPSHOT
 
   const notify = (): void => {
     for (const listener of Array.from(listeners)) listener()
@@ -38,6 +53,15 @@ export function createSyncHolder(): SyncHolder {
       notify()
     },
     get: () => current,
+    setIdleViews(views) {
+      if (sameViews(idle.views, views)) return
+
+      idle = views.length
+        ? Object.freeze({ ...IDLE_SNAPSHOT, views: Object.freeze([...views]) })
+        : IDLE_SNAPSHOT
+
+      if (!current) notify()
+    },
     subscribe(listener) {
       listeners.add(listener)
 
@@ -45,6 +69,6 @@ export function createSyncHolder(): SyncHolder {
         listeners.delete(listener)
       }
     },
-    getSnapshot: () => current?.getSnapshot() ?? IDLE_SNAPSHOT
+    getSnapshot: () => current?.getSnapshot() ?? idle
   }
 }

@@ -123,4 +123,65 @@ describe('createSyncHolder', () => {
     expect(holder.subscribe).toBe(subscribe)
     expect(holder.getSnapshot).toBe(getSnapshot)
   })
+
+  // With no sync, the hook still shows the stored views (#223)
+  describe('idle views', () => {
+    const VIEW = Object.freeze({
+      id: 'a',
+      name: 'A',
+      filterModel: {},
+      createdAt: 1,
+      updatedAt: 1
+    })
+
+    it('gives the idle views with no sync', () => {
+      const holder = createSyncHolder()
+      const listener = vi.fn()
+      holder.subscribe(listener)
+
+      holder.setIdleViews([VIEW])
+
+      expect(holder.getSnapshot()).toMatchObject({
+        status: 'idle',
+        views: [VIEW],
+        activeViewId: null
+      })
+      expect(listener).toHaveBeenCalledOnce()
+    })
+
+    it('keeps the snapshot for the same views', () => {
+      const holder = createSyncHolder()
+      holder.setIdleViews([VIEW])
+      const first = holder.getSnapshot()
+      const listener = vi.fn()
+      holder.subscribe(listener)
+
+      holder.setIdleViews([{ ...VIEW }])
+
+      expect(holder.getSnapshot()).toBe(first)
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('gives IDLE_SNAPSHOT for no views', () => {
+      const holder = createSyncHolder()
+      holder.setIdleViews([VIEW])
+
+      holder.setIdleViews([])
+
+      expect(holder.getSnapshot()).toBe(IDLE_SNAPSHOT)
+    })
+
+    it('gives the snapshot of the sync while there is one', () => {
+      const holder = createSyncHolder()
+      const fake = createFakeSync()
+      holder.set(fake.sync)
+      const listener = vi.fn()
+      holder.subscribe(listener)
+
+      holder.setIdleViews([VIEW])
+
+      expect(holder.getSnapshot()).toBe(fake.snapshot)
+      expect(listener).not.toHaveBeenCalled()
+    })
+  })
 })

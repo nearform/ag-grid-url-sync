@@ -170,6 +170,33 @@ describe.each(GRID_TIMINGS)(
       sync.destroy()
     })
 
+    // A URL wins only with a filter that it gives, as in the 0.5.1 hook. A
+    // param that gives no filter is not a claim on the grid.
+    it.each([
+      ['a prefixed param that the parser rejects', '/?f_name_regex=abc'],
+      [
+        'a prefixed param over maxValueLength',
+        `/?f_name_contains=${'x'.repeat(250)}`
+      ],
+      ['a grouped param that does not decode', '/?grid_filters=recent']
+    ])(
+      '%s restores the stored view and keeps the pointer',
+      async (_name, path) => {
+        const { store, a } = seed()
+        store.persistActiveViewId(a.id)
+        window.history.replaceState(null, '', path)
+
+        const { grid, sync } = create(timing, store)
+        await tick()
+
+        expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+        expect(sync.getSnapshot().activeViewId).toBe(a.id)
+        expect(store.getActiveViewId()).toBe(a.id)
+
+        sync.destroy()
+      }
+    )
+
     it('a pointer to a missing view is ignored', async () => {
       const { store } = seed()
       store.persistActiveViewId('missing')

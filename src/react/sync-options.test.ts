@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import type { GridApi } from 'ag-grid-community'
 import { gridUrlSyncOptions } from './sync-options.js'
 import { codecOptions } from '../core/codecs.js'
+import { createViewStore } from '../core/view-storage.js'
 
 // The options of the hook's sync (#222): the createGridUrlSync options made
 // from the old config
@@ -53,5 +54,18 @@ describe('gridUrlSyncOptions', () => {
       applyUrlOnCreate: false,
       throwOnError: false
     })
+  })
+
+  it('has no views by default', () => {
+    expect(gridUrlSyncOptions(gridApi, {}, onIssue).views).toBeUndefined()
+  })
+
+  it('passes the view store and applyUrlOnCreate (#223)', () => {
+    const views = createViewStore('sync-options-test')
+    const result = gridUrlSyncOptions(gridApi, {}, onIssue, views, true)
+
+    expect(result.views).toBe(views)
+    expect(result.applyUrlOnCreate).toBe(true)
+    expect(result.history).toBe('none')
   })
 })

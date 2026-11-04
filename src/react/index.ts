@@ -14,5 +14,6 @@ export type {
   ColumnFilter,
   FilterOperation,
   AGGridUrlSyncConfig,
-  GridApi
+  GridApi,
+  HistoryMode
 } from '../core/types.js'

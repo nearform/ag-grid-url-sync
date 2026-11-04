@@ -47,7 +47,7 @@ describe('gridUrlSyncOptions', () => {
     expect(result.onIssue).toBe(onIssue)
   })
 
-  it('never writes history and never applies on create', () => {
+  it('by default never writes history and never applies on create', () => {
     expect(gridUrlSyncOptions(gridApi, {}, onIssue)).toMatchObject({
       history: 'none',
       popstate: false,
@@ -67,5 +67,18 @@ describe('gridUrlSyncOptions', () => {
     expect(result.views).toBe(views)
     expect(result.applyUrlOnCreate).toBe(true)
     expect(result.history).toBe('none')
+  })
+
+  it('passes the history and popstate options (#270)', () => {
+    const history = (): void => {}
+
+    const result = gridUrlSyncOptions(gridApi, {}, onIssue, undefined, false, {
+      history,
+      popstate: undefined
+    })
+
+    expect(result.history).toBe(history)
+    expect(result.popstate).toBeUndefined()
+    expect(result.throwOnError).toBe(false)
   })
 })

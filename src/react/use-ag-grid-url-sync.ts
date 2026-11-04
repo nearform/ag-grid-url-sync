@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GridApi } from 'ag-grid-community'
 import { useSyncExternalStore } from 'use-sync-external-store/shim'
-import { createGridUrlSync, IDLE_SNAPSHOT } from '../core/grid-url-sync.js'
+import { createSync, IDLE_SNAPSHOT } from '../core/grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { generateUrl } from '../core/url-generator.js'
 import { getFilterModel } from '../core/grid-integration.js'
@@ -31,7 +31,7 @@ import type {
   UseAGGridUrlSyncReturn
 } from './types.js'
 import { createSyncHolder } from './sync-holder.js'
-import { gridUrlSyncOptions } from './sync-options.js'
+import { gridUrlSyncOptions, type AddressBarOptions } from './sync-options.js'
 
 /** The empty list, one object so that an empty state keeps its identity */
 const NO_ISSUES: readonly URLSyncError[] = []
@@ -39,11 +39,15 @@ const NO_ISSUES: readonly URLSyncError[] = []
 /** The snapshot of a server render: no grid and no sync yet (#222) */
 const getServerSnapshot = (): GridUrlSyncSnapshot => IDLE_SNAPSHOT
 
-/** The codes of a stored pointer write that fails */
-const STORAGE_CODES: ReadonlySet<IssueCode> = new Set([
+/**
+ * The codes of a write that fails after a grid change: the stored pointer,
+ * or the address bar (#270)
+ */
+const WRITE_CODES: ReadonlySet<IssueCode> = new Set([
   'STORAGE_WRITE_FAILED',
   'STORAGE_FULL',
-  'STORAGE_UNAVAILABLE'
+  'STORAGE_UNAVAILABLE',
+  'HISTORY_WRITE_FAILED'
 ])
 
 /** The codes that stop a view load before it changes the grid */
@@ -73,11 +77,16 @@ interface Session {
   applyIssues: readonly URLSyncError[]
 }
 
-/** The live sync, and the URL options and store that it was made for */
+/**
+ * The live sync, the options and store that it was made for, and the removal
+ * of the hook's popstate listeners
+ */
 interface LiveSync {
   sync: GridUrlSync
   urlOptions: AGGridUrlSyncConfig
+  addressBar: AddressBarOptions
   viewStore: ViewStore | null
+  stopPopstate: () => void
 }
 
 function newSession(
@@ -145,8 +154,12 @@ function filtersAsFormat(
   }).value
 }
 
+function hasWindow(): boolean {
+  return typeof window !== 'undefined'
+}
+
 function pageUrl(): string {
-  return typeof window === 'undefined' ? '' : window.location.href
+  return hasWindow() ? window.location.href : ''
 }
 
 /**
@@ -165,6 +178,8 @@ export function useAGGridUrlSync(
     enabledWhenReady = true,
     onError,
     storageKey,
+    history = 'none',
+    popstate,
     // Only decides whether the hook throws in render (#229). The core and the
     // hook's own parse calls never get it, so they always report and keep the
     // valid filters.
@@ -216,12 +231,37 @@ export function useAGGridUrlSync(
   // them through this ref, so a new callback on a later render is used.
   const callbacksRef = useRef({
     onError,
-    onParseError: coreOptions.onParseError
+    onParseError: coreOptions.onParseError,
+    history
   })
 
   useEffect(() => {
-    callbacksRef.current = { onError, onParseError: coreOptions.onParseError }
+    callbacksRef.current = {
+      onError,
+      onParseError: coreOptions.onParseError,
+      history
+    }
   })
+
+  // The address-bar options (#270). The memo keys on the mode, so a new
+  // function on each render makes no new sync: the sync calls the latest one.
+  const historyKind = history instanceof Function ? 'function' : history
+  const followsPopstate = popstate ?? historyKind === 'push'
+
+  const addressBar = useMemo(
+    (): AddressBarOptions => ({
+      history:
+        historyKind === 'function'
+          ? url => {
+              const write = callbacksRef.current.history
+
+              if (write instanceof Function) write(url)
+            }
+          : historyKind,
+      popstate: followsPopstate
+    }),
+    [historyKind, followsPopstate]
+  )
 
   // The hook operation that is calling the sync. An issue that the sync
   // reports for that call gets it as its context.
@@ -277,6 +317,7 @@ export function useAGGridUrlSync(
   const dropSync = useCallback(
     (current: LiveSync): void => {
       sessionRef.current.activeViewId = current.sync.getSnapshot().activeViewId
+      current.stopPopstate()
       current.sync.destroy()
       holder.set(null)
       liveSyncRef.current = null
@@ -346,6 +387,7 @@ export function useAGGridUrlSync(
       current &&
       !newGrid &&
       current.urlOptions === urlOptions &&
+      current.addressBar === addressBar &&
       current.viewStore === viewStore &&
       !autoApply
     ) {
@@ -377,30 +419,79 @@ export function useAGGridUrlSync(
 
     if (landsOnCreate) session.urlApplied = true
 
-    // The data issues of the landing on create
-    const landingIssues: URLSyncError[] = []
+    // The data issues of the landing on create, then of each back-button
+    // apply
+    let urlIssues: URLSyncError[] = []
+
+    // What the sync's 'url' issues come from: the landing on create, a
+    // back-button apply, or a later landing of the create's write
+    let urlPhase: 'create' | 'popstate' | 'live' = 'create'
+
+    // The grid still shows the last sync's view: the new sync restores it, so
+    // its write replaces the history entry (#270). Not a view that another
+    // tab deleted: 0.5.1 made no call to the store here.
+    const keptView = autoApply ? null : kept
+
+    // The context of the create's 'url' issues: an auto-apply, or the
+    // restore of the kept view, which is part of the new sync's start
+    const createContext =
+      keptView === null ? 'auto-apply-filters' : 'initialization'
 
     // A grid-read issue gets the context of the state update, as before. A
-    // pointer write that fails after a grid change gets 'filter-change', as
-    // in 0.5.1. The hook's sync gets a 'url' issue only from its landing on
-    // create.
+    // pointer or address-bar write that fails after a grid change gets
+    // 'filter-change', as in 0.5.1.
     const onIssue = ({ issue, source }: IssueEvent): void => {
       if (source === 'api' && LOAD_STOP_CODES.has(issue.code)) {
         loadStoppedRef.current = true
       }
 
-      if (source === 'url' && isDataIssue(issue)) landingIssues.push(issue)
+      if (source === 'url' && urlPhase !== 'live' && isDataIssue(issue)) {
+        urlIssues.push(issue)
+      }
+
+      // An address-bar write that fails is a filter-change failure, also
+      // at a landing of the sync's own write (#270)
+      const urlContext =
+        urlPhase === 'popstate'
+          ? 'popstate'
+          : issue.code === 'HISTORY_WRITE_FAILED'
+            ? 'filter-change'
+            : createContext
 
       reportFailure(
         issue,
         source === 'grid'
-          ? STORAGE_CODES.has(issue.code)
+          ? WRITE_CODES.has(issue.code)
             ? 'filter-change'
             : 'update-state'
           : source === 'url'
-            ? 'auto-apply-filters'
+            ? urlContext
             : contextRef.current
       )
+    }
+
+    // The sync applies the URL on back and forward. The hook's listeners
+    // run before and after it (in the order they were added), so the issues
+    // of that apply get their context and become the grid's apply issues.
+    const beforePopstate = (): void => {
+      urlPhase = 'popstate'
+      urlIssues = []
+    }
+
+    const afterPopstate = (): void => {
+      urlPhase = 'live'
+      keepApplyIssues(urlIssues)
+    }
+
+    const listens = addressBar.popstate && hasWindow()
+
+    if (listens) window.addEventListener('popstate', beforePopstate)
+
+    const stopPopstate = (): void => {
+      if (!listens) return
+
+      window.removeEventListener('popstate', beforePopstate)
+      window.removeEventListener('popstate', afterPopstate)
     }
 
     let sync: GridUrlSync
@@ -412,23 +503,39 @@ export function useAGGridUrlSync(
     holder.setCarriedIssues(session.applyIssues)
 
     try {
-      sync = createGridUrlSync(
+      sync = createSync(
         gridUrlSyncOptions(
           live,
           urlOptions,
           onIssue,
           viewStore ?? undefined,
-          landsOnCreate
-        )
+          landsOnCreate,
+          addressBar
+        ),
+        keptView
       )
     } catch (error) {
+      stopPopstate()
       reportFailure(error, 'initialization')
 
       return
     }
 
+    // A grid that is already destroyed follows no back button
+    if (sync.getSnapshot().status !== 'active') {
+      stopPopstate()
+    } else if (listens) {
+      window.addEventListener('popstate', afterPopstate)
+    }
+
     holder.set(sync)
-    liveSyncRef.current = { sync, urlOptions, viewStore }
+    liveSyncRef.current = {
+      sync,
+      urlOptions,
+      addressBar,
+      viewStore,
+      stopPopstate
+    }
 
     if (sync.getSnapshot().status === 'active') {
       if (autoApply) contextRef.current = 'auto-apply-filters'
@@ -440,7 +547,7 @@ export function useAGGridUrlSync(
       ) {
         // The landing restored the stored view or applied the URL. A landing
         // that applies nothing keeps the apply issues.
-        keepApplyIssues(landingIssues)
+        keepApplyIssues(urlIssues)
       } else if (autoApply && !viewStore) {
         // No saved views: the URL is the only source, so apply it always. An
         // empty URL clears the grid, as in 0.5.1 (D4).
@@ -453,20 +560,16 @@ export function useAGGridUrlSync(
         if (sync.getSnapshot().views.some(view => view.id === pointer)) {
           loadAndKeep(sync, pointer)
         }
-      } else if (
-        kept !== null &&
-        !autoApply &&
-        sync.getSnapshot().views.some(view => view.id === kept)
-      ) {
-        // The grid still shows the view: the new sync tracks it too. Not a
-        // view that another tab deleted: 0.5.1 made no call to the store here.
-        sync.loadView(kept)
       }
     }
+
+    // The create is done: a later 'url' issue is from a landing of its write
+    urlPhase = 'live'
   }, [
     gridApi,
     enabledWhenReady,
     urlOptions,
+    addressBar,
     viewStore,
     storageKey,
     autoApplyOnMount,

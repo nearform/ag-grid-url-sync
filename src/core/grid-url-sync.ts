@@ -103,6 +103,21 @@ function sameIssues(
  * ```
  */
 export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
+  return createSync(options)
+}
+
+/**
+ * Not public: createGridUrlSync, and the React hook's sync (#270).
+ * `keptViewId` is the saved view that an earlier sync on the same grid
+ * tracked. With `applyUrlOnCreate: false`, the sync restores it as it
+ * restores a stored view on create: an own write of its full model, and a
+ * URL write that replaces the entry. So a new sync for a new option, or a
+ * StrictMode remount, adds no history entry.
+ */
+export function createSync(
+  options: GridUrlSyncOptions,
+  keptViewId: string | null = null
+): GridUrlSync {
   const { api, onIssue, views } = options
   const codec = codecOptions(options.codec ?? individual())
   const maxValueLength = options.maxValueLength ?? DEFAULT_CONFIG.maxValueLength
@@ -1087,8 +1102,17 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       publish()
     }
   } else {
-    readGrid()
-    publish()
+    const kept =
+      keptViewId === null
+        ? undefined
+        : viewList.find(view => view.id === keptViewId)
+
+    if (kept) {
+      restore(kept)
+    } else {
+      readGrid()
+      publish()
+    }
   }
 
   return sync

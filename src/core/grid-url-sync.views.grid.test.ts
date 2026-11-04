@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { createGridUrlSync } from './grid-url-sync.js'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createGridUrlSync, createSync } from './grid-url-sync.js'
 import { createViewStore } from './view-storage.js'
 import { createRealGrid, useRealLocation } from '../test-helpers.js'
 
@@ -77,6 +77,54 @@ describe('createGridUrlSync: views on a real grid', () => {
     expect(sync.getSnapshot().activeViewId).toBeNull()
     expect(store.getActiveViewId()).toBeNull()
     expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+    api.destroy()
+  })
+})
+
+// The hook's sync for a grid that an earlier sync left (#270)
+describe('createSync: a kept view', () => {
+  it('restores the kept view with replace, not as a view load', async () => {
+    const store = createViewStore('t')
+    const a = store.saveView('A', NAME_JO)
+    store.persistActiveViewId(null)
+    window.history.replaceState(null, '', '/?f_age_gt=5')
+    const push = vi.spyOn(window.history, 'pushState')
+    const api = createRealGrid()
+
+    const sync = createSync(
+      { api, views: store, history: 'push', applyUrlOnCreate: false },
+      a.id
+    )
+
+    await settle()
+
+    // The URL is not applied, and the stored pointer stays
+    expect(api.getFilterModel()).toEqual(NAME_JO)
+    expect(sync.getSnapshot().activeViewId).toBe(a.id)
+    expect(store.getActiveViewId()).toBeNull()
+    expect(window.location.search).toBe('?f_name_contains=jo')
+    expect(push).not.toHaveBeenCalled()
+
+    push.mockRestore()
+    sync.destroy()
+    api.destroy()
+  })
+
+  it('reads the grid for a kept view that is gone', async () => {
+    const store = createViewStore('t')
+    const api = createRealGrid()
+    api.setFilterModel(AGE_GT_5)
+    await settle()
+
+    const sync = createSync(
+      { api, views: store, history: 'push', applyUrlOnCreate: false },
+      'gone'
+    )
+
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(sync.getSnapshot().url).toContain('f_age_gt=5')
 
     sync.destroy()
     api.destroy()

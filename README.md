@@ -505,7 +505,7 @@ The library never writes to the console. Each problem goes to one callback, and 
 | `NOT_READY`                                                   | A hook operation called before the grid is ready               | `onError` (React)                                                                                        |
 | `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | A saved view operation that cannot run                         | `onError` (React)                                                                                        |
 | `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | Browser storage for saved views failed                         | `onError` (React)                                                                                        |
-| `HISTORY_WRITE_FAILED`                                        | `createGridUrlSync` could not write the address bar            | `onIssue`                                                                                                |
+| `HISTORY_WRITE_FAILED`                                        | The sync could not write the address bar                       | `onIssue` in the core, `onError` in the React hook                                                       |
 
 Each error has a `severity`: `'warning'` for the first seven rows, `'error'` for the others. `createGridUrlSync` sends every issue to `onIssue`; the callbacks in the table are for the deprecated API and the React hook.
 
@@ -558,7 +558,7 @@ return issues.length > 0 ? (
 
 Like TanStack Query, the library can throw an issue instead of reporting it. Set `throwOnError: true` to throw every issue, or give a function that picks issues. In the core, a thrown issue does not go to `onParseError`, and the first one stops the call. In React, the hook keeps reporting each issue to `onParseError` one time, and then throws the picked issue during render, so an error boundary catches it. The default is `false`.
 
-Only `createGridUrlSync` with `history` changes the address bar. Before an error boundary resets, remove the bad param from the URL (or the filter from the grid), or the same issue is thrown again.
+Only `createGridUrlSync` or the hook with `history` changes the address bar. Before an error boundary resets, remove the bad param from the URL (or the filter from the grid), or the same issue is thrown again.
 
 ```tsx
 useAGGridUrlSync(gridApi, {
@@ -697,11 +697,28 @@ const {
 
 The hook runs on [`createGridUrlSync`](#vanilla-js-creategridurlsync) and reads its state with `useSyncExternalStore`:
 
-- **Options can change after mount.** A change to `paramPrefix`, `maxValueLength`, `serialization`, `groupedParam` or `format` makes a new sync. The grid keeps its filters, and `currentUrl` uses the new format. The URL is not applied again. A new options object with the same values, or a new callback, makes no new sync.
+- **Options can change after mount.** A change to `paramPrefix`, `maxValueLength`, `serialization`, `groupedParam`, `format`, `history` (the mode) or `popstate` makes a new sync. The grid keeps its filters, and `currentUrl` uses the new format. The URL is not applied again. A new options object with the same values, or a new callback, makes no new sync.
 - **The returned object is stable.** It is the same object across renders until a value in it changes.
 - **A grid-read issue goes to `onParseError` one time** while it stays. It is reported again only after it goes away and comes back.
 - **After AG Grid destroys the grid**, `isReady` is `false` and `currentUrl` is `''`, as with no grid. `applyUrlFilters`, `clearFilters`, `applyFilters`, `saveView` and `loadView` then report `NOT_READY` to `onError`. `shareUrl`, `getQueryParams` and `getFiltersAsFormat` return their fallback values.
-- **The hook does not write to the address bar.** Use `currentUrl` or `shareUrl()` to update it.
+- **The hook writes to the address bar only with `history`.** With the default `'none'`, use `currentUrl` or `shareUrl()` to update it.
+
+#### Address bar (`history` and `popstate`)
+
+The hook takes the `history` and `popstate` options of [`createGridUrlSync`](#vanilla-js-creategridurlsync), so a React app gets the same address-bar sync with one option:
+
+```tsx
+// Each filter change adds a history entry, and back and forward apply the URL
+useAGGridUrlSync(gridApi, { autoApplyOnMount: true, history: 'push' })
+
+// Or give the URL to a router. A new function on each render is fine.
+useAGGridUrlSync(gridApi, { history: url => router.replace(url) })
+```
+
+- A user edit, `applyFilters`, `clearFilters` and `loadView` write the URL. `'push'` adds one entry for each of them.
+- A URL apply writes nothing, because the URL holds those filters already: auto-apply on mount, `applyUrlFilters` and the back button.
+- The restore of a stored view on mount replaces the entry. A new sync for an option change, or a `StrictMode` remount, adds no entry.
+- `popstate` is `true` by default with `'push'`. On back or forward, the hook applies the new URL. The view is then no longer active, and the issues of that apply are in `issues`. A grid error goes to `onError` with the context `'popstate'`. A failed address-bar write is `HISTORY_WRITE_FAILED`, to `onError` with the context `'filter-change'`.
 
 #### Hook Options
 
@@ -712,6 +729,10 @@ interface UseAGGridUrlSyncOptions {
   maxValueLength?: number // Default: 200
   onParseError?: (error: Error) => void
   throwOnError?: boolean | ((issue: URLSyncError) => boolean) // Default: false
+
+  // Address bar (see Address bar above)
+  history?: 'none' | 'replace' | 'push' | ((url: string) => void) // Default: 'none'
+  popstate?: boolean // Default: true with 'push', else false
 
   // React-specific options
   autoApplyOnMount?: boolean // Default: false

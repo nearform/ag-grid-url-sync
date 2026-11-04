@@ -263,7 +263,7 @@ const sync = createGridUrlSync({
   }
 })
 
-// The current state: { status, url, hasFilters, issues }
+// The current state: { status, url, hasFilters, issues, views, activeViewId }
 const { url, hasFilters } = sync.getSnapshot()
 
 // Called after each change of the snapshot. Returns an unsubscribe function.
@@ -271,21 +271,27 @@ const unsubscribe = sync.subscribe(() => render(sync.getSnapshot()))
 
 sync.applyUrl('https://app.com/data?f_name_contains=jo') // { issues }
 sync.getUrl('https://app.com/share') // a share link for the grid's filters
+sync.applyFilters({
+  name: { filterType: 'text', type: 'contains', filter: 'jo' }
+}) // { issues }
 sync.destroy()
 ```
 
-| Option             | Default                   | Meaning                                                                                                                                                                                          |
-| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `api`              | (required)                | The AG Grid API                                                                                                                                                                                  |
-| `codec`            | `individual()`            | How the filters are written in the URL. `individual({ prefix })` writes one param for each filter; `grouped({ param, format })` writes all filters in one param                                  |
-| `maxValueLength`   | `200`                     | The longest text value that is kept                                                                                                                                                              |
-| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL, for a router. The page's other params, the `#hash` and `history.state` stay |
-| `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                         |
-| `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace   |
-| `throwOnError`     | `false`                   | Throw an issue instead of reporting it, in `applyUrl` and `getUrl`. `createGridUrlSync` and its listeners never throw                                                                            |
-| `onIssue`          | none                      | Gets each issue one time, as `{ issue, source }`. `source` is `'url'` (the sync read the address bar), `'grid'` (it read the grid) or `'api'` (a method that the app called)                     |
+`applyFilters` writes filters to the grid as the app's own write. When they land, the sync writes the URL in the `history` mode, as it does for a user edit. `applyUrl` writes no history, because the URL already holds those filters.
 
-The snapshot `status` is `'active'` from create, and `'destroyed'` after `destroy()` or after the grid is destroyed. `IDLE_SNAPSHOT` (`status: 'idle'`) is the snapshot for a time when there is no sync yet. `getSnapshot()` returns the same object until something changes, so it works with React's `useSyncExternalStore`. The sync never writes for its own applies, so an apply never adds a history entry. Nothing reads `window` when the module loads, and a sync made with no `window` does nothing to the address bar.
+| Option             | Default                   | Meaning                                                                                                                                                                                                   |
+| ------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`              | (required)                | The AG Grid API                                                                                                                                                                                           |
+| `codec`            | `individual()`            | How the filters are written in the URL. `individual({ prefix })` writes one param for each filter; `grouped({ param, format })` writes all filters in one param                                           |
+| `maxValueLength`   | `200`                     | The longest text value that is kept                                                                                                                                                                       |
+| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL, for a router. The page's other params, the `#hash` and `history.state` stay          |
+| `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                                  |
+| `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace            |
+| `views`            | none                      | The saved views. Give `createViewStore(key)` from `ag-grid-url-sync/view-storage`. See [Saved Views](#saved-views)                                                                                        |
+| `throwOnError`     | `false`                   | Throw an issue instead of reporting it, in the methods that the app calls (`applyUrl`, `getUrl`, `applyFilters`, `saveView`, `loadView`, `deleteView`). `createGridUrlSync` and its listeners never throw |
+| `onIssue`          | none                      | Gets each issue one time, as `{ issue, source }`. `source` is `'url'` (the sync read the address bar), `'grid'` (it read the grid) or `'api'` (a method that the app called)                              |
+
+The snapshot `status` is `'active'` from create, and `'destroyed'` after `destroy()` or after the grid is destroyed. After that, `applyUrl`, `applyFilters`, `saveView` and `loadView` report `NOT_READY` to `onIssue`. `deleteView` needs only storage, so it still works. `IDLE_SNAPSHOT` (`status: 'idle'`) is the snapshot for a time when there is no sync yet. `getSnapshot()` returns the same object until something changes, so it works with React's `useSyncExternalStore`. The sync writes no history for an `applyUrl` apply, because the URL holds those filters already. `applyFilters` and `loadView` write the URL as a user edit does. Nothing reads `window` when the module loads, and a sync made with no `window` does nothing to the address bar.
 
 ### Basic Example (deprecated `createUrlSync`)
 
@@ -749,6 +755,54 @@ Saved views (inert unless `storageKey` is set):
 
 ### Saved Views
 
+The views are part of `createGridUrlSync`. The React hook uses the same code, so a vanilla app and a React app get the same rules.
+
+#### Saved views in vanilla JS
+
+Give the `views` option a view store. `createViewStore` is in its own entry, so an app with no saved views does not get the storage code.
+
+```ts
+import { createGridUrlSync } from 'ag-grid-url-sync'
+import { createViewStore } from 'ag-grid-url-sync/view-storage'
+
+const sync = createGridUrlSync({
+  api: gridApi,
+  history: 'push',
+  views: createViewStore('orders')
+})
+
+const { views, activeViewId } = sync.getSnapshot()
+
+const view = sync.saveView('Open orders') // GridView, or null if the save failed
+sync.loadView(view.id)
+sync.loadView(null) // clear the filters
+sync.deleteView(view.id)
+```
+
+You can also give your own `ViewStore`, for example one that talks to a server. With no `views` option, `views` is `[]`, `activeViewId` is `null`, and the three methods do nothing.
+
+Rules for the vanilla API:
+
+- **`activeViewId` is tracked.** `saveView`, `loadView` and the restore of the stored view set it. A load sets it before the grid write, so a snapshot never shows `null` while the write is still pending.
+- **Any other filter model clears it.** A user edit, `applyUrl`, `applyFilters` and a back-button apply all set `activeViewId` to `null` and clear the stored pointer. A view that AG Grid changes when it applies it stays active.
+- **A hand edit does not make a view active.** If the user types the filters of a view, `activeViewId` stays `null`. When two views have the same model, the active one is the one the user loaded.
+- **A view load writes the URL as a user edit does.** With `history: 'push'`, the back button goes back to the URL from before the load. If the URL does not change, the sync writes no entry. Set and multi filters are kept in a view, but the URL cannot hold them. A view that differs only in those filters adds no entry.
+- **A URL apply writes no history.** This holds for `applyUrl`, the apply on create and the back button.
+- **A failed grid write restores `activeViewId`.** The failure goes to `onIssue` as `GRID_ERROR`.
+- **Deleting is conservative.** If the deleted view is active and the grid still shows it, the grid is cleared. If the user edited the filters, they stay.
+- **Failures go to `onIssue`**, not to `snapshot.issues`. They are `NOT_READY`, `GRID_ERROR`, `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`, `STORAGE_FULL`, `STORAGE_UNAVAILABLE` and `STORAGE_WRITE_FAILED`. `loadView` with an unknown id reads the store again, then reports `VIEW_NOT_FOUND`. After `destroy`, `saveView` and `loadView` report `NOT_READY`, and `deleteView` still deletes from the store.
+
+On create (when `applyUrlOnCreate` is not `false`), the sync picks the starting filters in this order:
+
+1. The URL holds the filters of the stored view (compared in URL form). The sync restores the view with its full model, and keeps `activeViewId` and the pointer. This is how a reload keeps a view that was loaded with `history` on.
+2. The URL has at least one filter. The URL wins. `activeViewId` is `null` and the pointer is cleared. A URL with only bad params does not win.
+3. A stored view exists. The sync restores it. With `history` on, the URL is written with replace, so page load adds no back-button step.
+4. Else, the grid keeps its filters.
+
+A stored pointer that names a missing view is ignored.
+
+#### Saved views in React
+
 Pass a `storageKey` to let users name and revisit filter sets. The key both enables
 the feature and namespaces its storage, so two grids on the same origin must use
 different keys:
@@ -813,7 +867,7 @@ Behaviour worth knowing:
   `onError` with context `'save-view'`. Reads degrade to an empty list instead of
   throwing, so server rendering is safe.
 
-For non-React consumers the same store is available directly:
+The store is also available directly:
 
 ```ts
 import { createViewStore } from 'ag-grid-url-sync/view-storage'
@@ -994,7 +1048,7 @@ Parameter structure:
 
 ### `createGridUrlSync(options)`
 
-See [Vanilla JS: `createGridUrlSync`](#vanilla-js-creategridurlsync) for the options. It returns `{ getSnapshot, subscribe, applyUrl, getUrl, destroy }`.
+See [Vanilla JS: `createGridUrlSync`](#vanilla-js-creategridurlsync) for the options. It returns `{ getSnapshot, subscribe, applyUrl, applyFilters, getUrl, saveView, loadView, deleteView, destroy }`. The snapshot is `{ status, url, hasFilters, issues, views, activeViewId }`. See [Saved Views](#saved-views) for the view methods.
 
 ### `createUrlSync(gridApi, config?)` (deprecated)
 

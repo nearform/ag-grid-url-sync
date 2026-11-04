@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { createSyncHolder } from './sync-holder.js'
 import { IDLE_SNAPSHOT } from '../core/grid-url-sync.js'
 import type { GridUrlSync, GridUrlSyncSnapshot } from '../core/types.js'
+import { URLSyncError } from '../core/types.js'
 
 // The holder gives React one stable subscribe and getSnapshot pair, and
 // forwards them to the sync that the hook has now (#222)
@@ -13,7 +14,9 @@ function createFakeSync() {
     status: 'active',
     url: 'https://example.com/?f_name_contains=jo',
     hasFilters: true,
-    issues: []
+    issues: [],
+    views: [],
+    activeViewId: null
   })
 
   const sync: GridUrlSync = {
@@ -24,7 +27,11 @@ function createFakeSync() {
       return () => listeners.delete(listener)
     },
     applyUrl: () => ({ issues: [] }),
+    applyFilters: () => ({ issues: [] }),
     getUrl: () => '',
+    saveView: () => null,
+    loadView: () => {},
+    deleteView: () => {},
     destroy: () => {}
   }
 
@@ -116,5 +123,127 @@ describe('createSyncHolder', () => {
 
     expect(holder.subscribe).toBe(subscribe)
     expect(holder.getSnapshot).toBe(getSnapshot)
+  })
+
+  // With no sync, the hook still shows the stored views (#223)
+  describe('idle views', () => {
+    const VIEW = Object.freeze({
+      id: 'a',
+      name: 'A',
+      filterModel: {},
+      createdAt: 1,
+      updatedAt: 1
+    })
+
+    it('gives the idle views with no sync', () => {
+      const holder = createSyncHolder()
+      const listener = vi.fn()
+      holder.subscribe(listener)
+
+      holder.setIdleViews([VIEW])
+
+      expect(holder.getSnapshot()).toMatchObject({
+        status: 'idle',
+        views: [VIEW],
+        activeViewId: null
+      })
+      expect(listener).toHaveBeenCalledOnce()
+    })
+
+    it('keeps the snapshot for the same views', () => {
+      const holder = createSyncHolder()
+      holder.setIdleViews([VIEW])
+      const first = holder.getSnapshot()
+      const listener = vi.fn()
+      holder.subscribe(listener)
+
+      holder.setIdleViews([{ ...VIEW }])
+
+      expect(holder.getSnapshot()).toBe(first)
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('gives IDLE_SNAPSHOT for no views', () => {
+      const holder = createSyncHolder()
+      holder.setIdleViews([VIEW])
+
+      holder.setIdleViews([])
+
+      expect(holder.getSnapshot()).toBe(IDLE_SNAPSHOT)
+    })
+
+    it('gives the snapshot of the sync while there is one', () => {
+      const holder = createSyncHolder()
+      const fake = createFakeSync()
+      holder.set(fake.sync)
+      const listener = vi.fn()
+      holder.subscribe(listener)
+
+      holder.setIdleViews([VIEW])
+
+      expect(holder.getSnapshot()).toBe(fake.snapshot)
+      expect(listener).not.toHaveBeenCalled()
+    })
+  })
+
+  // The apply issues of an earlier sync on the same grid (#223 review)
+  describe('carried issues', () => {
+    const ISSUE = new URLSyncError('bad', undefined, {
+      code: 'INVALID_NUMBER',
+      column: 'age'
+    })
+
+    it('puts the carried issues before the issues of the sync', () => {
+      const holder = createSyncHolder()
+      const fake = createFakeSync()
+      holder.set(fake.sync)
+
+      holder.setCarriedIssues([ISSUE])
+
+      expect(holder.getSnapshot()).toEqual({
+        ...fake.snapshot,
+        issues: [ISSUE]
+      })
+    })
+
+    it('keeps the snapshot object while nothing changed', () => {
+      const holder = createSyncHolder()
+      holder.set(createFakeSync().sync)
+      holder.setCarriedIssues([ISSUE])
+
+      expect(holder.getSnapshot()).toBe(holder.getSnapshot())
+    })
+
+    it('notifies for a new list while there is a sync, and not for the same list', () => {
+      const holder = createSyncHolder()
+      holder.set(createFakeSync().sync)
+      const listener = vi.fn()
+      holder.subscribe(listener)
+      const list = [ISSUE]
+
+      holder.setCarriedIssues(list)
+      holder.setCarriedIssues(list)
+
+      expect(listener).toHaveBeenCalledOnce()
+    })
+
+    it('gives the snapshot of the sync with no carried issues', () => {
+      const holder = createSyncHolder()
+      const fake = createFakeSync()
+      holder.set(fake.sync)
+      holder.setCarriedIssues([ISSUE])
+
+      holder.setCarriedIssues([])
+
+      expect(holder.getSnapshot()).toBe(fake.snapshot)
+    })
+
+    it('gives the idle snapshot with no sync', () => {
+      const holder = createSyncHolder()
+
+      holder.setCarriedIssues([ISSUE])
+
+      expect(holder.getSnapshot()).toBe(IDLE_SNAPSHOT)
+    })
   })
 })

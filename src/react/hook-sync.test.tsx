@@ -1,18 +1,11 @@
 import { StrictMode } from 'react'
 import { renderHook, act } from '@testing-library/react'
-import {
-  describe,
-  test,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-  type MockInstance
-} from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { FilterModel } from 'ag-grid-community'
 import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import type { UseAGGridUrlSyncOptions } from './types.js'
-import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
+import * as classModule from '../core/ag-grid-url-sync.js'
+import { createViewStore } from '../core/view-storage.js'
 import {
   asGridApi,
   createGridListeners,
@@ -84,11 +77,8 @@ function renderStrict(props: Props) {
   return renderHook(useSync, { initialProps: props, wrapper: StrictMode })
 }
 
-let applyFromUrl: MockInstance<AGGridUrlSync['applyFromUrl']>
-
 beforeEach(() => {
   window.localStorage.clear()
-  applyFromUrl = vi.spyOn(AGGridUrlSync.prototype, 'applyFromUrl')
 })
 
 afterEach(() => {
@@ -129,7 +119,9 @@ describe('options after mount (#222)', () => {
     rerender({ grid, options: { autoApplyOnMount: true, paramPrefix: 'g_' } })
     await waitForEffects()
 
-    expect(applyFromUrl).toHaveBeenCalledOnce()
+    // The URL was applied one time, on mount
+    expect(writes).toBe(1)
+    expect(grid.api.setFilterModel).toHaveBeenCalledWith(ANN)
     expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
   })
 
@@ -203,6 +195,70 @@ describe('options after mount (#222)', () => {
     expect(result.current.activeViewId).toBe(id)
   })
 
+  test('an option change does not load a view that another tab deleted', async () => {
+    const onError = vi.fn()
+    const grid = createGrid(ANN)
+    const options = { storageKey: 'hook-sync-views', onError }
+    const { result, rerender } = renderSync({ grid, options })
+    await waitForEffects()
+    let id = ''
+
+    act(() => {
+      id = result.current.saveView('v')!.id
+    })
+    createViewStore('hook-sync-views').deleteView(id)
+    const writes = grid.api.setFilterModel.mock.calls.length
+
+    rerender({ grid, options: { ...options, paramPrefix: 'g_' } })
+    await waitForEffects()
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
+  })
+
+  test('autoApplyOnMount from false to true applies the URL one time', async () => {
+    setPage('?f_name_contains=ann')
+    const grid = createGrid()
+    const { rerender } = renderSync({ grid, options: {} })
+    await waitForEffects()
+
+    expect(grid.api.setFilterModel).not.toHaveBeenCalled()
+
+    rerender({ grid, options: { autoApplyOnMount: true } })
+    await waitForEffects()
+
+    expect(grid.api.setFilterModel).toHaveBeenCalledOnce()
+    expect(grid.api.setFilterModel).toHaveBeenCalledWith(ANN)
+
+    // The URL had its say on this grid
+    rerender({ grid, options: { autoApplyOnMount: false } })
+    await waitForEffects()
+    rerender({ grid, options: { autoApplyOnMount: true } })
+    await waitForEffects()
+
+    expect(grid.api.setFilterModel).toHaveBeenCalledOnce()
+  })
+
+  test('a new autoApplyOnMount value makes no new sync', async () => {
+    setPage('?f_name_contains=ann')
+    const grid = createGrid()
+
+    const { rerender } = renderSync({
+      grid,
+      options: { autoApplyOnMount: true }
+    })
+
+    await waitForEffects()
+    const adds = grid.listeners.addEventListener.mock.calls.length
+    const writes = grid.api.setFilterModel.mock.calls.length
+
+    rerender({ grid, options: { autoApplyOnMount: false } })
+    await waitForEffects()
+
+    expect(grid.listeners.addEventListener).toHaveBeenCalledTimes(adds)
+    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
+  })
+
   test('resets for a new grid when the grid and an option change together', async () => {
     setPage('?f_name_contains=ann')
     const oldGrid = createGrid()
@@ -223,7 +279,10 @@ describe('options after mount (#222)', () => {
 
     expect(oldGrid.listeners.count('gridPreDestroyed')).toBe(0)
     expect(newGrid.listeners.count('gridPreDestroyed')).toBe(1)
-    expect(applyFromUrl).toHaveBeenCalledTimes(2)
+    // The URL is applied to each grid. With the g_ prefix the URL has no
+    // filters, so the new grid is cleared.
+    expect(oldGrid.api.setFilterModel).toHaveBeenCalledWith(ANN)
+    expect(newGrid.api.setFilterModel).toHaveBeenCalledWith({})
   })
 
   test('makes one live sync in StrictMode', async () => {
@@ -297,7 +356,25 @@ describe('grid destroyed (#222)', () => {
       expect.objectContaining({ code: 'NOT_READY' }),
       'apply-url-filters'
     )
-    expect(applyFromUrl).not.toHaveBeenCalled()
+    expect(grid.api.setFilterModel).not.toHaveBeenCalled()
+  })
+
+  test('a grid destroyed before mount reports NOT_READY as initialization', async () => {
+    const onError = vi.fn()
+    const grid = createGrid()
+    grid.destroyGrid()
+
+    renderSync({ grid, options: { autoApplyOnMount: true, onError } })
+    await waitForEffects()
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'NOT_READY' }),
+      'initialization'
+    )
+    expect(onError).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'auto-apply-filters'
+    )
   })
 
   test('is ready again with a new grid after the old one is destroyed', async () => {
@@ -405,6 +482,112 @@ describe('final review (#222)', () => {
       expect.objectContaining({ code: 'NOT_READY' }),
       'apply-url-filters'
     )
-    expect(applyFromUrl).not.toHaveBeenCalled()
+    expect(grid.api.setFilterModel).not.toHaveBeenCalled()
+  })
+})
+
+// The hook's saved views come from createGridUrlSync (#223). With no sync,
+// `views` still shows what is in storage.
+describe('saved views on the core (#223)', () => {
+  const KEY = 'hook-sync-core-views'
+
+  /** Puts 2 views in the store, as an earlier session did */
+  function storeTwoViews(): void {
+    const store = createViewStore(KEY)
+    store.saveView('A', ANN)
+    store.saveView('B', {})
+  }
+
+  test('views lists the stored views before the grid is ready', async () => {
+    storeTwoViews()
+
+    const { result } = renderHook(() =>
+      useAGGridUrlSync(null, { storageKey: KEY })
+    )
+
+    await waitForEffects()
+
+    expect(result.current.views).toHaveLength(2)
+    expect(result.current.activeViewId).toBeNull()
+  })
+
+  test('views lists the stored views with enabledWhenReady: false', async () => {
+    storeTwoViews()
+
+    const { result } = renderSync({
+      grid: createGrid(),
+      options: { storageKey: KEY, enabledWhenReady: false }
+    })
+
+    await waitForEffects()
+
+    expect(result.current.views).toHaveLength(2)
+    expect(result.current.isReady).toBe(false)
+  })
+
+  test('makes no AGGridUrlSync', async () => {
+    const made = vi.spyOn(classModule, 'AGGridUrlSync')
+
+    renderSync({
+      grid: createGrid(ANN),
+      options: { storageKey: KEY, autoApplyOnMount: true }
+    })
+
+    await waitForEffects()
+
+    expect(made).not.toHaveBeenCalled()
+  })
+})
+
+// The stored pointer after a hand edit, as in 0.5.1 (#223 review)
+describe('the stored pointer after a hand edit', () => {
+  const KEY = 'hook-sync-pointer'
+
+  const OTHER: FilterModel = {
+    name: { filterType: 'text', type: 'contains', filter: 'bob' }
+  }
+
+  test('a pointer write that fails has the context filter-change', async () => {
+    const onError = vi.fn()
+    const grid = createGrid(ANN)
+
+    const { result } = renderSync({
+      grid,
+      options: { storageKey: KEY, onError }
+    })
+
+    await waitForEffects()
+    act(() => {
+      result.current.saveView('v')
+    })
+
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError')
+    })
+    grid.setModel(OTHER)
+    grid.fireFilterChanged()
+
+    expect(result.current.activeViewId).toBeNull()
+    expect(onError.mock.calls.map(([, context]) => context)).toEqual([
+      'filter-change'
+    ])
+  })
+
+  test('a hand edit keeps a pointer that another tab moved', async () => {
+    const grid = createGrid(ANN)
+    const { result } = renderSync({ grid, options: { storageKey: KEY } })
+    await waitForEffects()
+
+    act(() => {
+      result.current.saveView('v')
+    })
+
+    // Another tab saves a view, so the pointer names it
+    const other = createViewStore(KEY).saveView('other', OTHER)
+    grid.setModel(OTHER)
+    grid.fireFilterChanged()
+
+    expect(result.current.activeViewId).toBeNull()
+    expect(createViewStore(KEY).getActiveViewId()).toBe(other.id)
   })
 })

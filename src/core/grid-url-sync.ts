@@ -1,10 +1,11 @@
-import type { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import type {
   ApplyResult,
   FilterState,
   GridUrlSync,
   GridUrlSyncOptions,
   GridUrlSyncSnapshot,
+  IssueCode,
   IssueSource,
   ResolvedOptions,
   SyncStatus
@@ -17,20 +18,41 @@ import { toError } from './to-error.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
 import { resolveParamPrefix } from './individual-params.js'
-import { getFilterModel, applyFilterModel } from './grid-integration.js'
+import {
+  fromGridModel,
+  getFilterModel,
+  toGridModel
+} from './grid-integration.js'
+import type { GridView } from './view-storage.js'
+import type {
+  Classified,
+  ColumnUrlKeys,
+  Columns,
+  OwnWrite,
+  WriteKind
+} from './own-write.js'
+import {
+  classifyEvent,
+  modelKey,
+  settleWrite,
+  startWrite
+} from './own-write.js'
 
 // createGridUrlSync (#221): the framework-free sync. It owns its grid
 // listeners and keeps one snapshot for useSyncExternalStore. Nothing here
 // reads window when the module loads.
 
 const NO_ISSUES: readonly URLSyncError[] = Object.freeze([])
+const NO_VIEWS: readonly GridView[] = Object.freeze([])
 
 /** The snapshot when there is no sync yet, for the React hook (#222) */
 export const IDLE_SNAPSHOT: GridUrlSyncSnapshot = Object.freeze({
   status: 'idle',
   url: '',
   hasFilters: false,
-  issues: NO_ISSUES
+  issues: NO_ISSUES,
+  views: NO_VIEWS,
+  activeViewId: null
 })
 
 /**
@@ -40,28 +62,11 @@ export const IDLE_SNAPSHOT: GridUrlSyncSnapshot = Object.freeze({
  */
 type IssueMode = 'collect' | 'report' | 'throw'
 
-/**
- * The sync's own latest grid write: the history loop guard (#273). It is set
- * before setFilterModel, because AG Grid can send filterChanged inside the
- * call, after it, or one tick later with the model.
- * - `writing`: inside the call, so an event is the write landing.
- * - `pending`: the grid did not take the model yet (deferred). `before` is
- *   the grid's model before the write, and `accepted` the part of the
- *   filters that the grid has columns for.
- * - `landed`: the grid shows the model with this key. An event with the
- *   same model is the write's echo: one write can cause more than one event.
- */
-type OwnWrite =
-  | { readonly phase: 'writing' }
-  | {
-      readonly phase: 'pending'
-      readonly before: FilterState | null
-      readonly accepted: FilterState
-      readonly acceptedKey: string
-    }
-  | { readonly phase: 'landed'; readonly key: string }
+/** The write kinds with keys in the model form. A URL write has its own path. */
+type ModelWriteKind = Exclude<WriteKind, 'url'>
 
 interface Call {
+  source: IssueSource
   options: ResolvedOptions
   issues: URLSyncError[]
 }
@@ -98,7 +103,7 @@ function sameIssues(
  * ```
  */
 export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
-  const { api, onIssue } = options
+  const { api, onIssue, views } = options
   const codec = codecOptions(options.codec ?? individual())
   const maxValueLength = options.maxValueLength ?? DEFAULT_CONFIG.maxValueLength
 
@@ -113,7 +118,13 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   // The sync's own latest grid write. The filterChanged events that it causes
   // must not be written to history (#273).
   let own: OwnWrite | null = null
+  // The issue source of the call that made the own write, for its landing
+  // in a later event
+  let ownSource: IssueSource = 'grid'
   const listensToPopstate = options.popstate ?? historyMode === 'push'
+  // The tracked saved view. `model` is its landed model, null while pending.
+  let active: ActiveView | null = null
+  let viewList: readonly GridView[] = NO_VIEWS
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
 
   /**
@@ -133,6 +144,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     const issues: URLSyncError[] = []
 
     return {
+      source,
       issues,
       options: {
         ...codec,
@@ -151,13 +163,31 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   /** Reports a caught error as an issue of the call */
-  function fail(
-    call: Call,
-    cause: unknown,
-    code: 'INVALID_URL' | 'GRID_ERROR'
-  ) {
+  function fail(call: Call, cause: unknown, code: IssueCode) {
     rethrowIfThrown(cause)
     reportIssue(call.options, toIssue(cause, code))
+  }
+
+  /** Reads the store's list. The old array stays when nothing changed. */
+  function refreshViews(): void {
+    if (!views) return
+
+    const next = views.listViews()
+
+    if (!sameViews(viewList, next)) viewList = Object.freeze(next)
+  }
+
+  /** Reports NOT_READY for a method that needs an active sync */
+  function notReady(): void {
+    const call = startCall('api', 'throw')
+
+    fail(
+      call,
+      new URLSyncError('The sync is destroyed', undefined, {
+        code: 'NOT_READY'
+      }),
+      'NOT_READY'
+    )
   }
 
   /** Builds a new snapshot, and tells the listeners, when something changed */
@@ -165,11 +195,14 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     const list = [...applyIssues, ...readIssues, ...writeIssues]
     const hasFilters = Object.keys(state).length > 0
     const sameList = sameIssues(snapshot.issues, list)
+    const activeViewId = active?.id ?? null
 
     if (
       snapshot.status === status &&
       snapshot.url === url &&
       snapshot.hasFilters === hasFilters &&
+      snapshot.views === viewList &&
+      snapshot.activeViewId === activeViewId &&
       sameList
     ) {
       return
@@ -183,7 +216,14 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
         ? Object.freeze(list)
         : NO_ISSUES
 
-    snapshot = Object.freeze({ status, url, hasFilters, issues })
+    snapshot = Object.freeze({
+      status,
+      url,
+      hasFilters,
+      issues,
+      views: viewList,
+      activeViewId
+    })
 
     // A copy, so a listener that unsubscribes during notify stops no other
     // one. A listener's error is reported out of band, so it stops neither
@@ -246,26 +286,96 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     const applies = filters && !(onCreate && Object.keys(filters).length === 0)
     const before = applies ? liveState() : null
 
+    let failed = false
+
     if (filters && applies) {
-      // Before the call, so an event inside it is known as ours (#273)
-      own = { phase: 'writing' }
+      let model: FilterModel | undefined
 
       try {
-        applyFilterModel(filters, api, call.options)
+        model = toGridModel(filters, api, call.options)
       } catch (cause) {
         own = null
+        failed = true
         fail(call, cause, 'GRID_ERROR')
       }
+
+      if (model) failed = !setModel(model, 'url', call)
     }
 
     applyIssues = call.issues.length ? call.issues : NO_ISSUES
     readGrid()
 
-    if (filters && applies) settleWrite(filters, before, call)
+    if (filters && applies && settleUrlWrite(filters, before, failed)) {
+      followActiveView('url')
+    }
 
     publish()
 
     return { issues: call.issues }
+  }
+
+  /**
+   * Calls setFilterModel as the sync's own write of the kind. False when the
+   * grid threw: the call gets GRID_ERROR.
+   */
+  function setModel(model: FilterModel, kind: WriteKind, call: Call): boolean {
+    // Before the call, so an event inside it is known as ours (#273). A
+    // pending write stays known: a deferred grid lands it first.
+    own = startWrite(own, kind)
+    ownSource = call.source
+
+    // Only the grid call is in the try. An issue report runs outside it, so
+    // a handler that throws gets its own error back (#220).
+    try {
+      api.setFilterModel(model)
+
+      return true
+    } catch (cause) {
+      own = null
+      fail(call, cause, 'GRID_ERROR')
+
+      return false
+    }
+  }
+
+  /**
+   * Writes a model to the grid as the sync's own write, with keys in the
+   * model form. Reads the grid after the call, and at a landing applies the
+   * active-view rule. False when the grid threw.
+   */
+  function writeModel(
+    model: FilterModel,
+    kind: ModelWriteKind,
+    call: Call
+  ): boolean {
+    const before = liveModel()
+
+    if (!setModel(model, kind, call)) return false
+
+    const accepted = acceptedPart(model)
+    const after = liveModel()
+
+    const settled = settleWrite(own, {
+      kind,
+      failed: false,
+      afterKey: after ? modelKey(after) : null,
+      before,
+      beforeKey: before ? modelKey(before) : null,
+      accepted,
+      acceptedKey: modelKey(accepted),
+      acceptedUrlKey: urlKey(accepted),
+      acceptedColumnUrlKeys: columnUrlKeys(accepted)
+    })
+
+    own = settled.own
+    readGrid()
+
+    if (settled.landed) {
+      followActiveView(kind)
+      writeLanding(kind, call.source)
+    }
+
+    return true
   }
 
   /** The grid's filters now, or null when the grid cannot be read */
@@ -277,44 +387,186 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     }
   }
 
+  /** The grid's AG Grid model now, or null when the grid cannot be read */
+  function liveModel(): FilterModel | null {
+    try {
+      // AG Grid can hand back null despite the declared return type
+      return api.getFilterModel() ?? {}
+    } catch {
+      return null
+    }
+  }
+
+  /** The key of the grid's columns now, in the form of the write kind */
+  function liveKey(kind: WriteKind): string | null {
+    if (kind === 'url') {
+      const live = liveState()
+
+      return live ? filtersKey(live) : null
+    }
+
+    const live = liveModel()
+
+    return live ? modelKey(live) : null
+  }
+
+  /** The key of a model's URL form: the filters that the codec makes of it */
+  function urlKey(model: Columns): string {
+    return filtersKey(urlForm(model))
+  }
+
+  /** The filters that the codec makes of a model */
+  function urlForm(model: Columns): FilterState {
+    return fromGridModel(model, startCall('grid', 'collect').options)
+  }
+
+  /** The URL form of each column that the URL can hold */
+  function columnUrlKeys(model: Columns): ColumnUrlKeys {
+    const keys = new Map<string, string>()
+
+    for (const [colId, column] of Object.entries(model)) {
+      const filters = urlForm(Object.fromEntries([[colId, column]]))
+
+      if (Object.keys(filters).length > 0) keys.set(colId, filtersKey(filters))
+    }
+
+    return keys
+  }
+
+  /**
+   * The active view for a view that is not on the grid yet. It keeps the
+   * keys that its landing must have, in the model form and the URL form.
+   */
+  function pendingView(id: string, model: FilterModel): ActiveView {
+    const accepted = acceptedPart(model)
+    const filters = urlForm(accepted)
+
+    return {
+      id,
+      model: null,
+      key: modelKey(accepted),
+      urlKey: Object.keys(filters).length > 0 ? filtersKey(filters) : null
+    }
+  }
+
+  /**
+   * Whether the grid shows the pending active view: its model, or (for the
+   * grid's own change, source 'api') a model with the same URL form, which
+   * the grid rebuilt. In a queued echo, an earlier write with the same URL
+   * form can put its model into the view for one event. The view's own
+   * landing then writes its model over it.
+   */
+  function landsActive(
+    view: ActiveView,
+    live: FilterModel,
+    api: boolean
+  ): boolean {
+    return (
+      modelKey(live) === view.key ||
+      (api && view.urlKey !== null && urlKey(live) === view.urlKey)
+    )
+  }
+
+  /** Whether the grid shows this model now */
+  function shows(model: FilterModel | null): boolean {
+    if (model === null) return false
+
+    const live = liveModel()
+
+    return live !== null && modelKey(live) === modelKey(model)
+  }
+
+  /**
+   * The active-view rule (D2), after each own write and each filterChanged,
+   * echoes included. A view write that lands keeps the model that the grid
+   * made of it. A pending view also lands when the grid shows its model: a
+   * later own write can have taken the place of the view's record. Any other
+   * grid model clears the active view and its stored pointer, except in an
+   * echo while the view is pending, and in a queued echo, where the grid
+   * passes through an earlier write.
+   */
+  function followActiveView(
+    landing: WriteKind | null,
+    seen: Seen = 'call',
+    api = true
+  ): void {
+    if (!active) return
+
+    if (landing === 'view' || landing === 'restore') {
+      active = { ...active, model: liveModel() }
+
+      return
+    }
+
+    if (active.model === null) {
+      const live = liveModel()
+
+      if (live !== null && landsActive(active, live, api)) {
+        active = { ...active, model: live }
+
+        return
+      }
+
+      if (seen === 'echo') return
+    }
+
+    if (seen === 'queued' || shows(active.model)) return
+
+    const { id } = active
+    active = null
+    clearPointer(id, startCall('grid', 'report'))
+  }
+
+  /**
+   * Clears the stored pointer while it names this view: another tab can
+   * have moved it to another view. A storage error is an issue of the call.
+   */
+  function clearPointer(id: string, call: Call): void {
+    try {
+      if (views?.getActiveViewId() === id) views.persistActiveViewId(null)
+    } catch (cause) {
+      fail(call, cause, 'STORAGE_WRITE_FAILED')
+    }
+  }
+
+  /** Writes the stored pointer. A storage error is an issue of the call. */
+  function persistPointer(id: string | null, call: Call): void {
+    try {
+      views?.persistActiveViewId(id)
+    } catch (cause) {
+      fail(call, cause, 'STORAGE_WRITE_FAILED')
+    }
+  }
+
   /**
    * After the sync's own setFilterModel returns: did the write land, or does
    * the grid take it later? `state` is the grid's filters after the call.
+   * True when the write landed.
    */
-  function settleWrite(
+  function settleUrlWrite(
     filters: FilterState,
     before: FilterState | null,
-    call: Call
-  ): void {
-    // The grid threw, so nothing was written
-    if (call.issues.some(issue => issue.code === 'GRID_ERROR')) {
-      own = null
-
-      return
-    }
-
-    const after = filtersKey(state)
+    failed: boolean
+  ): boolean {
     const accepted = acceptedPart(filters)
-    const acceptedKey = filtersKey(accepted)
 
-    // An event inside the call landed it, or the grid shows the filters now
-    // (also a write that changed nothing, for which AG Grid sends no event),
-    // or the grid took them in a form of its own
-    if (
-      own?.phase === 'landed' ||
-      after === acceptedKey ||
-      (before !== null && after !== filtersKey(before))
-    ) {
-      own = { phase: 'landed', key: after }
+    const settled = settleWrite(own, {
+      kind: 'url',
+      failed,
+      afterKey: filtersKey(state),
+      before,
+      beforeKey: before ? filtersKey(before) : null,
+      accepted,
+      acceptedKey: filtersKey(accepted)
+    })
 
-      return
-    }
+    own = settled.own
 
-    own = { phase: 'pending', before, accepted, acceptedKey }
+    return settled.landed
   }
 
   /** The filters of the columns that the grid has */
-  function acceptedPart(filters: FilterState): FilterState {
+  function acceptedPart(filters: Columns): Columns {
     // A test double or an old AG Grid version can lack getColumn
     if (!('getColumn' in api)) return filters
 
@@ -330,39 +582,47 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
   }
 
   /**
-   * Whether a filterChanged comes from the sync's own write. `state` is the
-   * grid's filters at the event. Any other event ends the own write.
+   * What a filterChanged is: an echo or the landing of the sync's own write,
+   * or a change. The key has the form of the write's kind: `state` (the URL
+   * form) for a URL write, the grid's model for the others (and its URL form
+   * while the write is pending). A change ends the own write.
    */
-  function isOwnEvent(source: string | undefined): boolean {
-    if (!own) return false
+  function classify(source: string | undefined): Classified {
+    const modelForm = own !== null && own.kind !== 'url'
+    const live = modelForm ? (liveModel() ?? {}) : state
 
-    const key = filtersKey(state)
+    // Only a pending model write needs the URL forms
+    const pendingModel = modelForm && own?.phase === 'pending'
 
-    if (own.phase === 'landed') {
-      if (key === own.key) return true
-    } else if (own.phase === 'pending') {
-      const { before, accepted, acceptedKey } = own
+    const result = classifyEvent(own, {
+      key: modelForm ? modelKey(live) : filtersKey(state),
+      live,
+      source,
+      urlKey: pendingModel ? urlKey(live) : undefined,
+      columnUrlKeys: pendingModel ? columnUrlKeys(live) : undefined
+    })
 
-      // The grid still shows the model from before the write
-      if (before && key === filtersKey(before)) return true
+    own = result.own
 
-      // The write lands. An API change that shows the write's filters for
-      // some columns, and the filters from before for the others, is a
-      // write that the grid took only part of. A user's edit in the grid's
-      // UI has another source.
-      if (
-        key === acceptedKey ||
-        (source === 'api' && couldBeLanding(state, accepted, before))
-      ) {
-        own = { phase: 'landed', key }
+    return result
+  }
 
-        return true
-      }
+  /**
+   * Whether a URL gives at least one filter. A param that gives none (a bad
+   * value, a grouped value that does not decode) is not a claim on the grid,
+   * as in the 0.5.1 hook. Collect mode: the apply reports the issues.
+   */
+  function givesFilters(target: string): boolean {
+    try {
+      const filters = parseUrlFilters(
+        target,
+        startCall('url', 'collect').options
+      )
+
+      return Object.keys(filters).length > 0
+    } catch {
+      return false
     }
-
-    own = null
-
-    return false
   }
 
   /** Whether a URL has a param that the codec reads, even one that is bad */
@@ -383,9 +643,7 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
    * filters or of the page's params
    */
   function filtersKey(filters: FilterState): string {
-    const sorted = Object.fromEntries(
-      Object.entries(filters).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    )
+    const sorted = Object.fromEntries(Object.entries(filters).sort(byColumnId))
 
     return generateUrl(
       'http://key.invalid/',
@@ -413,12 +671,9 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     }
   }
 
-  /**
-   * Writes a filter change, unless the sync's own apply caused it or the
-   * address bar already has the same filters
-   */
-  function writeChange(source: string | undefined): void {
-    if (isOwnEvent(source) || historyMode === 'none' || !hasWindow()) return
+  /** Writes a filter change, unless the address bar has the same filters */
+  function writeChange(source: IssueSource, replace: boolean): void {
+    if (historyMode === 'none' || !hasWindow()) return
 
     const key = filtersKey(state)
 
@@ -429,24 +684,107 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
     if (key === filtersKey(current)) return
 
-    write('grid', false)
+    write(source, replace)
+  }
+
+  /**
+   * At an own write's landing: a view or app write goes to history as a user
+   * edit does (D3), and the restore on create replaces the entry. A URL
+   * write does not, because the URL holds those filters already (#273).
+   */
+  function writeLanding(kind: WriteKind, source: IssueSource): void {
+    if (kind !== 'url') writeChange(source, kind === 'restore')
+  }
+
+  /**
+   * Whether the filters of a URL are the URL form of a view (D7). The
+   * compare is in the URL form, so the order of the params has no effect.
+   */
+  function holdsView(target: string, view: GridView): boolean {
+    try {
+      const filters = parseUrlFilters(
+        target,
+        startCall('url', 'collect').options
+      )
+
+      return filtersKey(filters) === urlKey(view.filterModel)
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Restores the stored view on create: an own write of its full model. The
+   * pointer stays. With history on, the URL write replaces the entry.
+   */
+  function restore(view: GridView): void {
+    // Before the write, so no snapshot shows null while a deferred write is
+    // pending (D2)
+    active = pendingView(view.id, view.filterModel)
+
+    if (!writeModel(view.filterModel, 'restore', startCall('url', 'report'))) {
+      active = null
+    }
+
+    publish()
   }
 
   function onFilterChanged(event?: { source?: string }): void {
     if (status !== 'active') return
 
-    // Inside the sync's own setFilterModel: the write lands. The apply reads
-    // the grid and publishes after the call.
+    // Inside the sync's own setFilterModel: the write lands. The writer
+    // reads the grid and publishes after the call.
     if (own?.phase === 'writing') {
-      const live = liveState()
-      own = live ? { phase: 'landed', key: filtersKey(live) } : null
+      const key = liveKey(own.kind)
+      own = key === null ? null : { phase: 'landed', kind: own.kind, key }
 
       return
     }
 
     readGrid()
-    writeChange(event?.source)
+
+    const result = classify(event?.source)
+
+    // On each event, echoes too: a pending view can land in an echo of a
+    // later own write. The rule is the same for the same grid model.
+    followActiveView(
+      result.kind === 'landing' ? result.write : null,
+      result.kind !== 'echo' ? 'change' : result.queued ? 'queued' : 'echo',
+      event?.source === 'api'
+    )
+
+    if (result.kind === 'change') writeChange('grid', false)
+
+    if (result.kind === 'landing' && result.write !== null) {
+      writeLanding(result.write, ownSource)
+    }
+
+    if (result.queued && shownWhilePending(own)) {
+      // The record stays pending. A return to the old state is a change now.
+      own = { ...own, before: null, beforeKey: null }
+      writeLanding(own.kind, ownSource)
+    }
+
     publish()
+  }
+
+  /**
+   * Whether a pending model write has no earlier write left to wait for, and
+   * the grid shows its URL form. Then a queued echo writes the URL: a grid
+   * that rebuilds the model sends no event for a write that changes nothing,
+   * so the write's own event can never come. The record stays pending. If
+   * the event does come, the address bar has the URL already: no new entry.
+   */
+  function shownWhilePending(
+    record: OwnWrite | null
+  ): record is Extract<OwnWrite, { phase: 'pending' }> {
+    return (
+      record?.phase === 'pending' &&
+      record.kind !== 'url' &&
+      (record.waits?.length ?? 0) === 0 &&
+      record.acceptedUrlKey !== undefined &&
+      urlKey(liveModel() ?? {}) === record.acceptedUrlKey
+    )
   }
 
   /** The back or forward button: apply the new address bar */
@@ -482,13 +820,41 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     },
 
     applyUrl(target) {
-      if (status !== 'active') return { issues: NO_ISSUES }
+      if (status !== 'active') {
+        notReady()
+
+        return { issues: NO_ISSUES }
+      }
 
       const href = target ?? (hasWindow() ? window.location.href : undefined)
 
       if (href === undefined) return { issues: NO_ISSUES }
 
       return apply(href, 'api', 'throw', false)
+    },
+
+    applyFilters(filters) {
+      if (status !== 'active') {
+        notReady()
+
+        return { issues: NO_ISSUES }
+      }
+
+      const call = startCall('api', 'throw')
+      let model: FilterModel | undefined
+
+      try {
+        model = toGridModel(filters, api, call.options)
+      } catch (cause) {
+        fail(call, cause, 'GRID_ERROR')
+      }
+
+      if (model) writeModel(model, 'app', call)
+
+      applyIssues = call.issues.length ? call.issues : NO_ISSUES
+      publish()
+
+      return { issues: call.issues }
     },
 
     getUrl(baseUrl) {
@@ -516,6 +882,141 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       }
     },
 
+    saveView(name) {
+      if (!views) return null
+
+      if (status !== 'active') {
+        notReady()
+
+        return null
+      }
+
+      const call = startCall('api', 'throw')
+      let model: FilterModel
+
+      try {
+        // AG Grid can hand back null despite the declared return type
+        model = api.getFilterModel() ?? {}
+      } catch (cause) {
+        fail(call, cause, 'GRID_ERROR')
+
+        return null
+      }
+
+      let view: GridView
+
+      try {
+        view = views.saveView(name, model)
+      } catch (cause) {
+        fail(call, cause, 'STORAGE_WRITE_FAILED')
+
+        return null
+      }
+
+      // A pending view load or restore is no longer the active view's write.
+      // Its landing is a change against the saved view. A pending URL write
+      // stays known, so its landing writes no history (#273).
+      if (
+        own?.phase === 'pending' &&
+        (own.kind === 'view' || own.kind === 'restore')
+      ) {
+        own = null
+      }
+
+      active = { ...pendingView(view.id, model), model }
+      refreshViews()
+      publish()
+
+      return view
+    },
+
+    loadView(id) {
+      if (!views) return
+
+      if (status !== 'active') {
+        notReady()
+
+        return
+      }
+
+      const call = startCall('api', 'throw')
+
+      // null clears the filters. A JavaScript caller can also pass undefined.
+      const wanted = id ?? null
+
+      const view =
+        wanted === null
+          ? null
+          : views.listViews().find(candidate => candidate.id === wanted)
+
+      if (view === undefined) {
+        // Another tab can have deleted it: read the list again
+        refreshViews()
+        publish()
+        fail(
+          call,
+          new URLSyncError(`No saved view with id "${wanted}"`, undefined, {
+            code: 'VIEW_NOT_FOUND'
+          }),
+          'VIEW_NOT_FOUND'
+        )
+
+        return
+      }
+
+      const previous = active
+
+      // Before the write, so no snapshot shows null while a deferred write
+      // is pending (D2)
+      active = view ? pendingView(view.id, view.filterModel) : null
+
+      let wrote = false
+
+      try {
+        wrote = writeModel(view?.filterModel ?? {}, 'view', call)
+      } finally {
+        // The grid threw (GRID_ERROR): the old active view stays (D2)
+        if (!wrote) active = previous
+      }
+
+      if (!wrote) return
+
+      // The grid no longer shows an applied URL
+      applyIssues = NO_ISSUES
+      publish()
+
+      if ((active?.id ?? null) === wanted) persistPointer(wanted, call)
+    },
+
+    deleteView(id) {
+      if (!views) return
+
+      const call = startCall('api', 'throw')
+
+      try {
+        views.deleteView(id)
+      } catch (cause) {
+        fail(call, cause, 'STORAGE_WRITE_FAILED')
+
+        return
+      }
+
+      // The grid still shows the deleted view: clear it, as loadView(null)
+      // does. After a hand edit, the grid's model is the user's.
+      const clears =
+        status === 'active' && active?.id === id && shows(active.model)
+
+      if (active?.id === id) active = null
+
+      refreshViews()
+
+      try {
+        if (clears) writeModel({}, 'view', call)
+      } finally {
+        publish()
+      }
+    },
+
     destroy
   }
 
@@ -532,6 +1033,17 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     return sync
   }
 
+  refreshViews()
+
+  // The view that the stored pointer names. A pointer to a missing view is
+  // the same as no pointer. Read before the listeners, so a store that
+  // throws leaks none.
+  const pointer = views?.getActiveViewId()
+
+  const stored = pointer
+    ? viewList.find(view => view.id === pointer)
+    : undefined
+
   api.addEventListener('filterChanged', onFilterChanged)
   api.addEventListener('gridPreDestroyed', destroy)
 
@@ -541,13 +1053,33 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 
   if (options.applyUrlOnCreate !== false && hasWindow()) {
     const href = window.location.href
-    apply(href, 'url', 'report', true)
+    const hasParams = hasFilterParams(href)
+    // A URL wins over the stored view only with a filter that it gives
+    const claims = hasParams && givesFilters(href)
+
+    // A URL that holds the stored view (D7), or a URL that gives no
+    // filters: restore the view with its full model
+    if (stored && (!claims || holdsView(href, stored))) {
+      restore(stored)
+    } else if (views && !claims) {
+      // With views, a URL that gives no filters says nothing: the grid stays
+      // and its bad params are not reported, as in the 0.5.1 hook
+      readGrid()
+      publish()
+    } else {
+      apply(href, 'url', 'report', true)
+
+      // The URL wins over the stored view: clear the pointer, or the next
+      // load restores a view that the user did not choose here
+      if (claims && pointer) persistPointer(null, startCall('url', 'report'))
+    }
 
     // The URL has no filter params, so the grid's own filters stay: show them
     // in the address bar too, with no new history entry. A URL with only bad
     // filter params is left as it is until the user changes a filter.
     if (
-      !hasFilterParams(href) &&
+      !stored &&
+      !hasParams &&
       historyMode !== 'none' &&
       Object.keys(state).length > 0
     ) {
@@ -563,31 +1095,45 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 }
 
 /**
- * Whether the grid's filters could be a write landing in which the grid took
- * only part of the write: each column has the write's filter, or the filter
- * that the grid had before. At least one column must be the write's, so a
- * clear-all or another value is a change, not the landing (#274 review).
+ * What the active-view rule runs after: an own write's call, a change or
+ * landing event, an echo, or an echo that lands a queued earlier write
  */
-function couldBeLanding(
-  live: FilterState,
-  accepted: FilterState,
-  before: FilterState | null
-): boolean {
-  const columns = Object.keys(live)
+type Seen = 'call' | 'change' | 'echo' | 'queued'
 
-  const fromWrite = (colId: string): boolean =>
-    Object.hasOwn(accepted, colId) &&
-    JSON.stringify(live[colId]) === JSON.stringify(accepted[colId])
+/**
+ * The tracked saved view. `model` is the model that the grid landed, null
+ * while the write is pending. `key` and `urlKey` are the keys that the
+ * landing must have: the model form, and the URL form (null when the URL
+ * cannot hold the view).
+ */
+interface ActiveView {
+  id: string
+  model: FilterModel | null
+  key: string
+  urlKey: string | null
+}
 
-  const fromBefore = (colId: string): boolean =>
-    before !== null &&
-    Object.hasOwn(before, colId) &&
-    JSON.stringify(live[colId]) === JSON.stringify(before[colId])
-
+/** Two view lists with the same ids, names, times and models */
+function sameViews(a: readonly GridView[], b: readonly GridView[]): boolean {
   return (
-    columns.some(fromWrite) &&
-    columns.every(colId => fromWrite(colId) || fromBefore(colId))
+    a.length === b.length &&
+    a.every((view, index) => {
+      const other = b[index]
+
+      return (
+        other !== undefined &&
+        view.id === other.id &&
+        view.name === other.name &&
+        view.updatedAt === other.updatedAt &&
+        JSON.stringify(view.filterModel) === JSON.stringify(other.filterModel)
+      )
+    })
   )
+}
+
+/** Sorts entries by column id */
+function byColumnId([a]: [string, unknown], [b]: [string, unknown]): number {
+  return a < b ? -1 : a > b ? 1 : 0
 }
 
 /** The key of an issue's content */

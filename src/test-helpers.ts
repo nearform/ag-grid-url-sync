@@ -221,7 +221,8 @@ export const GRID_TIMINGS: readonly GridTiming[] = [
 /** The columns of a timed grid. It drops the filters of other columns. */
 const TIMED_COLUMNS = new Map([
   ['name', 'agTextColumnFilter'],
-  ['age', 'agNumberColumnFilter']
+  ['age', 'agNumberColumnFilter'],
+  ['status', 'agSetColumnFilter']
 ])
 
 export interface TimedGrid {
@@ -243,18 +244,43 @@ function modelKey(model: FilterModel): string {
 }
 
 /**
+ * A model as a real AG Grid rebuilds it: each column's keys in another order,
+ * and a number filter given as a string comes back as a number
+ */
+function rebuildModel(model: FilterModel): FilterModel {
+  return Object.fromEntries(
+    Object.entries(model).map(([colId, column]) => {
+      const rebuilt =
+        column.filterType === 'number' && 'filter' in column
+          ? { ...column, filter: Number(column.filter) }
+          : column
+
+      return [colId, Object.fromEntries(Object.entries(rebuilt).reverse())]
+    })
+  )
+}
+
+export interface TimedGridOptions {
+  /** The grid rebuilds each model that it takes, as a real AG Grid does */
+  normalize?: boolean | undefined
+}
+
+/**
  * A grid fake with state and a timing. Like AG Grid, it sends no
  * filterChanged when the model does not change.
  */
 export function createTimedGrid(
   timing: GridTiming,
-  initial: FilterModel = {}
+  initial: FilterModel = {},
+  options: TimedGridOptions = {}
 ): TimedGrid {
   const listeners = createGridListeners()
   let current: FilterModel = { ...initial }
 
   /** Takes the model. False when nothing changed, so no event is sent. */
-  const take = (next: FilterModel): boolean => {
+  const take = (model: FilterModel): boolean => {
+    const next = options.normalize ? rebuildModel(model) : model
+
     if (modelKey(next) === modelKey(current)) return false
 
     current = next

@@ -4,6 +4,7 @@ import type {
   NumberFilterModel,
   DateFilterModel
 } from 'ag-grid-community'
+import type { GridView, ViewStore } from './view-storage.js'
 import { attachColumn } from './issue-columns.js'
 import { DATA_ISSUE_CODES } from './data-issue-codes.js'
 import {
@@ -710,10 +711,15 @@ export interface GridUrlSyncSnapshot {
   readonly hasFilters: boolean
   /** The issues of the latest apply and of the latest grid read */
   readonly issues: readonly URLSyncError[]
+  /** The saved views, in save order. Empty with no `views` option. */
+  readonly views: readonly GridView[]
+  /** The id of the active saved view, or null */
+  readonly activeViewId: string | null
 }
 
 /**
- * How the sync writes a filter change to the address bar. `'none'` never
+ * How the sync writes a filter change to the address bar: a user edit, a
+ * view load or `applyFilters`. A URL apply writes nothing. `'none'` never
  * writes. `'replace'` and `'push'` use `window.history`. A function gets the
  * URL, for example `url => router.replace(url)`.
  */
@@ -748,13 +754,22 @@ export interface GridUrlSyncOptions {
   applyUrlOnCreate?: boolean | undefined
   /**
    * Throw an issue instead of reporting it, in the methods that the app
-   * calls (`applyUrl`, `getUrl`). `createGridUrlSync` and the sync's own
-   * listeners never throw.
+   * calls (`applyUrl`, `applyFilters`, `getUrl`, `saveView`, `loadView`,
+   * `deleteView`). `createGridUrlSync` and the sync's own listeners never
+   * throw.
    * @default false
    */
   throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
   /** Gets each issue one time */
   onIssue?: ((event: IssueEvent) => void) | undefined
+  /**
+   * The saved views. Give `createViewStore(key)` from
+   * `ag-grid-url-sync/view-storage`, or your own `ViewStore`. With no
+   * store, `views` is empty and the view methods do nothing. On create, a
+   * URL that holds the stored view restores it, else a URL with at least
+   * one filter wins, else the stored view is restored.
+   */
+  views?: ViewStore | undefined
 }
 
 /** A sync between one grid and the URL */
@@ -765,8 +780,34 @@ export interface GridUrlSync {
   subscribe(listener: () => void): () => void
   /** Applies the filters of a URL (default: the address bar) to the grid */
   applyUrl(url?: string): ApplyResult
+  /**
+   * Applies filters to the grid as the app's own write. When it lands, the
+   * URL is written in the `history` mode, as for a user edit.
+   */
+  applyFilters(filters: FilterState): ApplyResult
   /** The URL with the grid's filters (default base: the address bar) */
   getUrl(baseUrl?: string): string
-  /** Removes the listeners. The snapshot keeps the last state. */
+  /**
+   * Saves the grid's filters as a view with this name, and makes it active.
+   * The same name updates that view. Returns null with no `views` option or
+   * when the save fails.
+   */
+  saveView(name: string): GridView | null
+  /**
+   * Loads a saved view into the grid and makes it active. `null` clears the
+   * filters. When the view lands, the URL is written in the `history` mode,
+   * as for a user edit. An unknown id reports `VIEW_NOT_FOUND`.
+   */
+  loadView(id: string | null): void
+  /**
+   * Deletes a saved view. If it is active and the grid still shows it, the
+   * grid is cleared.
+   */
+  deleteView(id: string): void
+  /**
+   * Removes the listeners. The snapshot keeps the last state. After this,
+   * `applyUrl`, `applyFilters`, `saveView` and `loadView` report
+   * `NOT_READY`.
+   */
   destroy(): void
 }

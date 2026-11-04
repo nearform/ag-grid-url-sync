@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { createSyncHolder } from './sync-holder.js'
 import { IDLE_SNAPSHOT } from '../core/grid-url-sync.js'
 import type { GridUrlSync, GridUrlSyncSnapshot } from '../core/types.js'
+import { URLSyncError } from '../core/types.js'
 
 // The holder gives React one stable subscribe and getSnapshot pair, and
 // forwards them to the sync that the hook has now (#222)
@@ -182,6 +183,67 @@ describe('createSyncHolder', () => {
 
       expect(holder.getSnapshot()).toBe(fake.snapshot)
       expect(listener).not.toHaveBeenCalled()
+    })
+  })
+
+  // The apply issues of an earlier sync on the same grid (#223 review)
+  describe('carried issues', () => {
+    const ISSUE = new URLSyncError('bad', undefined, {
+      code: 'INVALID_NUMBER',
+      column: 'age'
+    })
+
+    it('puts the carried issues before the issues of the sync', () => {
+      const holder = createSyncHolder()
+      const fake = createFakeSync()
+      holder.set(fake.sync)
+
+      holder.setCarriedIssues([ISSUE])
+
+      expect(holder.getSnapshot()).toEqual({
+        ...fake.snapshot,
+        issues: [ISSUE]
+      })
+    })
+
+    it('keeps the snapshot object while nothing changed', () => {
+      const holder = createSyncHolder()
+      holder.set(createFakeSync().sync)
+      holder.setCarriedIssues([ISSUE])
+
+      expect(holder.getSnapshot()).toBe(holder.getSnapshot())
+    })
+
+    it('notifies for a new list while there is a sync, and not for the same list', () => {
+      const holder = createSyncHolder()
+      holder.set(createFakeSync().sync)
+      const listener = vi.fn()
+      holder.subscribe(listener)
+      const list = [ISSUE]
+
+      holder.setCarriedIssues(list)
+      holder.setCarriedIssues(list)
+
+      expect(listener).toHaveBeenCalledOnce()
+    })
+
+    it('gives the snapshot of the sync with no carried issues', () => {
+      const holder = createSyncHolder()
+      const fake = createFakeSync()
+      holder.set(fake.sync)
+      holder.setCarriedIssues([ISSUE])
+
+      holder.setCarriedIssues([])
+
+      expect(holder.getSnapshot()).toBe(fake.snapshot)
+    })
+
+    it('gives the idle snapshot with no sync', () => {
+      const holder = createSyncHolder()
+
+      holder.setCarriedIssues([ISSUE])
+
+      expect(holder.getSnapshot()).toBe(IDLE_SNAPSHOT)
     })
   })
 })

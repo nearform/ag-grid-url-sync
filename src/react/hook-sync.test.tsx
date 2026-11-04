@@ -538,3 +538,56 @@ describe('saved views on the core (#223)', () => {
     expect(made).not.toHaveBeenCalled()
   })
 })
+
+// The stored pointer after a hand edit, as in 0.5.1 (#223 review)
+describe('the stored pointer after a hand edit', () => {
+  const KEY = 'hook-sync-pointer'
+
+  const OTHER: FilterModel = {
+    name: { filterType: 'text', type: 'contains', filter: 'bob' }
+  }
+
+  test('a pointer write that fails has the context filter-change', async () => {
+    const onError = vi.fn()
+    const grid = createGrid(ANN)
+
+    const { result } = renderSync({
+      grid,
+      options: { storageKey: KEY, onError }
+    })
+
+    await waitForEffects()
+    act(() => {
+      result.current.saveView('v')
+    })
+
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError')
+    })
+    grid.setModel(OTHER)
+    grid.fireFilterChanged()
+
+    expect(result.current.activeViewId).toBeNull()
+    expect(onError.mock.calls.map(([, context]) => context)).toEqual([
+      'filter-change'
+    ])
+  })
+
+  test('a hand edit keeps a pointer that another tab moved', async () => {
+    const grid = createGrid(ANN)
+    const { result } = renderSync({ grid, options: { storageKey: KEY } })
+    await waitForEffects()
+
+    act(() => {
+      result.current.saveView('v')
+    })
+
+    // Another tab saves a view, so the pointer names it
+    const other = createViewStore(KEY).saveView('other', OTHER)
+    grid.setModel(OTHER)
+    grid.fireFilterChanged()
+
+    expect(result.current.activeViewId).toBeNull()
+    expect(createViewStore(KEY).getActiveViewId()).toBe(other.id)
+  })
+})

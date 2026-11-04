@@ -381,4 +381,169 @@ describe('useAGGridUrlSync issues (#229)', () => {
     })
     expect(result.current.issues).toEqual([])
   })
+
+  // A new sync on the same grid keeps the apply issues of the last one until
+  // the next apply, view load or clear, as in 0.5.1 (#223 review)
+  describe('a new sync on the same grid', () => {
+    const BAD_URL = `?f_age_gt=abc&f_name_contains=${LONG}`
+
+    const codes = (result: { current: UseAGGridUrlSyncReturn }) =>
+      result.current.issues.map(issue => issue.code)
+
+    test('keeps the apply issues across a storageKey change', async () => {
+      window.localStorage.clear()
+      const { api } = createGridApi()
+
+      const { result, rerender } = renderHook(
+        ({ storageKey }) => useAGGridUrlSync(asGridApi(api), { storageKey }),
+        { initialProps: { storageKey: 'carry-a' } }
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters(BAD_URL))
+
+      expect(codes(result)).toEqual(['INVALID_NUMBER', 'VALUE_TOO_LONG'])
+
+      rerender({ storageKey: 'carry-b' })
+      await waitForEffects()
+
+      expect(codes(result)).toEqual(['INVALID_NUMBER', 'VALUE_TOO_LONG'])
+    })
+
+    test('keeps the apply issues across a paramPrefix change, until a clear', async () => {
+      const { api } = createGridApi()
+
+      const { result, rerender } = renderHook(
+        ({ paramPrefix }) => useAGGridUrlSync(asGridApi(api), { paramPrefix }),
+        { initialProps: { paramPrefix: 'f_' } }
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+      rerender({ paramPrefix: 'g_' })
+      await waitForEffects()
+
+      expect(codes(result)).toEqual(['INVALID_NUMBER'])
+
+      act(() => result.current.clearFilters())
+
+      expect(result.current.issues).toEqual([])
+    })
+
+    test('the next apply replaces the kept apply issues', async () => {
+      const { api } = createGridApi()
+
+      const { result, rerender } = renderHook(
+        ({ paramPrefix }) => useAGGridUrlSync(asGridApi(api), { paramPrefix }),
+        { initialProps: { paramPrefix: 'f_' } }
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+      rerender({ paramPrefix: 'g_' })
+      await waitForEffects()
+      act(() => result.current.applyUrlFilters(`?g_name_contains=${LONG}`))
+
+      expect(codes(result)).toEqual(['VALUE_TOO_LONG'])
+    })
+
+    test('the kept apply issues keep their identity when the content is the same', async () => {
+      const { api, fireFilterChanged } = createGridApi()
+
+      const { result, rerender } = renderHook(
+        ({ paramPrefix }) => useAGGridUrlSync(asGridApi(api), { paramPrefix }),
+        { initialProps: { paramPrefix: 'f_' } }
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+      rerender({ paramPrefix: 'g_' })
+      await waitForEffects()
+
+      const before = result.current.issues
+      fireFilterChanged()
+      fireFilterChanged()
+
+      expect(before).toHaveLength(1)
+      expect(result.current.issues).toBe(before)
+    })
+
+    test('keeps the apply issues when autoApplyOnMount turns on and the landing applies nothing', async () => {
+      window.localStorage.clear()
+      const { api } = createGridApi()
+
+      const { result, rerender } = renderHook(
+        ({ autoApplyOnMount }) =>
+          useAGGridUrlSync(asGridApi(api), {
+            storageKey: 'carry-auto',
+            autoApplyOnMount
+          }),
+        { initialProps: { autoApplyOnMount: false } }
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+      rerender({ autoApplyOnMount: true })
+      await waitForEffects()
+
+      expect(codes(result)).toEqual(['INVALID_NUMBER'])
+    })
+
+    test('a view load drops the kept apply issues', async () => {
+      window.localStorage.clear()
+
+      const view = createViewStore('carry-load').saveView('Eng', {
+        name: { filterType: 'text', type: 'equals', filter: 'eng' }
+      })
+
+      const { api } = createGridApi()
+
+      const { result, rerender } = renderHook(
+        ({ paramPrefix }) =>
+          useAGGridUrlSync(asGridApi(api), {
+            storageKey: 'carry-load',
+            paramPrefix
+          }),
+        { initialProps: { paramPrefix: 'f_' } }
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+      rerender({ paramPrefix: 'g_' })
+      await waitForEffects()
+      act(() => result.current.loadView(view.id))
+
+      expect(result.current.issues).toEqual([])
+    })
+
+    test('a view load that fails keeps the kept apply issues', async () => {
+      window.localStorage.clear()
+      const { api } = createGridApi()
+
+      const { result, rerender } = renderHook(
+        ({ paramPrefix }) =>
+          useAGGridUrlSync(asGridApi(api), {
+            storageKey: 'carry-missing',
+            paramPrefix,
+            onError: () => {}
+          }),
+        { initialProps: { paramPrefix: 'f_' } }
+      )
+
+      await waitForEffects()
+
+      act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+      rerender({ paramPrefix: 'g_' })
+      await waitForEffects()
+      act(() => result.current.loadView('missing'))
+
+      expect(codes(result)).toEqual(['INVALID_NUMBER'])
+    })
+  })
 })

@@ -20,6 +20,7 @@ import type {
   FilterState,
   GridUrlSync,
   GridUrlSyncSnapshot,
+  IssueCode,
   IssueEvent,
   ResolvedOptions,
   SerializationFormat,
@@ -38,6 +39,19 @@ const NO_ISSUES: readonly URLSyncError[] = []
 /** The snapshot of a server render: no grid and no sync yet (#222) */
 const getServerSnapshot = (): GridUrlSyncSnapshot => IDLE_SNAPSHOT
 
+/** The codes of a stored pointer write that fails */
+const STORAGE_CODES: ReadonlySet<IssueCode> = new Set([
+  'STORAGE_WRITE_FAILED',
+  'STORAGE_FULL',
+  'STORAGE_UNAVAILABLE'
+])
+
+/** The codes that stop a view load before it changes the grid */
+const LOAD_STOP_CODES: ReadonlySet<IssueCode> = new Set([
+  'VIEW_NOT_FOUND',
+  'GRID_ERROR'
+])
+
 /**
  * What the hook knows about the grid it syncs. A new grid (or none) starts a
  * new session. A new sync on the same grid (a new option or storageKey) keeps
@@ -52,6 +66,11 @@ interface Session {
   urlApplied: boolean
   /** The active view of the last sync, for the next sync on this grid */
   activeViewId: string | null
+  /**
+   * The data issues of the last apply, view load or clear on this grid. A
+   * new sync on this grid shows them until its own next one, as in 0.5.1.
+   */
+  applyIssues: readonly URLSyncError[]
 }
 
 /** The live sync, and the URL options and store that it was made for */
@@ -70,7 +89,32 @@ function newSession(
     storageKey,
     autoApplied: false,
     urlApplied: false,
-    activeViewId: null
+    activeViewId: null,
+    applyIssues: NO_ISSUES
+  }
+}
+
+/** Only the data issues, or the empty list */
+function dataIssues(issues: readonly URLSyncError[]): readonly URLSyncError[] {
+  const data = issues.filter(isDataIssue)
+
+  return data.length ? data : NO_ISSUES
+}
+
+/**
+ * Whether the page URL gives a filter. Then the sync's landing on create
+ * applies the URL. The sync reports the URL's issues itself.
+ */
+function pageGivesFilters(options: AGGridUrlSyncConfig): boolean {
+  try {
+    const filters = parseFilters(pageUrl(), {
+      ...options,
+      onParseError: () => {}
+    })
+
+    return Object.keys(filters).length > 0
+  } catch {
+    return false
   }
 }
 
@@ -188,6 +232,9 @@ export function useAGGridUrlSync(
   // The live sync, with the URL options and the store that it was made for
   const liveSyncRef = useRef<LiveSync | null>(null)
 
+  // Set when the sync reports an issue that stops a view load
+  const loadStoppedRef = useRef(false)
+
   // Each failure goes to exactly one callback, by its kind (#220). A data issue
   // (a filter that is dropped or not valid) goes to onParseError. Any other
   // failure goes to onError with its context. The library never writes to the
@@ -243,6 +290,30 @@ export function useAGGridUrlSync(
 
     return sync?.getSnapshot().status === 'active' ? sync : null
   }, [holder])
+
+  /**
+   * After an apply, a view load or a clear of the live sync: its issues are
+   * the grid's apply issues now. The sync shows them, so the issues of an
+   * earlier sync go.
+   */
+  const keepApplyIssues = useCallback(
+    (issues: readonly URLSyncError[]): void => {
+      sessionRef.current.applyIssues = dataIssues(issues)
+      holder.setCarriedIssues(NO_ISSUES)
+    },
+    [holder]
+  )
+
+  /** Loads a view. A load that changes the grid ends the apply issues. */
+  const loadAndKeep = useCallback(
+    (sync: GridUrlSync, id: string | null): void => {
+      loadStoppedRef.current = false
+      sync.loadView(id)
+
+      if (!loadStoppedRef.current) keepApplyIssues(NO_ISSUES)
+    },
+    [keepApplyIssues]
+  )
 
   // Make the sync for each grid, each set of URL-format options and each
   // storageKey. A new grid starts a new session. A new option or storageKey
@@ -306,22 +377,39 @@ export function useAGGridUrlSync(
 
     if (landsOnCreate) session.urlApplied = true
 
-    // A grid-read issue gets the context of the state update, as before. The
-    // hook's sync gets a 'url' issue only from its landing on create.
-    const onIssue = ({ issue, source }: IssueEvent): void =>
+    // The data issues of the landing on create
+    const landingIssues: URLSyncError[] = []
+
+    // A grid-read issue gets the context of the state update, as before. A
+    // pointer write that fails after a grid change gets 'filter-change', as
+    // in 0.5.1. The hook's sync gets a 'url' issue only from its landing on
+    // create.
+    const onIssue = ({ issue, source }: IssueEvent): void => {
+      if (source === 'api' && LOAD_STOP_CODES.has(issue.code)) {
+        loadStoppedRef.current = true
+      }
+
+      if (source === 'url' && isDataIssue(issue)) landingIssues.push(issue)
+
       reportFailure(
         issue,
         source === 'grid'
-          ? 'update-state'
+          ? STORAGE_CODES.has(issue.code)
+            ? 'filter-change'
+            : 'update-state'
           : source === 'url'
             ? 'auto-apply-filters'
             : contextRef.current
       )
+    }
 
     let sync: GridUrlSync
 
     // A grid that is already destroyed is an initialization failure
     contextRef.current = 'initialization'
+
+    // The new sync shows the apply issues of the last one on this grid
+    holder.setCarriedIssues(session.applyIssues)
 
     try {
       sync = createGridUrlSync(
@@ -345,17 +433,25 @@ export function useAGGridUrlSync(
     if (sync.getSnapshot().status === 'active') {
       if (autoApply) contextRef.current = 'auto-apply-filters'
 
-      if (autoApply && !viewStore) {
+      if (
+        landsOnCreate &&
+        (sync.getSnapshot().activeViewId !== null ||
+          pageGivesFilters(urlOptions))
+      ) {
+        // The landing restored the stored view or applied the URL. A landing
+        // that applies nothing keeps the apply issues.
+        keepApplyIssues(landingIssues)
+      } else if (autoApply && !viewStore) {
         // No saved views: the URL is the only source, so apply it always. An
         // empty URL clears the grid, as in 0.5.1 (D4).
-        sync.applyUrl()
+        keepApplyIssues(sync.applyUrl().issues)
       } else if (autoApply && viewStore && !landsOnCreate) {
         // The URL had its chance on this grid: restore the new namespace's
         // stored view
         const pointer = viewStore.getActiveViewId()
 
         if (sync.getSnapshot().views.some(view => view.id === pointer)) {
-          sync.loadView(pointer)
+          loadAndKeep(sync, pointer)
         }
       } else if (
         kept !== null &&
@@ -376,7 +472,9 @@ export function useAGGridUrlSync(
     autoApplyOnMount,
     holder,
     reportFailure,
-    dropSync
+    dropSync,
+    keepApplyIssues,
+    loadAndKeep
   ])
 
   // Unmount: the sync goes with the hook
@@ -449,9 +547,9 @@ export function useAGGridUrlSync(
       }
 
       contextRef.current = 'apply-url-filters'
-      sync.applyUrl(url)
+      keepApplyIssues(sync.applyUrl(url).issues)
     },
-    [activeSync, reportNotReady]
+    [activeSync, reportNotReady, keepApplyIssues]
   )
 
   const clearFilters = useCallback((): void => {
@@ -464,8 +562,8 @@ export function useAGGridUrlSync(
     }
 
     contextRef.current = 'clear-filters'
-    sync.applyFilters({})
-  }, [activeSync, reportNotReady])
+    keepApplyIssues(sync.applyFilters({}).issues)
+  }, [activeSync, reportNotReady, keepApplyIssues])
 
   const parseUrlFilters = useCallback(
     (url: string): FilterState => {
@@ -501,9 +599,9 @@ export function useAGGridUrlSync(
       }
 
       contextRef.current = 'apply-filters'
-      sync.applyFilters(filters)
+      keepApplyIssues(sync.applyFilters(filters).issues)
     },
-    [activeSync, reportNotReady]
+    [activeSync, reportNotReady, keepApplyIssues]
   )
 
   const getFiltersAsFormat = useCallback(
@@ -571,9 +669,9 @@ export function useAGGridUrlSync(
       }
 
       contextRef.current = 'load-view'
-      sync.loadView(id)
+      loadAndKeep(sync, id)
     },
-    [viewStore, enabledWhenReady, activeSync, reportNotReady]
+    [viewStore, enabledWhenReady, activeSync, reportNotReady, loadAndKeep]
   )
 
   const deleteView = useCallback(
@@ -607,9 +705,10 @@ export function useAGGridUrlSync(
   const views = useMemo(() => [...snapshot.views], [snapshot.views])
   const { activeViewId } = snapshot
 
-  // The data issues of the latest apply and grid read (#229). Operation
-  // failures go to onError. The snapshot keeps its issues array while the
-  // content is the same, so this changes only with it.
+  // The data issues of the latest apply and grid read (#229), with the apply
+  // issues of an earlier sync on this grid first. Operation failures go to
+  // onError. The snapshot keeps its issues array while the content is the
+  // same, so this changes only with it.
   const issues = useMemo(() => {
     const data = isReady ? snapshot.issues.filter(isDataIssue) : NO_ISSUES
 

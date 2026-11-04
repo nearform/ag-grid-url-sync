@@ -760,6 +760,8 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
     }
 
     if (result.queued && shownWhilePending(own)) {
+      // The record stays pending. A return to the old state is a change now.
+      own = { ...own, before: null, beforeKey: null }
       writeLanding(own.kind, ownSource)
     }
 

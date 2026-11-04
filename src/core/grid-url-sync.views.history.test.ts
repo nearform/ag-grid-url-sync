@@ -375,4 +375,73 @@ describe('createGridUrlSync: loads in one tick on a grid that rebuilds the model
 
     sync.destroy()
   })
+  it('B, B, then a user clear writes the clear', async () => {
+    const { b, grid, sync } = rebuiltSetup()
+
+    sync.loadView(b.id)
+    sync.loadView(b.id)
+    await tick()
+
+    const length = window.history.length
+
+    grid.userEdit({})
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(window.location.search).toBe('')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+
+  it('A, B, B, then a user clear writes the clear', async () => {
+    const { a, b, grid, sync } = rebuiltSetup()
+
+    sync.loadView(a.id)
+    sync.loadView(b.id)
+    sync.loadView(b.id)
+    await tick()
+
+    const length = window.history.length
+
+    grid.userEdit({})
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(window.location.search).toBe('')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+
+  it('B, B, then loadView(A) writes A', async () => {
+    const { a, b, grid, sync } = rebuiltSetup()
+
+    sync.loadView(b.id)
+    sync.loadView(b.id)
+    await tick()
+    sync.loadView(a.id)
+    await tick()
+
+    expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+    expect(sync.getSnapshot().activeViewId).toBe(a.id)
+    expect(window.location.search).toContain('f_name')
+
+    sync.destroy()
+  })
+
+  it('B, B, then loadView(null) clears the URL', async () => {
+    const { b, sync } = rebuiltSetup()
+
+    sync.loadView(b.id)
+    sync.loadView(b.id)
+    await tick()
+    sync.loadView(null)
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(window.location.search).toBe('')
+
+    sync.destroy()
+  })
 })

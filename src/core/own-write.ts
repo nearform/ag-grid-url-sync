@@ -285,6 +285,35 @@ function rebuiltLanding(
 }
 
 /**
+ * The record that a new sync on the same grid takes from the earlier sync
+ * (#276), checked against the grid now. The write can land, or the user can
+ * edit, while no sync listens (for example while React hides the tree), so
+ * the record holds only while the grid agrees with it:
+ * - pending: the grid still shows the state from before (still pending), or
+ *   it shows the write, also in a form that the grid made of it (landed).
+ * - landed: the grid still shows it.
+ * Anything else is null: the next event is then a change, as with no record.
+ * `live` has the keys of the grid now in the record's form, and for a model
+ * write the URL form. Null: the grid cannot be read.
+ */
+export function takeOver(
+  own: OwnWrite,
+  live: { key: string; urlKey?: string | undefined } | null
+): OwnWrite | null {
+  if (live === null || own.phase === 'writing') return null
+
+  if (own.phase === 'landed') return live.key === own.key ? own : null
+
+  if (own.beforeKey !== null && live.key === own.beforeKey) return own
+
+  const shown =
+    live.key === own.acceptedKey ||
+    (own.acceptedUrlKey !== undefined && live.urlKey === own.acceptedUrlKey)
+
+  return shown ? { phase: 'landed', kind: own.kind, key: live.key } : null
+}
+
+/**
  * A key for per-column values that depends on no key order, at any level.
  * The grid can rebuild a column's model with its keys in another order.
  */

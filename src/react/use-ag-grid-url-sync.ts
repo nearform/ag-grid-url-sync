@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { GridApi } from 'ag-grid-community'
 import { useSyncExternalStore } from 'use-sync-external-store/shim'
-import { createSync, IDLE_SNAPSHOT } from '../core/grid-url-sync.js'
+import {
+  createSync,
+  handOver,
+  IDLE_SNAPSHOT,
+  type Handover
+} from '../core/grid-url-sync.js'
 import { parseUrlFilters as parseFilters } from '../core/url-parser.js'
 import { generateUrl } from '../core/url-generator.js'
 import { getFilterModel } from '../core/grid-integration.js'
@@ -75,6 +80,11 @@ interface Session {
    * new sync on this grid shows them until its own next one, as in 0.5.1.
    */
   applyIssues: readonly URLSyncError[]
+  /**
+   * The own write of the last sync, for the next sync on this grid (#276).
+   * Its late filterChanged is then not a user edit.
+   */
+  handover: Handover | null
 }
 
 /**
@@ -99,7 +109,8 @@ function newSession(
     autoApplied: false,
     urlApplied: false,
     activeViewId: null,
-    applyIssues: NO_ISSUES
+    applyIssues: NO_ISSUES,
+    handover: null
   }
 }
 
@@ -317,6 +328,7 @@ export function useAGGridUrlSync(
   const dropSync = useCallback(
     (current: LiveSync): void => {
       sessionRef.current.activeViewId = current.sync.getSnapshot().activeViewId
+      sessionRef.current.handover = handOver(current.sync)
       current.stopPopstate()
       current.sync.destroy()
       holder.set(null)
@@ -502,6 +514,10 @@ export function useAGGridUrlSync(
     // The new sync shows the apply issues of the last one on this grid
     holder.setCarriedIssues(session.applyIssues)
 
+    // The last sync's own write goes to this sync only (#276)
+    const { handover } = session
+    session.handover = null
+
     try {
       sync = createSync(
         gridUrlSyncOptions(
@@ -512,7 +528,7 @@ export function useAGGridUrlSync(
           landsOnCreate,
           addressBar
         ),
-        keptView
+        { keptViewId: keptView, handover }
       )
     } catch (error) {
       stopPopstate()

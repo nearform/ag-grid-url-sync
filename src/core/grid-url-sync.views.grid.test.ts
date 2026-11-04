@@ -95,7 +95,7 @@ describe('createSync: a kept view', () => {
 
     const sync = createSync(
       { api, views: store, history: 'push', applyUrlOnCreate: false },
-      a.id
+      { keptViewId: a.id }
     )
 
     await settle()
@@ -120,7 +120,7 @@ describe('createSync: a kept view', () => {
 
     const sync = createSync(
       { api, views: store, history: 'push', applyUrlOnCreate: false },
-      'gone'
+      { keptViewId: 'gone' }
     )
 
     expect(sync.getSnapshot().activeViewId).toBeNull()

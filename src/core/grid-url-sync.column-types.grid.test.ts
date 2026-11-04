@@ -192,20 +192,43 @@ describe('createGridUrlSync: before the first row data', () => {
     expect(sync.getSnapshot().issues).toHaveLength(1)
   })
 
-  it('does not wait for a URL with no shared operation', async () => {
-    window.history.replaceState(null, '', '/?f_age_gt=35')
+  it('waits for a filter of one type too, and then checks its type', async () => {
+    // zip becomes a text column, so a number filter on it is a mismatch
+    window.history.replaceState(null, '', '/?f_age_gt=35&f_zip_gt=5')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
     const api = inferredGrid({ rowData: null })
     const setFilterModel = vi.spyOn(api, 'setFilterModel')
-    createGridUrlSync({ api })
+    createGridUrlSync({ api, onIssue })
 
-    // AG Grid holds the model itself until the row data comes
-    expect(setFilterModel).toHaveBeenCalledTimes(1)
+    expect(setFilterModel).not.toHaveBeenCalled()
 
     api.setGridOption('rowData', ROWS)
     await settle()
 
     expect(api.getFilterModel()).toEqual({
       age: { filterType: 'number', type: 'greaterThan', filter: 35 }
+    })
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+      issue: { code: 'TYPE_MISMATCH', column: 'zip' },
+      source: 'url'
+    })
+  })
+
+  it('does not wait for a column with a set type', () => {
+    window.history.replaceState(null, '', '/?f_age_eq=30')
+
+    const api = inferredGrid({
+      rowData: null,
+      columnDefs: [{ field: 'age', cellDataType: 'number' }, { field: 'zip' }]
+    })
+
+    const setFilterModel = vi.spyOn(api, 'setFilterModel')
+    createGridUrlSync({ api })
+
+    // AG Grid holds the model itself while zip is pending
+    expect(setFilterModel).toHaveBeenCalledWith({
+      age: { filterType: 'number', type: 'equals', filter: 30 }
     })
   })
 

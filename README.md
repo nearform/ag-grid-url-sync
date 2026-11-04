@@ -83,7 +83,7 @@ The column type comes from the column definition that AG Grid resolved:
 2. Else the `cellDataType`, set by you or inferred by AG Grid 31+ from the data: `number` is a number; `date`, `dateString`, `dateTime` and `dateTimeString` are dates; a custom data type uses its `baseDataType`; all others are text.
 3. Else text.
 
-AG Grid infers the data types from the first row. Before the first row data arrives, the types are not known, and AG Grid holds a filter model until then. So `createGridUrlSync` waits too: a URL with `eq`, `neq`, `blank` or `notBlank` on such a column is applied at the first `rowDataUpdated` with rows. The React hooks keep the wait across a new sync on the same grid (StrictMode, an option change).
+AG Grid infers the data types from the first row. Before the first row data arrives, the types are not known, and AG Grid holds a filter model until then. So `createGridUrlSync` waits too: a URL with a filter on such a column is applied at the first `rowDataUpdated` with rows. Then the value of `eq`, `neq`, `blank` and `notBlank` gets the column's type, and a filter of the wrong type for the column is a `TYPE_MISMATCH` issue. The React hooks keep the wait across a new sync on the same grid (StrictMode, an option change).
 
 - A newer apply, a filter write, a user filter change or `destroy` cancels the wait.
 - An `applyUrl` that waits returns no issues and does not throw. The issues of the URL go to `onIssue` and the snapshot when it is applied.

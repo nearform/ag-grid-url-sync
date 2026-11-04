@@ -396,31 +396,25 @@ export function createSync(
   }
 
   /**
-   * Whether a URL has a shared operation on a column whose type AG Grid has
-   * not inferred yet (#224). The value would be read as text, and a text
-   * value on what becomes a number column filters out every row.
+   * Whether a URL has a filter on a column whose type AG Grid has not
+   * inferred yet (#224). A shared operation's value would be read as text,
+   * and a text value on what becomes a number column filters out every row.
+   * A filter of one type cannot be checked against the column yet.
    */
   function waitsForTypes(target: string): boolean {
-    let pending = false
-    const call = startCall('url', 'collect')
-
     try {
-      parseUrlFilters(target, {
-        ...call.options,
-        columnTypes: column => {
-          const type = gridColumnType(api, column)
+      const filters = parseUrlFilters(
+        target,
+        startCall('url', 'collect').options
+      )
 
-          if (type === 'pending') pending = true
-
-          return type === 'pending' ? undefined : type
-        }
-      })
+      return Object.keys(filters).some(
+        column => gridColumnType(api, column) === 'pending'
+      )
     } catch {
       // The apply reports a URL that cannot be read
       return false
     }
-
-    return pending
   }
 
   /**

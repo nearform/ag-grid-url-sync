@@ -346,9 +346,10 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
       // The grid still shows the model from before the write
       if (before && key === filtersKey(before)) return true
 
-      // The write lands. An API change that filters only columns of the
-      // write is the landing in a form of the grid's own. A user's edit in
-      // the grid's UI has another source.
+      // The write lands. An API change that shows the write's filters for
+      // some columns, and the filters from before for the others, is a
+      // write that the grid took only part of. A user's edit in the grid's
+      // UI has another source.
       if (
         key === acceptedKey ||
         (source === 'api' && couldBeLanding(state, accepted, before))
@@ -562,20 +563,30 @@ export function createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync {
 }
 
 /**
- * Whether the grid's filters could be a write landing: each column is one of
- * the write's, or a column that the grid had before with the same filter
+ * Whether the grid's filters could be a write landing in which the grid took
+ * only part of the write: each column has the write's filter, or the filter
+ * that the grid had before. At least one column must be the write's, so a
+ * clear-all or another value is a change, not the landing (#274 review).
  */
 function couldBeLanding(
   live: FilterState,
   accepted: FilterState,
   before: FilterState | null
 ): boolean {
-  return Object.keys(live).every(
-    colId =>
-      Object.hasOwn(accepted, colId) ||
-      (before !== null &&
-        Object.hasOwn(before, colId) &&
-        JSON.stringify(live[colId]) === JSON.stringify(before[colId]))
+  const columns = Object.keys(live)
+
+  const fromWrite = (colId: string): boolean =>
+    Object.hasOwn(accepted, colId) &&
+    JSON.stringify(live[colId]) === JSON.stringify(accepted[colId])
+
+  const fromBefore = (colId: string): boolean =>
+    before !== null &&
+    Object.hasOwn(before, colId) &&
+    JSON.stringify(live[colId]) === JSON.stringify(before[colId])
+
+  return (
+    columns.some(fromWrite) &&
+    columns.every(colId => fromWrite(colId) || fromBefore(colId))
   )
 }
 

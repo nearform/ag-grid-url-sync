@@ -129,3 +129,40 @@ describe.each(GRID_TIMINGS)(
     })
   }
 )
+
+// While a deferred write is pending, an 'api' event is the landing only when
+// the grid shows the write's filters (#274 review)
+describe('createGridUrlSync: an app write while an own write is pending', () => {
+  /** The grid shows x, the URL says x, and an apply of jo is pending */
+  function pendingApply() {
+    const grid = createTimedGrid('deferred', NAME_X)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    sync.applyUrl(href('/?f_name_contains=jo'))
+
+    return { grid, sync }
+  }
+
+  it('a clear-all is written to history', () => {
+    const { grid, sync } = pendingApply()
+
+    expect(window.location.search).toBe('?f_name_contains=x')
+
+    grid.apiEdit({})
+
+    expect(window.location.search).toBe('')
+
+    sync.destroy()
+  })
+
+  it('another value on a column of the write is written to history', () => {
+    const { grid, sync } = pendingApply()
+
+    grid.apiEdit({
+      name: { filterType: 'text', type: 'contains', filter: 'other' }
+    })
+
+    expect(window.location.search).toBe('?f_name_contains=other')
+
+    sync.destroy()
+  })
+})

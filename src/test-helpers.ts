@@ -228,6 +228,11 @@ export interface TimedGrid {
   api: GridApi
   /** The user changes the filters in the grid's UI */
   userEdit(model: FilterModel): void
+  /**
+   * The app's own setFilterModel that lands at once, with any timing: an
+   * 'api' change while a deferred write of the sync is still pending
+   */
+  apiEdit(model: FilterModel): void
 }
 
 /** A key for a model that does not depend on the order of its columns */
@@ -302,6 +307,9 @@ export function createTimedGrid(
     api,
     userEdit(model) {
       if (take({ ...model })) fire('columnFilter')
+    },
+    apiEdit(model) {
+      if (take({ ...model })) fire('api')
     }
   }
 }

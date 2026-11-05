@@ -192,11 +192,7 @@ describe('useGridUrlSync issues (#229)', () => {
     })
   })
 
-  // KNOWN GAP (#284): the README says that GRID_ERROR goes to
-  // onIssue and not to snapshot.issues. The core's grid read puts it in
-  // issues, so throwOnError: true throws it in render. The removed
-  // 0.5 hook kept only the data issues.
-  test.fails('has no GRID_ERROR', async () => {
+  test('has no GRID_ERROR (#284)', async () => {
     const { api, fireFilterChanged } = createGridApi()
 
     const { result } = renderHook(() =>

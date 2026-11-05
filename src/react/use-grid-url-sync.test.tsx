@@ -421,6 +421,32 @@ describe('useGridUrlSync: issues (#271)', () => {
     expect(caught[0]).toMatchObject({ code: 'INVALID_PARAM', column: 'age' })
   })
 
+  test('throwOnError does not throw a GRID_ERROR in render (#284)', async () => {
+    const api = createRealGrid()
+    const { caught, Boundary } = createBoundary()
+    const events: IssueEvent[] = []
+
+    const { result } = renderHook(useGridUrlSync, {
+      initialProps: {
+        api,
+        throwOnError: true,
+        onIssue: (event: IssueEvent) => events.push(event)
+      },
+      wrapper: Boundary
+    })
+
+    await settle()
+
+    vi.spyOn(api, 'getFilterModel').mockImplementation(() => {
+      throw new Error('Read failed')
+    })
+    await edit(api, NAME_JO)
+
+    expect(caught).toEqual([])
+    expect(events.map(event => event.issue.code)).toEqual(['GRID_ERROR'])
+    expect(result.current.issues).toEqual([])
+  })
+
   test('throwOnError with a function throws only the picked issues', async () => {
     window.history.replaceState(null, '', '/?f_age_unknownOperation=1')
     const api = createRealGrid()

@@ -430,7 +430,8 @@ export type AGGridFilter = TextFilterModel | NumberFilterModel | DateFilterModel
 export interface ApplyResult {
   /**
    * The issues of this call: filters that were dropped. The same objects
-   * also go to `onIssue`.
+   * also go to `onIssue`. A failure, such as `GRID_ERROR`, goes there only,
+   * not here (#284).
    */
   issues: readonly URLSyncError[]
 }
@@ -511,7 +512,11 @@ export interface GridUrlSyncSnapshot {
   readonly url: string
   /** Whether the grid has filters that the library supports */
   readonly hasFilters: boolean
-  /** The issues of the latest apply and of the latest grid read */
+  /**
+   * The data issues of the latest apply and of the latest grid read, and a
+   * failed address-bar write. Other failures, such as `GRID_ERROR`, go to
+   * `onIssue` only (#284).
+   */
   readonly issues: readonly URLSyncError[]
   /** The saved views, in save order. Empty with no `views` option. */
   readonly views: readonly GridView[]

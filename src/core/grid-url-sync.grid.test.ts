@@ -359,6 +359,86 @@ describe('createGridUrlSync: onIssue', () => {
   })
 })
 
+describe('createGridUrlSync: failures are not issues (#284)', () => {
+  const codes = (list: readonly { code: string }[]) => list.map(i => i.code)
+
+  it('a failed grid read goes to onIssue, not to the snapshot', async () => {
+    const api = createRealGrid()
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const sync = createGridUrlSync({ api, onIssue })
+
+    vi.spyOn(api, 'getFilterModel').mockImplementation(() => {
+      throw new Error('Read failed')
+    })
+
+    api.setFilterModel(NAME_JO)
+    await settle()
+
+    expect(
+      onIssue.mock.calls.map(([event]) => [event.issue.code, event.source])
+    ).toEqual([['GRID_ERROR', 'grid']])
+    expect(sync.getSnapshot().issues).toEqual([])
+  })
+
+  it('a grid read that keeps failing is reported one time', async () => {
+    const api = createRealGrid()
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    createGridUrlSync({ api, onIssue })
+
+    vi.spyOn(api, 'getFilterModel').mockImplementation(() => {
+      throw new Error('Read failed')
+    })
+
+    api.setFilterModel(NAME_JO)
+    await settle()
+    api.setFilterModel(NAME_X)
+    await settle()
+
+    expect(onIssue).toHaveBeenCalledOnce()
+  })
+
+  it('a failed URL apply gives only its data issues', () => {
+    const api = createRealGrid()
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const sync = createGridUrlSync({ api, onIssue })
+
+    vi.spyOn(api, 'setFilterModel').mockImplementation(() => {
+      throw new Error('Write failed')
+    })
+
+    const result = sync.applyUrl(
+      'https://x.test/?f_name_contains=jo&f_age_unknownOperation=1'
+    )
+
+    expect(codes(result.issues)).toEqual(['INVALID_PARAM'])
+    expect(codes(sync.getSnapshot().issues)).toEqual(['INVALID_PARAM'])
+    expect(onIssue.mock.calls.map(([event]) => event.issue.code)).toEqual([
+      'INVALID_PARAM',
+      'GRID_ERROR'
+    ])
+  })
+
+  it('a failed applyFilters gives no GRID_ERROR', () => {
+    const api = createRealGrid()
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const sync = createGridUrlSync({ api, onIssue })
+
+    vi.spyOn(api, 'setFilterModel').mockImplementation(() => {
+      throw new Error('Write failed')
+    })
+
+    const result = sync.applyFilters({
+      name: { filterType: 'text', type: 'contains', filter: 'jo' }
+    })
+
+    expect(result.issues).toEqual([])
+    expect(sync.getSnapshot().issues).toEqual([])
+    expect(onIssue.mock.calls.map(([event]) => event.issue.code)).toEqual([
+      'GRID_ERROR'
+    ])
+  })
+})
+
 describe('createGridUrlSync: lifecycle', () => {
   it('stops listening after destroy, and destroy is idempotent', async () => {
     const api = createRealGrid()

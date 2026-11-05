@@ -521,7 +521,7 @@ Like TanStack Query, the library can throw an issue instead of reporting it. Set
 
 - In `createGridUrlSync`, the methods that the app calls throw the picked issue. The sync's own work (create, the listeners) never throws.
 - In `parseUrlFilters` and `generateUrl`, a thrown issue does not go to `onIssue`, and the first one stops the call.
-- In React, the hook reports each issue to `onIssue` one time, and then throws a picked issue of `issues` during render, so an error boundary catches it. A failure, such as `GRID_ERROR`, is not in `issues`, so it goes to `onIssue` only (#284). The hook's methods do not throw.
+- In React, the hook reports each issue to `onIssue` one time, and then throws a picked issue of `issues` during render, so an error boundary catches it. A failure, such as `GRID_ERROR`, is not in `issues`, so it goes to `onIssue` only (#284). The one failure in `issues` is a failed address-bar write (`HISTORY_WRITE_FAILED`), so the hook can throw it. The hook's methods do not throw.
 
 Only `createGridUrlSync` or the hook with `history` changes the address bar. Before an error boundary resets, remove the bad param from the URL (or the filter from the grid), or the same issue is thrown again.
 
@@ -611,7 +611,7 @@ The options are the [`createGridUrlSync` options](#vanilla-js-creategridurlsync)
 | `api`          | none    | The AG Grid API, or `null` while the grid starts                                                                                                                                                                |
 | `storageKey`   | none    | Enables saved views, kept in `localStorage` under this key (in place of the core's `views` store). With no key, the view methods do nothing                                                                     |
 | `enabled`      | `true`  | With `false`, the hook makes no sync: `status` is `'idle'`, and a method reports `NOT_READY`. `views` still shows what is in storage. Back to `true` starts again, as a new grid does: the URL is applied again |
-| `throwOnError` | `false` | As in TanStack Query: the hook throws a picked issue of `issues` during render, so an error boundary catches it. Failures go to `onIssue` only. The methods do not throw                                        |
+| `throwOnError` | `false` | As in TanStack Query: the hook throws a picked issue of `issues` during render, so an error boundary catches it. Failures other than `HISTORY_WRITE_FAILED` go to `onIssue` only. The methods do not throw      |
 
 The hook returns the snapshot and the methods of the sync:
 

@@ -231,6 +231,27 @@ describe('createGridUrlSync: before the first row data', () => {
     })
   })
 
+  it('reports a grid that cannot take the row data listener (#286 review)', () => {
+    window.history.replaceState(null, '', '/?f_age_eq=30')
+    const api = inferredGrid({ rowData: null })
+    const add = api.addEventListener.bind(api)
+
+    vi.spyOn(api, 'addEventListener').mockImplementation((type, listener) => {
+      if (type === 'rowDataUpdated') throw new Error('No row data listener')
+
+      add(type, listener)
+    })
+
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const sync = createGridUrlSync({ api, onIssue })
+
+    expect(sync.getSnapshot().status).toBe('active')
+    expect(
+      onIssue.mock.calls.map(([event]) => [event.issue.code, event.source])
+    ).toEqual([['GRID_ERROR', 'url']])
+  })
+
   it('waits for applyUrl too, which gives no issues yet', async () => {
     const api = inferredGrid({ rowData: null })
     const sync = createGridUrlSync({ api })
@@ -294,6 +315,35 @@ describe('createGridUrlSync: before the first row data', () => {
     const first = createSync({ api })
     const handover = handOver(first)
     first.destroy()
+    createSync({ api, applyUrlOnCreate: false }, { handover })
+
+    api.setGridOption('rowData', ROWS)
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'equals', filter: 30 }
+    })
+  })
+
+  it('a sync that cannot take its listeners passes the waiting URL on (#286 review)', async () => {
+    window.history.replaceState(null, '', '/?f_age_eq=30')
+    const api = inferredGrid({ rowData: null })
+    const first = createSync({ api })
+    const firstHandover = handOver(first)
+    first.destroy()
+
+    const add = vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+
+    const failed = createSync(
+      { api, applyUrlOnCreate: false, onIssue: () => {} },
+      { handover: firstHandover }
+    )
+
+    const handover = handOver(failed)
+    failed.destroy()
+    add.mockRestore()
     createSync({ api, applyUrlOnCreate: false }, { handover })
 
     api.setGridOption('rowData', ROWS)

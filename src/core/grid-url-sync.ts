@@ -120,6 +120,12 @@ export interface Handover {
    * setFilterModel for it, so the grid does not hold it: the next sync must.
    */
   readonly parked: ParkedApply | null
+  /**
+   * The key of the GRID_ERROR that onIssue got when the grid could not take
+   * the old sync's listeners, or null (#286). The next sync does not report
+   * the same failure again. A different failure is reported.
+   */
+  readonly listenerFailure: string | null
 }
 
 /** The handover of each sync that createSync made. Not public. */
@@ -195,6 +201,12 @@ export function createSync(
   const columnTypes = gridColumnTypes(api)
   // A URL apply that waits for AG Grid to infer a column type (#224)
   let parked: ParkedApply | null = null
+  // The key of the GRID_ERROR when the grid could not take the listeners
+  // on create, or null (#286)
+  let listenerFailure: string | null = null
+  // The earlier sync's waiting apply, which a sync that cannot take its
+  // listeners cannot run: the next sync gets it (#286 review)
+  let passedPark: ParkedApply | null = null
 
   /**
    * Sends an issue to onIssue. An error from the app's handler is reported
@@ -350,7 +362,14 @@ export function createSync(
     onCreate: boolean
   ): ApplyResult {
     if (waitsForTypes(target)) {
-      park({ target, source, mode, onCreate })
+      try {
+        park({ target, source, mode, onCreate })
+      } catch (cause) {
+        // The grid cannot take the row data listener (#286 review): the
+        // apply cannot wait, and the grid keeps its filters
+        fail(startCall(source, mode), cause, 'GRID_ERROR')
+        publish()
+      }
 
       return { issues: NO_ISSUES }
     }
@@ -963,6 +982,18 @@ export function createSync(
     apply(window.location.href, 'url', 'report', false)
   }
 
+  /** Removes a grid listener. A grid that throws here too keeps it. */
+  function removeQuietly(
+    type: 'filterChanged' | 'gridPreDestroyed',
+    listener: () => void
+  ): void {
+    try {
+      api.removeEventListener(type, listener)
+    } catch {
+      // Nothing more to do: the grid fails on each call
+    }
+  }
+
   function destroy(): void {
     if (status === 'destroyed') return
 
@@ -1223,7 +1254,8 @@ export function createSync(
     source: ownSource,
     keys,
     applyIssues,
-    parked
+    parked: parked ?? passedPark,
+    listenerFailure
   }))
 
   // The view that the stored pointer names. A pointer to a missing view is
@@ -1235,8 +1267,30 @@ export function createSync(
     ? viewList.find(view => view.id === pointer)
     : undefined
 
-  api.addEventListener('filterChanged', onFilterChanged)
-  api.addEventListener('gridPreDestroyed', destroy)
+  try {
+    api.addEventListener('filterChanged', onFilterChanged)
+    api.addEventListener('gridPreDestroyed', destroy)
+  } catch (cause) {
+    // A grid that cannot take a listener cannot be followed (#286): remove
+    // each listener that it took, and report it
+    status = 'destroyed'
+    passedPark = handed?.parked ?? null
+    removeQuietly('filterChanged', onFilterChanged)
+    removeQuietly('gridPreDestroyed', destroy)
+
+    const issue = toIssue(cause, 'GRID_ERROR')
+
+    listenerFailure = issueKey(issue)
+
+    // The earlier sync on this grid reported the same failure
+    if (handed?.listenerFailure !== listenerFailure) {
+      reportIssue(startCall('api', 'report').options, issue)
+    }
+
+    publish()
+
+    return sync
+  }
 
   if (listensToPopstate && hasWindow()) {
     window.addEventListener('popstate', onPopstate)

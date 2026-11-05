@@ -118,6 +118,12 @@ export interface Handover {
   readonly keys: string
   /** The issues of the latest apply (#271 review) */
   readonly applyIssues: readonly URLSyncError[]
+  /**
+   * The key of the GRID_ERROR that onIssue got when the grid could not take
+   * the old sync's listeners, or null (#286). The next sync does not report
+   * the same failure again. A different failure is reported.
+   */
+  readonly listenerFailure: string | null
 }
 
 /** The handover of each sync that createSync made. Not public. */
@@ -160,12 +166,6 @@ export interface SyncStart {
    * keeps them: the grid shows what it showed.
    */
   readonly newStore?: boolean | undefined
-  /**
-   * The earlier sync on the same grid stopped, so onIssue got its reason
-   * (#286). A grid that still cannot take a listener is not reported
-   * again. Other issues of the create are reported as usual.
-   */
-  readonly earlierStopped?: boolean | undefined
 }
 
 /**
@@ -187,6 +187,9 @@ export function createSync(
   let state: FilterState = {}
   let url = ''
   let applyIssues: readonly URLSyncError[] = NO_ISSUES
+  // The key of the GRID_ERROR when the grid could not take the listeners
+  // on create, or null (#286)
+  let listenerFailure: string | null = null
   let readIssues: readonly URLSyncError[] = NO_ISSUES
   let writeIssues: readonly URLSyncError[] = NO_ISSUES
   const historyMode = options.history ?? 'none'
@@ -1155,7 +1158,8 @@ export function createSync(
     own: own?.phase === 'writing' ? null : own,
     source: ownSource,
     keys,
-    applyIssues
+    applyIssues,
+    listenerFailure
   }))
 
   // The view that the stored pointer names. A pointer to a missing view is
@@ -1177,8 +1181,13 @@ export function createSync(
     removeQuietly('filterChanged', onFilterChanged)
     removeQuietly('gridPreDestroyed', destroy)
 
-    if (!start.earlierStopped) {
-      fail(startCall('api', 'report'), cause, 'GRID_ERROR')
+    const issue = toIssue(cause, 'GRID_ERROR')
+
+    listenerFailure = issueKey(issue)
+
+    // The earlier sync on this grid reported the same failure
+    if (handed?.listenerFailure !== listenerFailure) {
+      reportIssue(startCall('api', 'report').options, issue)
     }
 
     publish()

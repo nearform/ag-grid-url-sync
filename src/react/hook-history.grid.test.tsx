@@ -374,7 +374,7 @@ describe('saved views with history (#270)', () => {
     'a stored view on mount replaces the entry (StrictMode %s)',
     async strict => {
       const store = createViewStore('t')
-      const view = store.saveView('A', NAME_JO)
+      const view = store.saveView('A', { filterModel: NAME_JO })
       store.persistActiveViewId(view.id)
       const length = window.history.length
       const push = vi.spyOn(window.history, 'pushState')
@@ -400,7 +400,7 @@ describe('saved views with history (#270)', () => {
 
   test('a URL with filters wins over the stored view, with no entry', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(view.id)
     window.history.replaceState(null, '', '/?f_name_contains=x')
     const push = vi.spyOn(window.history, 'pushState')
@@ -450,7 +450,7 @@ describe('saved views with history (#270)', () => {
 describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
   test('keeps the view on an option change', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(null)
     const { api } = createTimedGrid(timing)
     const options = { storageKey: 't' } as const
@@ -470,7 +470,7 @@ describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
 
   test('a kept-view restore that fails reports GRID_ERROR one time', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(null)
     const onIssue = vi.fn()
     const { api } = createTimedGrid(timing)
@@ -492,7 +492,7 @@ describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
 
   test('a failed address-bar write of a kept-view restore reports HISTORY_WRITE_FAILED', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(null)
     const onIssue = vi.fn()
     const { api } = createTimedGrid(timing)
@@ -519,7 +519,7 @@ describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
 
   test('a new sync on the same grid keeps the view with no new entry', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(null)
     const { api } = createTimedGrid(timing)
     const options = { history: 'push', storageKey: 't' } as const

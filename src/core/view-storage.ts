@@ -1,6 +1,10 @@
 import type { FilterModel } from 'ag-grid-community'
 import * as v from 'valibot'
-import { GridViewSchema, StoredViewsSchema } from './schemas.js'
+import {
+  GridViewSchema,
+  StoredViewsSchema,
+  ViewStateSchema
+} from './schemas.js'
 import { URLSyncError } from './types.js'
 import { toError } from './to-error.js'
 
@@ -23,17 +27,25 @@ const keyFor = (storageKey: string): string =>
   `ag-grid-url-sync:views:${SCHEMA_VERSION}:${storageKey}`
 
 /**
- * A saved snapshot of a grid's filters.
+ * The grid state that a view keeps. Later releases can add optional fields,
+ * for example the sort. A custom store must keep every field of it.
  */
-export interface GridView {
+export interface ViewState {
+  /** AG Grid's native filter model, stored as-is */
+  filterModel: FilterModel
+}
+
+/**
+ * A saved snapshot of a grid's filters: the fields of its `ViewState`, and
+ * an id, a name and the time of the last write.
+ */
+export interface GridView extends ViewState {
   /** Stable generated id */
   id: string
   /** User-supplied display name */
   name: string
   /** Epoch millis of the last write */
   updatedAt: number
-  /** AG Grid's native filter model, stored as-is */
-  filterModel: FilterModel
 }
 
 interface StoredViews {
@@ -60,20 +72,28 @@ export interface ViewStore {
    */
   persistActiveViewId(id: string | null): void
   /**
-   * Saves a filter model under a name and makes it active.
+   * Saves the state under a name and makes it active.
+   *
+   * A custom store must keep every field of `state` and give them back in
+   * the `GridView`, for example `{ ...state, id, name, updatedAt }`. Then the
+   * fields that later releases add to `ViewState` need no change here.
    *
    * Names are unique and matched exactly after trimming, so saving over an
    * existing name updates that view in place, keeping its id and its position
    * in the list, rather than adding a duplicate label. That is what gives
    * "load, adjust, re-save" its update semantics without a separate method.
    *
-   * A null or undefined filterModel is stored as an empty model, since that is
-   * what AG Grid means by it and what getFilterModel returns in practice.
+   * A null or undefined `state.filterModel` is stored as an empty model, since
+   * that is what AG Grid means by it and what getFilterModel returns in
+   * practice.
    *
+   * @throws TypeError, in `createViewStore`, when `state` is not an object
+   *   with a `filterModel` key, for example a filter model in the 0.5 form
+   *   `saveView(name, model)`
    * @throws when the name is empty, or when the write fails: storage full,
    *   blocked by policy, or no DOM present
    */
-  saveView(name: string, filterModel: FilterModel): GridView
+  saveView(name: string, state: ViewState): GridView
   /**
    * Deletes a view, clearing the active id if it pointed at that view.
    *
@@ -197,7 +217,15 @@ export function createViewStore(storageKey: string): ViewStore {
       write({ ...current, activeId: id })
     },
 
-    saveView: (name: string, filterModel: FilterModel): GridView => {
+    saveView: (name: string, state: ViewState): GridView => {
+      // A JavaScript caller can still use the 0.5 form, saveView(name,
+      // filterModel). That model has no filterModel key, so without this
+      // check the store saves an empty view and the call looks like a success.
+      if (!v.is(ViewStateSchema, state)) {
+        throw new TypeError('saveView takes a ViewState: { filterModel }')
+      }
+
+      const { filterModel } = state
       const trimmedName = name.trim()
 
       if (!trimmedName) {

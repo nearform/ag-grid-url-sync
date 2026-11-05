@@ -37,4 +37,4 @@ export type {
 } from './core/types.js'
 
 // Saved view types only. Import createViewStore from 'ag-grid-url-sync/views'.
-export type { GridView, ViewStore } from './core/view-storage.js'
+export type { GridView, ViewState, ViewStore } from './core/view-storage.js'

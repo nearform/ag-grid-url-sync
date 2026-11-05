@@ -539,17 +539,17 @@ The package has three entry points. Each one lists its names.
 
 `ag-grid-url-sync`:
 
-| Kind            | Names                                                                                                                                                                                                                                                                  |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sync            | `createGridUrlSync`, `IDLE_SNAPSHOT`                                                                                                                                                                                                                                   |
-| Codecs          | `individual`, `grouped`                                                                                                                                                                                                                                                |
-| Pure functions  | `parseUrlFilters`, `generateUrl`                                                                                                                                                                                                                                       |
-| Errors (values) | `URLSyncError`, `InvalidFilterError`, `InvalidURLError`, `InvalidDateError`, `InvalidSerializationError`                                                                                                                                                               |
-| Types           | `GridUrlSync`, `GridUrlSyncOptions`, `GridUrlSyncSnapshot`, `UrlOptions`, `Codec`, `HistoryMode`, `SyncStatus`, `ApplyResult`, `IssueCode`, `IssueSeverity`, `IssueSource`, `IssueEvent`, `IssueDetails`, `FilterType`, `SerializationFormat`, `GridView`, `ViewStore` |
+| Kind            | Names                                                                                                                                                                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sync            | `createGridUrlSync`, `IDLE_SNAPSHOT`                                                                                                                                                                                                                                                |
+| Codecs          | `individual`, `grouped`                                                                                                                                                                                                                                                             |
+| Pure functions  | `parseUrlFilters`, `generateUrl`                                                                                                                                                                                                                                                    |
+| Errors (values) | `URLSyncError`, `InvalidFilterError`, `InvalidURLError`, `InvalidDateError`, `InvalidSerializationError`                                                                                                                                                                            |
+| Types           | `GridUrlSync`, `GridUrlSyncOptions`, `GridUrlSyncSnapshot`, `UrlOptions`, `Codec`, `HistoryMode`, `SyncStatus`, `ApplyResult`, `IssueCode`, `IssueSeverity`, `IssueSource`, `IssueEvent`, `IssueDetails`, `FilterType`, `SerializationFormat`, `GridView`, `ViewState`, `ViewStore` |
 
 `ag-grid-url-sync/react`: `useGridUrlSync`, and the types `UseGridUrlSyncOptions` and `UseGridUrlSyncResult`. The other types come from `ag-grid-url-sync`.
 
-`ag-grid-url-sync/views`: `createViewStore`, and the types `GridView` and `ViewStore`.
+`ag-grid-url-sync/views`: `createViewStore`, and the types `GridView`, `ViewState` and `ViewStore`.
 
 The filter model types (`FilterModel`, `TextFilterModel`, `NumberFilterModel`, `DateFilterModel`) and `GridApi` come from `ag-grid-community`.
 
@@ -677,7 +677,19 @@ if (view) {
 }
 ```
 
-You can also give your own `ViewStore`, for example one that talks to a server. With no `views` option, `views` is `[]`, `activeViewId` is `null`, and the three methods do nothing.
+You can also give your own `ViewStore`, for example one that talks to a server. Its `saveView(name, state)` gets a `ViewState` object. Keep every field of `state`, and give them back in the `GridView`:
+
+```typescript
+saveView(name, state) {
+  const view = { ...state, id: makeId(), name, updatedAt: Date.now() }
+  // write the view to your server
+  return view
+}
+```
+
+Now `ViewState` has only `filterModel`. A later release can add more fields, for example the sort. A store that keeps every field needs no change for them.
+
+With no `views` option, `views` is `[]`, `activeViewId` is `null`, and the three methods do nothing.
 
 Rules for the vanilla API:
 
@@ -978,17 +990,17 @@ createViewStore(storageKey: string): ViewStore
 
 Makes a store for the saved views of one grid, in `localStorage`. Give it to the `views` option of `createGridUrlSync`. (The React hook makes one for you from `storageKey`.)
 
-| Method                        | Description                                                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `listViews()`                 | All saved views, in save order                                                                                                    |
-| `getActiveViewId()`           | The id of the active view, or `null`                                                                                              |
-| `persistActiveViewId(id)`     | Writes the id of the active view. It does nothing when the id does not change                                                     |
-| `saveView(name, filterModel)` | Saves a filter model with a name and makes it active. The same name updates that view. Throws for an empty name or a failed write |
-| `deleteView(id)`              | Deletes a view. An unknown id does nothing                                                                                        |
+| Method                    | Description                                                                                                                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listViews()`             | All saved views, in save order                                                                                                                                                                            |
+| `getActiveViewId()`       | The id of the active view, or `null`                                                                                                                                                                      |
+| `persistActiveViewId(id)` | Writes the id of the active view. It does nothing when the id does not change                                                                                                                             |
+| `saveView(name, state)`   | Saves a `ViewState`, `{ filterModel }`, with a name and makes it active. The same name updates that view. Throws for an empty name or a failed write, and a `TypeError` when `state` is not a `ViewState` |
+| `deleteView(id)`          | Deletes a view. An unknown id does nothing                                                                                                                                                                |
 
 A read never throws: with no storage (a server render), storage blocked by policy, or data that is not valid, it gives an empty store. A write throws a `URLSyncError` with the code `STORAGE_UNAVAILABLE`, `STORAGE_FULL` or `STORAGE_WRITE_FAILED`.
 
-A `GridView` is `{ id, name, updatedAt, filterModel }`. `updatedAt` is the time of the last write, in milliseconds. `filterModel` is AG Grid's filter model, as it was saved.
+A `GridView` is `{ id, name, updatedAt, filterModel }`: the fields of its `ViewState`, and the id, the name and the time. `updatedAt` is the time of the last write, in milliseconds. `filterModel` is AG Grid's filter model, as it was saved.
 
 ### `useGridUrlSync(options)`
 
@@ -1008,7 +1020,7 @@ See [`useGridUrlSync({ api, ...options })`](#usegridurlsync-api-options-) for th
 
 ## Migrating from 0.5 to 0.6
 
-Version 0.6.0 removes the APIs that 0.5 deprecated, and changes the filter model and the issue callbacks. The URL format does not change: links from 0.5 still open.
+Version 0.6.0 removes the APIs that 0.5 deprecated, and changes the filter model, the issue callbacks and the view store's `saveView`. The URL format does not change: links from 0.5 still open.
 
 ### 1. Entry points
 
@@ -1229,6 +1241,36 @@ One callback, `onIssue({ issue, source })`, replaces `onParseError(error)` and t
 | (none)                                                    | The code `UNSUPPORTED_FILTER` (see part 5)                                                              |
 
 `createGridUrlSync` and `useGridUrlSync` send every issue to `onIssue` one time. See [Error Handling](#error-handling).
+
+### 8. A view store's `saveView` gets one state object
+
+`ViewStore.saveView(name, filterModel)` becomes `saveView(name, state)`. The `state` is a `ViewState`, `{ filterModel }`. Later releases can add more fields to it, and a store that keeps every field gets them with no new argument. The saved views in `localStorage` do not change: views from 0.5 still load.
+
+```typescript
+// 0.5
+store.saveView('Open orders', api.getFilterModel())
+
+// 0.6
+store.saveView('Open orders', { filterModel: api.getFilterModel() })
+```
+
+In JavaScript, the store of `createViewStore` throws a `TypeError` for the 0.5 form, so the call does not save an empty view.
+
+In your own `ViewStore`, keep every field of `state` (see [Saved views in vanilla JS](#saved-views-in-vanilla-js)):
+
+```typescript
+// 0.5
+saveView(name, filterModel) {
+  return { id: makeId(), name, updatedAt: Date.now(), filterModel }
+}
+
+// 0.6
+saveView(name, state) {
+  return { ...state, id: makeId(), name, updatedAt: Date.now() }
+}
+```
+
+TypeScript shows an error for a 0.5 store. In JavaScript, a 0.5 store saves the whole `state` object as the filter model, so the view loads no filters, and no issue is reported.
 
 ## Examples
 

@@ -1,6 +1,9 @@
 // Type-level tests for the public entry points (#226 D3). `npm run
 // type-check` checks this file through tsconfig.typecheck.json. Vitest does
 // not run it.
+import { expectTypeOf } from 'vitest'
+import type { FilterModel } from 'ag-grid-community'
+import type { ViewState as ViewsEntryViewState } from './view-storage.js'
 import type {
   GridUrlSync,
   GridUrlSyncOptions,
@@ -18,6 +21,7 @@ import type {
   FilterType,
   SerializationFormat,
   GridView,
+  ViewState,
   ViewStore
 } from '../index.js'
 import type {
@@ -44,8 +48,21 @@ export type PublicTypes = [
   FilterType,
   SerializationFormat,
   GridView,
+  ViewState,
   ViewStore,
   UseGridUrlSyncOptions,
   UseGridUrlSyncResult,
   FilterState
 ]
+
+// A view store gets one state object, so later state fields reach a
+// custom store with no new argument
+expectTypeOf<ViewState>().toEqualTypeOf<{ filterModel: FilterModel }>()
+
+expectTypeOf<Parameters<ViewStore['saveView']>>().toEqualTypeOf<
+  [name: string, state: ViewState]
+>()
+
+expectTypeOf<GridView>().toMatchTypeOf<ViewState>()
+
+expectTypeOf<ViewState>().toEqualTypeOf<ViewsEntryViewState>()

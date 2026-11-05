@@ -52,7 +52,7 @@ describe('createViewStore', () => {
   })
 
   it('namespaces storage by key', () => {
-    createViewStore('grid-a').saveView('A', filters())
+    createViewStore('grid-a').saveView('A', { filterModel: filters() })
 
     expect(createViewStore('grid-b').listViews()).toEqual([])
     expect(createViewStore('grid-a').listViews()).toHaveLength(1)
@@ -61,14 +61,14 @@ describe('createViewStore', () => {
   it('round-trips the filter model verbatim', () => {
     const store = createViewStore('test-grid')
     const model = filters()
-    store.saveView('Engineering', model)
+    store.saveView('Engineering', { filterModel: model })
 
     expect(store.listViews()[0]?.filterModel).toEqual(model)
   })
 
   it('makes a newly saved view active', () => {
     const store = createViewStore('test-grid')
-    const view = store.saveView('Engineering', filters())
+    const view = store.saveView('Engineering', { filterModel: filters() })
 
     expect(store.getActiveViewId()).toBe(view.id)
   })
@@ -76,7 +76,10 @@ describe('createViewStore', () => {
   describe('names', () => {
     it('trims the name', () => {
       const store = createViewStore('test-grid')
-      const view = store.saveView('   Engineering   ', filters())
+
+      const view = store.saveView('   Engineering   ', {
+        filterModel: filters()
+      })
 
       expect(view.name).toBe('Engineering')
       expect(store.listViews()[0]?.name).toBe('Engineering')
@@ -85,10 +88,10 @@ describe('createViewStore', () => {
     it('rejects an empty or whitespace-only name', () => {
       const store = createViewStore('test-grid')
 
-      expect(() => store.saveView('', filters())).toThrow(
+      expect(() => store.saveView('', { filterModel: filters() })).toThrow(
         /view name is required/
       )
-      expect(() => store.saveView('   ', filters())).toThrow(
+      expect(() => store.saveView('   ', { filterModel: filters() })).toThrow(
         /view name is required/
       )
       expect(store.listViews()).toEqual([])
@@ -104,19 +107,51 @@ describe('createViewStore', () => {
         getFilterModel: () => null
       }).getFilterModel()
 
-      const view = store.saveView('X', nullModel)
+      const view = store.saveView('X', { filterModel: nullModel })
 
       expect(view.filterModel).toEqual({})
       expect(store.listViews()).toHaveLength(1)
       expect(store.getActiveViewId()).toBe(view.id)
     })
 
+    // A JavaScript caller can still use the 0.5 form, saveView(name,
+    // filterModel). Without a check, the store saves an empty view and the
+    // call looks like a success.
+    it.each([
+      ['a filter model (the 0.5 form)', filters()],
+      ['an empty filter model (the 0.5 form)', {}],
+      ['null', null],
+      ['undefined', undefined],
+      ['a string', 'x']
+    ])('throws a TypeError for %s in place of a ViewState', (_, state) => {
+      const store = createViewStore('test-grid')
+
+      // SAFETY: the test gives the store what a JavaScript caller can give
+      const save = () => store.saveView('X', state as never)
+
+      expect(save).toThrow(TypeError)
+      expect(save).toThrow('saveView takes a ViewState: { filterModel }')
+      expect(store.listViews()).toEqual([])
+    })
+
+    it('saves a view for a state whose filterModel is undefined', () => {
+      const store = createViewStore('test-grid')
+
+      // SAFETY: AG Grid's getFilterModel can give undefined at run time
+      const view = store.saveView('X', { filterModel: undefined as never })
+
+      expect(view.filterModel).toEqual({})
+      expect(store.listViews()).toHaveLength(1)
+    })
+
     it('overwrites in place when the name already exists', () => {
       const store = createViewStore('test-grid')
-      const first = store.saveView('Same', filters())
+      const first = store.saveView('Same', { filterModel: filters() })
 
       const second = store.saveView('Same', {
-        age: { filterType: 'number', type: 'equals', filter: 30 }
+        filterModel: {
+          age: { filterType: 'number', type: 'equals', filter: 30 }
+        }
       })
 
       // One entry, same id, new filter model.
@@ -129,11 +164,11 @@ describe('createViewStore', () => {
 
     it('keeps list position when overwriting', () => {
       const store = createViewStore('test-grid')
-      store.saveView('First', filters())
-      store.saveView('Second', {})
-      store.saveView('Third', {})
+      store.saveView('First', { filterModel: filters() })
+      store.saveView('Second', { filterModel: {} })
+      store.saveView('Third', { filterModel: {} })
 
-      store.saveView('First', {})
+      store.saveView('First', { filterModel: {} })
 
       expect(store.listViews().map(view => view.name)).toEqual([
         'First',
@@ -144,8 +179,8 @@ describe('createViewStore', () => {
 
     it('matches names after trimming, so padded input overwrites', () => {
       const store = createViewStore('test-grid')
-      const first = store.saveView('Padded', filters())
-      const second = store.saveView('  Padded  ', {})
+      const first = store.saveView('Padded', { filterModel: filters() })
+      const second = store.saveView('  Padded  ', { filterModel: {} })
 
       expect(store.listViews()).toHaveLength(1)
       expect(second.id).toBe(first.id)
@@ -153,8 +188,8 @@ describe('createViewStore', () => {
 
     it('treats different casing as different views', () => {
       const store = createViewStore('test-grid')
-      store.saveView('Engineering', filters())
-      store.saveView('engineering', {})
+      store.saveView('Engineering', { filterModel: filters() })
+      store.saveView('engineering', { filterModel: {} })
 
       expect(store.listViews()).toHaveLength(2)
     })
@@ -163,7 +198,7 @@ describe('createViewStore', () => {
   it('snapshots by value so later mutation cannot corrupt a saved view', () => {
     const store = createViewStore('test-grid')
     const model = filters()
-    store.saveView('Engineering', model)
+    store.saveView('Engineering', { filterModel: model })
 
     // AG Grid mutates its own filter model objects in place.
     model.department.filter = 'MUTATED'
@@ -175,8 +210,8 @@ describe('createViewStore', () => {
 
   it('toggles the active view between saved views', () => {
     const store = createViewStore('test-grid')
-    const first = store.saveView('First', filters())
-    const second = store.saveView('Second', {})
+    const first = store.saveView('First', { filterModel: filters() })
+    const second = store.saveView('Second', { filterModel: {} })
 
     store.persistActiveViewId(first.id)
     expect(store.getActiveViewId()).toBe(first.id)
@@ -187,7 +222,7 @@ describe('createViewStore', () => {
 
   it('clears the active id when the active view is deleted', () => {
     const store = createViewStore('test-grid')
-    const view = store.saveView('Doomed', filters())
+    const view = store.saveView('Doomed', { filterModel: filters() })
 
     store.deleteView(view.id)
 
@@ -197,8 +232,8 @@ describe('createViewStore', () => {
 
   it('keeps the active id when a different view is deleted', () => {
     const store = createViewStore('test-grid')
-    const keep = store.saveView('Keep', filters())
-    const drop = store.saveView('Drop', {})
+    const keep = store.saveView('Keep', { filterModel: filters() })
+    const drop = store.saveView('Drop', { filterModel: {} })
     store.persistActiveViewId(keep.id)
 
     store.deleteView(drop.id)
@@ -220,7 +255,9 @@ describe('createViewStore', () => {
 
         // Writing cannot succeed, so it must not claim to. Returning a populated
         // GridView here would tell the caller a save happened that did not.
-        expect(() => store.saveView('X', filters())).toThrow(/storage/i)
+        expect(() => store.saveView('X', { filterModel: filters() })).toThrow(
+          /storage/i
+        )
         expect(() => store.persistActiveViewId('x')).toThrow(/storage/i)
 
         // deleteView cannot throw here, and that is correct rather than a gap:
@@ -234,7 +271,7 @@ describe('createViewStore', () => {
 
     it('does not write when the value is unchanged', () => {
       const store = createViewStore('test-grid')
-      const view = store.saveView('Seeded', filters())
+      const view = store.saveView('Seeded', { filterModel: filters() })
 
       const realSetItem = Storage.prototype.setItem
       Storage.prototype.setItem = () => {
@@ -321,7 +358,9 @@ describe('createViewStore', () => {
     it('degrades to empty when storage cannot be read', () => {
       // Seed a view first, so an empty result can only mean the read failed.
       // asserting [] against an already-empty store would prove nothing.
-      createViewStore('test-grid').saveView('Seeded', filters())
+      createViewStore('test-grid').saveView('Seeded', {
+        filterModel: filters()
+      })
       expect(createViewStore('test-grid').listViews()).toHaveLength(1)
 
       withStorage(
@@ -345,7 +384,9 @@ describe('createViewStore', () => {
         },
         () => {
           expect(() =>
-            createViewStore('test-grid').saveView('X', filters())
+            createViewStore('test-grid').saveView('X', {
+              filterModel: filters()
+            })
           ).toThrow(/Browser storage is full/)
         }
       )
@@ -360,7 +401,9 @@ describe('createViewStore', () => {
         },
         () => {
           expect(() =>
-            createViewStore('test-grid').saveView('X', filters())
+            createViewStore('test-grid').saveView('X', {
+              filterModel: filters()
+            })
           ).toThrow(/Browser storage is full/)
         }
       )
@@ -375,7 +418,9 @@ describe('createViewStore', () => {
         },
         () => {
           expect(() =>
-            createViewStore('test-grid').saveView('X', filters())
+            createViewStore('test-grid').saveView('X', {
+              filterModel: filters()
+            })
           ).toThrow(/Error writing to storage/)
         }
       )
@@ -400,7 +445,9 @@ describe('createViewStore', () => {
       vi.stubGlobal('window', undefined)
 
       try {
-        const error = thrown(() => store.saveView('X', filters()))
+        const error = thrown(() =>
+          store.saveView('X', { filterModel: filters() })
+        )
 
         expect(error).toBeInstanceOf(URLSyncError)
         expect(error).toMatchObject({
@@ -425,7 +472,9 @@ describe('createViewStore', () => {
         },
         () => {
           const error = thrown(() =>
-            createViewStore('test-grid').saveView('X', filters())
+            createViewStore('test-grid').saveView('X', {
+              filterModel: filters()
+            })
           )
 
           expect(error).toBeInstanceOf(URLSyncError)
@@ -436,7 +485,7 @@ describe('createViewStore', () => {
 
     it('gives VIEW_NAME_REQUIRED for an empty name', () => {
       const error = thrown(() =>
-        createViewStore('test-grid').saveView('  ', filters())
+        createViewStore('test-grid').saveView('  ', { filterModel: filters() })
       )
 
       expect(error).toBeInstanceOf(URLSyncError)

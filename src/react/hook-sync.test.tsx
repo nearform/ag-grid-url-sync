@@ -356,8 +356,8 @@ describe('saved views on the core (#223)', () => {
 
   test('views lists the stored views with enabled: false', async () => {
     const store = createViewStore(KEY)
-    store.saveView('A', ANN)
-    store.saveView('B', {})
+    store.saveView('A', { filterModel: ANN })
+    store.saveView('B', { filterModel: {} })
 
     const { result } = renderSync({
       grid: createGrid(),

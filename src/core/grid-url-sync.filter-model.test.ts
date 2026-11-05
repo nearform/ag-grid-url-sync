@@ -215,7 +215,7 @@ describe.each(GRID_TIMINGS)(
   timing => {
     it('a loaded view stays active, and its pointer stays', async () => {
       const store = createViewStore('t')
-      const view = store.saveView('S', AGE_30_TEXT)
+      const view = store.saveView('S', { filterModel: AGE_30_TEXT })
       store.persistActiveViewId(null)
       const grid = createTimedGrid(timing, {}, { normalize: true })
 
@@ -237,7 +237,7 @@ describe.each(GRID_TIMINGS)(
 
     it('a restore on create keeps the view active and adds no history entry', async () => {
       const store = createViewStore('t')
-      const view = store.saveView('S', AGE_30_TEXT)
+      const view = store.saveView('S', { filterModel: AGE_30_TEXT })
       store.persistActiveViewId(view.id)
       const grid = createTimedGrid(timing, {}, { normalize: true })
       const length = window.history.length
@@ -260,7 +260,7 @@ describe.each(GRID_TIMINGS)(
 
     it('a URL that holds the stored view in the normal form restores the view (D7)', async () => {
       const store = createViewStore('t')
-      const view = store.saveView('S', AGE_30_TEXT)
+      const view = store.saveView('S', { filterModel: AGE_30_TEXT })
       store.persistActiveViewId(view.id)
       window.history.replaceState(
         null,

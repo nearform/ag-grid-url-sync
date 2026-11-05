@@ -154,6 +154,13 @@ export interface SyncStart {
    */
   readonly keepApplyIssues?: boolean | undefined
   /**
+   * The kept view comes from a new view store (a new storageKey in the
+   * hook). Its restore replaces what the grid showed, so it clears the
+   * apply issues, as loadView does (#285). The same store's kept view
+   * keeps them: the grid shows what it showed.
+   */
+  readonly newStore?: boolean | undefined
+  /**
    * The earlier sync on the same grid stopped, so onIssue got its reason
    * (#286). A grid that still cannot take a listener is not reported
    * again. Other issues of the create are reported as usual.
@@ -804,11 +811,11 @@ export function createSync(
     // pending (D2)
     active = pendingView(view.id, view.filterModel)
 
-    if (writeModel(view.filterModel, 'restore', startCall('url', 'report'))) {
+    if (!writeModel(view.filterModel, 'restore', startCall('url', 'report'))) {
+      active = null
+    } else if (start.newStore) {
       // The grid no longer shows an applied URL, as after loadView (#285)
       applyIssues = NO_ISSUES
-    } else {
-      active = null
     }
 
     publish()

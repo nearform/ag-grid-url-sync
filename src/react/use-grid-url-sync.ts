@@ -236,11 +236,13 @@ export function useGridUrlSync(
 
     // The same store: the view that the last sync tracked. A new store: its
     // stored view, because the URL had its chance on this grid.
+    const newStore = !first && session.storageKey !== storageKey
+
     const keptViewId = first
       ? null
-      : session.storageKey === storageKey
-        ? session.keptViewId
-        : (viewStore?.getActiveViewId() ?? null)
+      : newStore
+        ? (viewStore?.getActiveViewId() ?? null)
+        : session.keptViewId
 
     const { handover, stopped } = session
 
@@ -276,7 +278,13 @@ export function useGridUrlSync(
       },
       // The new sync shows the last one's apply issues, as one sync would.
       // A stopped last sync reported its grid failure already (#286).
-      { keptViewId, handover, keepApplyIssues: true, earlierStopped: stopped }
+      {
+        keptViewId,
+        handover,
+        keepApplyIssues: true,
+        earlierStopped: stopped,
+        newStore
+      }
     )
 
     creating = false

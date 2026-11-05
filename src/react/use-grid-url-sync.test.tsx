@@ -581,6 +581,33 @@ describe('useGridUrlSync: issues across a new sync (#271 review)', () => {
     expect(result.current.issues).toEqual([])
   })
 
+  test('an option change on the same store keeps the apply issues (#285 review)', async () => {
+    const api = createRealGrid()
+    const { result, rerender } = renderSync({ api, storageKey: 'same' })
+    await settle()
+
+    await edit(api, NAME_X)
+    act(() => {
+      result.current.saveView('X')
+    })
+    await settle()
+
+    act(() => {
+      result.current.applyUrl(
+        'https://x.test/?f_name_contains=x&f_age_unknownOperation=1'
+      )
+    })
+    await settle()
+
+    expect(result.current.activeViewId).not.toBeNull()
+    expect(result.current.issues).toHaveLength(1)
+
+    rerender({ api, storageKey: 'same', maxValueLength: 50 })
+    await settle()
+
+    expect(result.current.issues).toHaveLength(1)
+  })
+
   test('a new storageKey with no stored view keeps the apply issues (#285)', async () => {
     const api = createRealGrid()
     const { result, rerender } = renderSync({ api, storageKey: 'restore-a' })

@@ -43,11 +43,6 @@ interface Session {
   keptViewId: string | null
   /** The own write of the last sync, for the next sync on this grid (#276) */
   handover: Handover | null
-  /**
-   * The last sync had stopped before it was dropped: onIssue got the reason
-   * one time already (#286)
-   */
-  stopped: boolean
 }
 
 /** The live sync, and what it was made with */
@@ -64,14 +59,7 @@ function newSession(
   grid: GridApi | null,
   storageKey: string | undefined
 ): Session {
-  return {
-    grid,
-    started: false,
-    storageKey,
-    keptViewId: null,
-    handover: null,
-    stopped: false
-  }
+  return { grid, started: false, storageKey, keptViewId: null, handover: null }
 }
 
 function pageUrl(): string {
@@ -184,8 +172,6 @@ export function useGridUrlSync(
     (current: LiveSync): void => {
       sessionRef.current.keptViewId = current.sync.getSnapshot().activeViewId
       sessionRef.current.handover = handOver(current.sync)
-      sessionRef.current.stopped =
-        current.sync.getSnapshot().status === 'destroyed'
       current.sync.destroy()
       holder.set(null)
       liveRef.current = null
@@ -244,13 +230,12 @@ export function useGridUrlSync(
         ? (viewStore?.getActiveViewId() ?? null)
         : session.keptViewId
 
-    const { handover, stopped } = session
+    const { handover } = session
 
     session.started = true
     session.storageKey = storageKey
     session.keptViewId = null
     session.handover = null
-    session.stopped = false
 
     // A new sync on a grid that AG Grid destroyed: the core reports
     // NOT_READY on create, but the app called nothing. Later method calls
@@ -276,15 +261,8 @@ export function useGridUrlSync(
         onIssue,
         views: viewStore ?? undefined
       },
-      // The new sync shows the last one's apply issues, as one sync would.
-      // A stopped last sync reported its grid failure already (#286).
-      {
-        keptViewId,
-        handover,
-        keepApplyIssues: true,
-        earlierStopped: stopped,
-        newStore
-      }
+      // The new sync shows the last one's apply issues, as one sync would
+      { keptViewId, handover, keepApplyIssues: true, newStore }
     )
 
     creating = false

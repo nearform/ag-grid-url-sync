@@ -279,9 +279,11 @@ describe('createGridUrlSync: snapshot and subscribe', () => {
   it("does not stop the grid's other filterChanged listeners when one throws", async () => {
     const api = createRealGrid()
     const sync = createGridUrlSync({ api })
-    sync.subscribe(() => {
+
+    const unsubscribe = sync.subscribe(() => {
       throw new Error('listener')
     })
+
     const appListener = vi.fn()
     api.addEventListener('filterChanged', appListener)
 
@@ -290,6 +292,9 @@ describe('createGridUrlSync: snapshot and subscribe', () => {
 
     expect(appListener).toHaveBeenCalledOnce()
     expect(reportError).toHaveBeenCalledWith(new Error('listener'))
+
+    // The grid is destroyed after reportError is no longer a stub
+    unsubscribe()
   })
 
   it('runs the other listeners when one unsubscribes during notify', async () => {

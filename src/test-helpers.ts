@@ -1,5 +1,5 @@
 import { act } from '@testing-library/react'
-import { vi, type Mock } from 'vitest'
+import { onTestFinished, vi, type Mock } from 'vitest'
 import type {
   ColDef,
   FilterModel,
@@ -182,7 +182,7 @@ export function createRealGrid(
   const div = document.createElement('div')
   document.body.append(div)
 
-  return createGrid(div, {
+  const api = createGrid(div, {
     columnDefs: [
       { field: 'name', filter: 'agTextColumnFilter' },
       { field: 'age', filter: 'agNumberColumnFilter' }
@@ -193,6 +193,16 @@ export function createRealGrid(
     ],
     ...gridOptions
   })
+
+  // A live grid can run an AG Grid timer after jsdom is gone, which Vitest
+  // reports as an unhandled error. A destroyed grid's timers do nothing.
+  onTestFinished(() => {
+    if (!api.isDestroyed()) api.destroy()
+
+    div.remove()
+  })
+
+  return api
 }
 
 // ============================================================================

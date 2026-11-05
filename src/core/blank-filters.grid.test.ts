@@ -1,20 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import {
-  createGrid,
-  ModuleRegistry,
-  AllCommunityModule,
-  type GridApi
-} from 'ag-grid-community'
+import type { GridApi } from 'ag-grid-community'
 import { checkColumnTypes } from './grid-integration.js'
 import { writeUrlFilters } from './url-generator.js'
 import { readUrlFilters } from './url-parser.js'
+import { createRealGrid } from '../test-helpers.js'
 
 // A blank filter round-trips through the URL on a real AG Grid, not a fake
 // (#260). The URL has no filter type, so `?f_n_blank=true` parses as a text
 // filter (the type guess, #224). AG Grid's number and date filters read only
 // the operation, so they apply it.
-
-ModuleRegistry.registerModules([AllCommunityModule])
 
 const ROWS = [
   { n: 1, d: new Date(2024, 0, 1) },
@@ -23,10 +17,7 @@ const ROWS = [
 ]
 
 function createTestGrid(): GridApi {
-  const div = document.createElement('div')
-  document.body.append(div)
-
-  return createGrid(div, {
+  return createRealGrid({
     columnDefs: [
       { field: 'n', filter: 'agNumberColumnFilter' },
       { field: 'd', filter: 'agDateColumnFilter' }

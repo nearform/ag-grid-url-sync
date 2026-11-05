@@ -325,6 +325,35 @@ describe('createGridUrlSync: before the first row data', () => {
     })
   })
 
+  it('a sync that cannot take its listeners passes the waiting URL on (#286 review)', async () => {
+    window.history.replaceState(null, '', '/?f_age_eq=30')
+    const api = inferredGrid({ rowData: null })
+    const first = createSync({ api })
+    const firstHandover = handOver(first)
+    first.destroy()
+
+    const add = vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+
+    const failed = createSync(
+      { api, applyUrlOnCreate: false, onIssue: () => {} },
+      { handover: firstHandover }
+    )
+
+    const handover = handOver(failed)
+    failed.destroy()
+    add.mockRestore()
+    createSync({ api, applyUrlOnCreate: false }, { handover })
+
+    api.setGridOption('rowData', ROWS)
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'equals', filter: 30 }
+    })
+  })
+
   it('does not wait after the grid had rows, also with no rows now', async () => {
     // The first zip value is null, so AG Grid infers no type for it
     const api = createRealGrid({

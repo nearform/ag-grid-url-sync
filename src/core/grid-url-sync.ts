@@ -204,6 +204,9 @@ export function createSync(
   // The key of the GRID_ERROR when the grid could not take the listeners
   // on create, or null (#286)
   let listenerFailure: string | null = null
+  // The earlier sync's waiting apply, which a sync that cannot take its
+  // listeners cannot run: the next sync gets it (#286 review)
+  let passedPark: ParkedApply | null = null
 
   /**
    * Sends an issue to onIssue. An error from the app's handler is reported
@@ -1251,7 +1254,7 @@ export function createSync(
     source: ownSource,
     keys,
     applyIssues,
-    parked,
+    parked: parked ?? passedPark,
     listenerFailure
   }))
 
@@ -1271,6 +1274,7 @@ export function createSync(
     // A grid that cannot take a listener cannot be followed (#286): remove
     // each listener that it took, and report it
     status = 'destroyed'
+    passedPark = handed?.parked ?? null
     removeQuietly('filterChanged', onFilterChanged)
     removeQuietly('gridPreDestroyed', destroy)
 

@@ -104,7 +104,7 @@
     "minimatch": "^11.0.4"
   },
   "peerDependencies": {
-    "ag-grid-community": ">=28.0.0",
+    "ag-grid-community": ">=31.0.0",
     "react": ">=16.8.0"
   },
   "peerDependenciesMeta": {

@@ -10,6 +10,7 @@ const pkg = JSON.parse(
 ) as {
   exports: Record<string, Record<string, string>>
   typesVersions?: unknown
+  peerDependencies: Record<string, string>
 }
 
 describe('the package entry', () => {
@@ -67,5 +68,11 @@ describe('package.json', () => {
     for (const entry of Object.values(pkg.exports)) {
       expect(Object.keys(entry)).toEqual(['types', 'import', 'default'])
     }
+  })
+
+  // AG Grid 31 moved the column methods to the grid API and added
+  // getGridOption. Sort and column state (#112, #70) need that API too.
+  it('needs AG Grid 31 or later', () => {
+    expect(pkg.peerDependencies['ag-grid-community']).toBe('>=31.0.0')
   })
 })

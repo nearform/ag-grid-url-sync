@@ -176,6 +176,8 @@ https://app.com/data?f_comments_blank=true&f_bonus_blank=true&f_name_notBlank=tr
 npm install ag-grid-url-sync
 ```
 
+It needs `ag-grid-community` 31 or later. For AG Grid 28 to 30, use version 0.5.
+
 The package is ESM only:
 
 - Bundlers and `import` load it.
@@ -1020,7 +1022,7 @@ See [`useGridUrlSync({ api, ...options })`](#usegridurlsync-api-options-) for th
 
 ## Migrating from 0.5 to 0.6
 
-Version 0.6.0 removes the APIs that 0.5 deprecated, and changes the filter model, the issue callbacks and the view store's `saveView`. The URL format does not change: links from 0.5 still open.
+Version 0.6.0 removes the APIs that 0.5 deprecated, and changes the filter model, the issue callbacks and the view store's `saveView`. It needs AG Grid 31 or later. The URL format does not change: links from 0.5 still open.
 
 ### 1. Entry points
 
@@ -1271,6 +1273,10 @@ saveView(name, state) {
 ```
 
 TypeScript shows an error for a 0.5 store. In JavaScript, a 0.5 store saves the whole `state` object as the filter model, so the view loads no filters, and no issue is reported.
+
+### 9. AG Grid 31 or later
+
+The peer dependency `ag-grid-community` goes from `>=28.0.0` to `>=31.0.0`. AG Grid 31 moved the column methods (`getColumn`, `getColumns`) from the column API to the grid API, and added `getGridOption`. 0.6 reads the filter type of a column with these methods (part 6), and sort and column state also need the grid API. On AG Grid 28 to 30, use version 0.5, or update AG Grid first.
 
 ## Examples
 

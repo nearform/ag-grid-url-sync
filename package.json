@@ -136,7 +136,7 @@
     {
       "name": "ag-grid-url-sync/react (bundled, react external)",
       "path": "./dist/react/index.js",
-      "limit": "16.2 KiB",
+      "limit": "16.3 KiB",
       "gzip": true,
       "ignore": [
         "react"

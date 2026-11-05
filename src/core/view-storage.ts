@@ -1,6 +1,10 @@
 import type { FilterModel } from 'ag-grid-community'
 import * as v from 'valibot'
-import { GridViewSchema, StoredViewsSchema } from './schemas.js'
+import {
+  GridViewSchema,
+  StoredViewsSchema,
+  ViewStateSchema
+} from './schemas.js'
 import { URLSyncError } from './types.js'
 import { toError } from './to-error.js'
 
@@ -79,9 +83,13 @@ export interface ViewStore {
    * in the list, rather than adding a duplicate label. That is what gives
    * "load, adjust, re-save" its update semantics without a separate method.
    *
-   * A null or undefined filterModel is stored as an empty model, since that is
-   * what AG Grid means by it and what getFilterModel returns in practice.
+   * A null or undefined `state.filterModel` is stored as an empty model, since
+   * that is what AG Grid means by it and what getFilterModel returns in
+   * practice.
    *
+   * @throws TypeError, in `createViewStore`, when `state` is not an object
+   *   with a `filterModel` key, for example a filter model in the 0.5 form
+   *   `saveView(name, model)`
    * @throws when the name is empty, or when the write fails: storage full,
    *   blocked by policy, or no DOM present
    */
@@ -209,7 +217,15 @@ export function createViewStore(storageKey: string): ViewStore {
       write({ ...current, activeId: id })
     },
 
-    saveView: (name: string, { filterModel }: ViewState): GridView => {
+    saveView: (name: string, state: ViewState): GridView => {
+      // A JavaScript caller can still use the 0.5 form, saveView(name,
+      // filterModel). That model has no filterModel key, so without this
+      // check the store saves an empty view and the call looks like a success.
+      if (!v.is(ViewStateSchema, state)) {
+        throw new TypeError('saveView takes a ViewState: { filterModel }')
+      }
+
+      const { filterModel } = state
       const trimmedName = name.trim()
 
       if (!trimmedName) {

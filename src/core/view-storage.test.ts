@@ -114,6 +114,36 @@ describe('createViewStore', () => {
       expect(store.getActiveViewId()).toBe(view.id)
     })
 
+    // A JavaScript caller can still use the 0.5 form, saveView(name,
+    // filterModel). Without a check, the store saves an empty view and the
+    // call looks like a success.
+    it.each([
+      ['a filter model (the 0.5 form)', filters()],
+      ['an empty filter model (the 0.5 form)', {}],
+      ['null', null],
+      ['undefined', undefined],
+      ['a string', 'x']
+    ])('throws a TypeError for %s in place of a ViewState', (_, state) => {
+      const store = createViewStore('test-grid')
+
+      // SAFETY: the test gives the store what a JavaScript caller can give
+      const save = () => store.saveView('X', state as never)
+
+      expect(save).toThrow(TypeError)
+      expect(save).toThrow('saveView takes a ViewState: { filterModel }')
+      expect(store.listViews()).toEqual([])
+    })
+
+    it('saves a view for a state whose filterModel is undefined', () => {
+      const store = createViewStore('test-grid')
+
+      // SAFETY: AG Grid's getFilterModel can give undefined at run time
+      const view = store.saveView('X', { filterModel: undefined as never })
+
+      expect(view.filterModel).toEqual({})
+      expect(store.listViews()).toHaveLength(1)
+    })
+
     it('overwrites in place when the name already exists', () => {
       const store = createViewStore('test-grid')
       const first = store.saveView('Same', { filterModel: filters() })

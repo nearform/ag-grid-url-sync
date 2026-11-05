@@ -52,6 +52,15 @@ export const ColumnFilterSchema = v.variant('filterType', [
 // Saved views from browser storage
 // ----------------------------------------------------------------------------
 
+/**
+ * The state that a view store's saveView takes. The filterModel key must be
+ * there: a filter model in the 0.5 form, saveView(name, model), has no such
+ * key. The value can be null or undefined, as AG Grid's getFilterModel gives.
+ */
+export const ViewStateSchema = v.object({
+  filterModel: v.union([JsonObjectSchema, v.null(), v.undefined()])
+})
+
 /** One saved view. A view that does not match is dropped, not repaired. */
 export const GridViewSchema = v.object({
   id: v.string(),

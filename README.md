@@ -990,13 +990,13 @@ createViewStore(storageKey: string): ViewStore
 
 Makes a store for the saved views of one grid, in `localStorage`. Give it to the `views` option of `createGridUrlSync`. (The React hook makes one for you from `storageKey`.)
 
-| Method                    | Description                                                                                                                                          |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `listViews()`             | All saved views, in save order                                                                                                                       |
-| `getActiveViewId()`       | The id of the active view, or `null`                                                                                                                 |
-| `persistActiveViewId(id)` | Writes the id of the active view. It does nothing when the id does not change                                                                        |
-| `saveView(name, state)`   | Saves a `ViewState`, `{ filterModel }`, with a name and makes it active. The same name updates that view. Throws for an empty name or a failed write |
-| `deleteView(id)`          | Deletes a view. An unknown id does nothing                                                                                                           |
+| Method                    | Description                                                                                                                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listViews()`             | All saved views, in save order                                                                                                                                                                            |
+| `getActiveViewId()`       | The id of the active view, or `null`                                                                                                                                                                      |
+| `persistActiveViewId(id)` | Writes the id of the active view. It does nothing when the id does not change                                                                                                                             |
+| `saveView(name, state)`   | Saves a `ViewState`, `{ filterModel }`, with a name and makes it active. The same name updates that view. Throws for an empty name or a failed write, and a `TypeError` when `state` is not a `ViewState` |
+| `deleteView(id)`          | Deletes a view. An unknown id does nothing                                                                                                                                                                |
 
 A read never throws: with no storage (a server render), storage blocked by policy, or data that is not valid, it gives an empty store. A write throws a `URLSyncError` with the code `STORAGE_UNAVAILABLE`, `STORAGE_FULL` or `STORAGE_WRITE_FAILED`.
 
@@ -1253,6 +1253,8 @@ store.saveView('Open orders', api.getFilterModel())
 // 0.6
 store.saveView('Open orders', { filterModel: api.getFilterModel() })
 ```
+
+In JavaScript, the store of `createViewStore` throws a `TypeError` for the 0.5 form, so the call does not save an empty view.
 
 In your own `ViewStore`, keep every field of `state` (see [Saved views in vanilla JS](#saved-views-in-vanilla-js)):
 

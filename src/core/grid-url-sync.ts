@@ -121,10 +121,11 @@ export interface Handover {
    */
   readonly parked: ParkedApply | null
   /**
-   * The grid could not take the old sync's listeners, and onIssue got that
-   * GRID_ERROR (#286). The next sync does not report the same failure again.
+   * The key of the GRID_ERROR that onIssue got when the grid could not take
+   * the old sync's listeners, or null (#286). The next sync does not report
+   * the same failure again. A different failure is reported.
    */
-  readonly listenerFailed: boolean
+  readonly listenerFailure: string | null
 }
 
 /** The handover of each sync that createSync made. Not public. */
@@ -200,8 +201,9 @@ export function createSync(
   const columnTypes = gridColumnTypes(api)
   // A URL apply that waits for AG Grid to infer a column type (#224)
   let parked: ParkedApply | null = null
-  // The grid could not take the listeners on create (#286)
-  let listenerFailed = false
+  // The key of the GRID_ERROR when the grid could not take the listeners
+  // on create, or null (#286)
+  let listenerFailure: string | null = null
 
   /**
    * Sends an issue to onIssue. An error from the app's handler is reported
@@ -1250,7 +1252,7 @@ export function createSync(
     keys,
     applyIssues,
     parked,
-    listenerFailed
+    listenerFailure
   }))
 
   // The view that the stored pointer names. A pointer to a missing view is
@@ -1269,13 +1271,16 @@ export function createSync(
     // A grid that cannot take a listener cannot be followed (#286): remove
     // each listener that it took, and report it
     status = 'destroyed'
-    listenerFailed = true
     removeQuietly('filterChanged', onFilterChanged)
     removeQuietly('gridPreDestroyed', destroy)
 
+    const issue = toIssue(cause, 'GRID_ERROR')
+
+    listenerFailure = issueKey(issue)
+
     // The earlier sync on this grid reported the same failure
-    if (!handed?.listenerFailed) {
-      fail(startCall('api', 'report'), cause, 'GRID_ERROR')
+    if (handed?.listenerFailure !== listenerFailure) {
+      reportIssue(startCall('api', 'report').options, issue)
     }
 
     publish()

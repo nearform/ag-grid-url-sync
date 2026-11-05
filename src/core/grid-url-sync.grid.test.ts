@@ -507,6 +507,28 @@ describe('createGridUrlSync: lifecycle', () => {
     expect(onIssue).not.toHaveBeenCalled()
   })
 
+  it('a sync after a listener failure reports a different failure (#286 review)', () => {
+    const api = createRealGrid()
+
+    const add = vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('No filterChanged listener')
+    })
+
+    const first = createSync({ api, onIssue: () => {} })
+
+    add.mockImplementation(() => {
+      throw new Error('No gridPreDestroyed listener')
+    })
+
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    createSync({ api, onIssue }, { handover: handOver(first) })
+
+    expect(onIssue.mock.calls.map(([event]) => event.issue.message)).toEqual([
+      expect.stringContaining('No gridPreDestroyed listener')
+    ])
+  })
+
   it('a sync after a destroyed sync reports its own listener failure (#286 review)', () => {
     const api = createRealGrid()
     const first = createSync({ api })

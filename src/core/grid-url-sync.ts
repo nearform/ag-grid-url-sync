@@ -13,7 +13,7 @@ import type {
 import { URLSyncError } from './types.js'
 import { DEFAULT_CONFIG } from './options.js'
 import { codecOptions, individual } from './codecs.js'
-import { reportIssue, rethrowIfThrown, toIssue } from './issues.js'
+import { isDataIssue, reportIssue, rethrowIfThrown, toIssue } from './issues.js'
 import { toError } from './to-error.js'
 import { parseUrlFilters } from './url-parser.js'
 import { generateUrl } from './url-generator.js'
@@ -45,6 +45,21 @@ import {
 
 const NO_ISSUES: readonly URLSyncError[] = Object.freeze([])
 const NO_VIEWS: readonly GridView[] = Object.freeze([])
+
+/**
+ * The data issues of a list: the filters that were dropped. A failure such
+ * as GRID_ERROR goes to onIssue only, not to the snapshot or a result (#284).
+ */
+function dataIssues(list: readonly URLSyncError[]): readonly URLSyncError[] {
+  // Not the type guard itself: it would narrow the list to never below
+  const isData = (issue: URLSyncError): boolean => isDataIssue(issue)
+
+  if (list.every(isData)) return list
+
+  const kept = list.filter(isData)
+
+  return kept.length ? kept : NO_ISSUES
+}
 
 /** The snapshot when there is no sync yet, for the React hook (#222) */
 export const IDLE_SNAPSHOT: GridUrlSyncSnapshot = Object.freeze({
@@ -270,7 +285,14 @@ export function createSync(
 
   /** Builds a new snapshot, and tells the listeners, when something changed */
   function publish(): void {
-    const list = [...applyIssues, ...readIssues, ...writeIssues]
+    // The read list keeps its failures, so a repeated one is not reported
+    // again, but the snapshot shows only the data issues (#284)
+    const list = [
+      ...dataIssues(applyIssues),
+      ...dataIssues(readIssues),
+      ...writeIssues
+    ]
+
     const hasFilters = Object.keys(state).length > 0
     const sameList = sameIssues(snapshot.issues, list)
     const activeViewId = active?.id ?? null
@@ -389,7 +411,7 @@ export function createSync(
 
     publish()
 
-    return { issues: call.issues }
+    return { issues: dataIssues(call.issues) }
   }
 
   /**
@@ -961,7 +983,7 @@ export function createSync(
       applyIssues = call.issues.length ? call.issues : NO_ISSUES
       publish()
 
-      return { issues: call.issues }
+      return { issues: dataIssues(call.issues) }
     },
 
     getUrl(baseUrl) {

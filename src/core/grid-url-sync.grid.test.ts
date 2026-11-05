@@ -409,4 +409,59 @@ describe('createGridUrlSync: lifecycle', () => {
     expect(onIssue.mock.calls[0]?.[0].issue.code).toBe('NOT_READY')
     expect(onIssue.mock.calls[0]?.[0].issue.severity).toBe('error')
   })
+
+  it('reports GRID_ERROR for a grid that cannot take a listener (#286)', () => {
+    const api = createRealGrid()
+    const failure = new Error('Initialization failed')
+    vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw failure
+    })
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const sync = createGridUrlSync({ api, onIssue, throwOnError: true })
+
+    expect(sync.getSnapshot()).toMatchObject({
+      status: 'destroyed',
+      issues: []
+    })
+    expect(onIssue).toHaveBeenCalledOnce()
+    expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+      issue: { code: 'GRID_ERROR', cause: failure },
+      source: 'api'
+    })
+  })
+
+  it('removes the listener that it added when a later one fails (#286)', () => {
+    const api = createRealGrid()
+    const add = api.addEventListener.bind(api)
+    vi.spyOn(api, 'addEventListener').mockImplementation((type, listener) => {
+      if (type === 'gridPreDestroyed') throw new Error('Initialization failed')
+
+      add(type, listener)
+    })
+    const remove = vi.spyOn(api, 'removeEventListener')
+
+    createGridUrlSync({ api, onIssue: () => {} })
+
+    expect(remove).toHaveBeenCalledWith('filterChanged', expect.any(Function))
+  })
+
+  it('removes a listener that the grid took before it threw (#286 review)', () => {
+    const api = createRealGrid()
+    const add = api.addEventListener.bind(api)
+    vi.spyOn(api, 'addEventListener').mockImplementation((type, listener) => {
+      add(type, listener)
+
+      if (type === 'gridPreDestroyed') throw new Error('Initialization failed')
+    })
+    const remove = vi.spyOn(api, 'removeEventListener')
+
+    createGridUrlSync({ api, onIssue: () => {} })
+
+    expect(remove).toHaveBeenCalledWith('filterChanged', expect.any(Function))
+    expect(remove).toHaveBeenCalledWith(
+      'gridPreDestroyed',
+      expect.any(Function)
+    )
+  })
 })

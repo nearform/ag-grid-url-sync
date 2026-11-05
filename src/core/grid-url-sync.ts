@@ -153,6 +153,12 @@ export interface SyncStart {
    * replaces them.
    */
   readonly keepApplyIssues?: boolean | undefined
+  /**
+   * The earlier sync on the same grid stopped, so onIssue got its reason
+   * (#286). A grid that still cannot take a listener is not reported
+   * again. Other issues of the create are reported as usual.
+   */
+  readonly earlierStopped?: boolean | undefined
 }
 
 /**
@@ -870,6 +876,18 @@ export function createSync(
     apply(window.location.href, 'url', 'report', false)
   }
 
+  /** Removes a grid listener. A grid that throws here too keeps it. */
+  function removeQuietly(
+    type: 'filterChanged' | 'gridPreDestroyed',
+    listener: () => void
+  ): void {
+    try {
+      api.removeEventListener(type, listener)
+    } catch {
+      // Nothing more to do: the grid fails on each call
+    }
+  }
+
   function destroy(): void {
     if (status === 'destroyed') return
 
@@ -1139,8 +1157,24 @@ export function createSync(
     ? viewList.find(view => view.id === pointer)
     : undefined
 
-  api.addEventListener('filterChanged', onFilterChanged)
-  api.addEventListener('gridPreDestroyed', destroy)
+  try {
+    api.addEventListener('filterChanged', onFilterChanged)
+    api.addEventListener('gridPreDestroyed', destroy)
+  } catch (cause) {
+    // A grid that cannot take a listener cannot be followed (#286): remove
+    // each listener that it took, and report it
+    status = 'destroyed'
+    removeQuietly('filterChanged', onFilterChanged)
+    removeQuietly('gridPreDestroyed', destroy)
+
+    if (!start.earlierStopped) {
+      fail(startCall('api', 'report'), cause, 'GRID_ERROR')
+    }
+
+    publish()
+
+    return sync
+  }
 
   if (listensToPopstate && hasWindow()) {
     window.addEventListener('popstate', onPopstate)

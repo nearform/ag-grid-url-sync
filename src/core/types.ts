@@ -104,8 +104,9 @@ export interface AGGridUrlSyncConfig {
    * `throwOnError`. `true` throws every issue, and a function throws the
    * issues for which it gives `true`. In the core, a thrown issue is not sent
    * to `onParseError`, and the first one stops the call. In the React hook,
-   * each issue is still sent to `onParseError` one time, and the picked issue
-   * is thrown during render, so an error boundary catches it. This API does
+   * each issue is still sent to `onIssue` one time, and a picked issue of
+   * `issues` is thrown during render, so an error boundary catches it. A
+   * failure, such as `GRID_ERROR`, is not in `issues` (#284). This API does
    * not change the address bar (only `createGridUrlSync` with `history` does),
    * so remove the bad param before the boundary resets, or the same issue is
    * thrown again.

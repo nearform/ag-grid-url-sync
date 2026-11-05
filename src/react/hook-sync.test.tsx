@@ -127,12 +127,7 @@ describe('useGridUrlSync: start and stop (#226)', () => {
     expect(onIssue.mock.calls[0]?.[0].issue.cause).toBe(failure)
   })
 
-  // KNOWN GAP (#286): createSync does not catch an error of the
-  // grid's addEventListener, so the effect of the hook throws and onIssue
-  // gets nothing. The removed 0.5 hook reported it as an
-  // operation failure and stayed not ready.
-  test.fails('a grid that cannot take a listener is reported, not thrown', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+  test('a grid that cannot take a listener is reported, not thrown (#286)', () => {
     const grid = createGrid()
     grid.api.addEventListener = vi.fn(() => {
       throw new Error('Initialization failed')

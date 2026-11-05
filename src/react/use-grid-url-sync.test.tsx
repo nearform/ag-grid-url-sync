@@ -434,6 +434,53 @@ describe('useGridUrlSync: issues (#271)', () => {
 
     expect(result.current.issues).toHaveLength(1)
   })
+
+  test('a grid that cannot take a listener is reported, not thrown (#286)', async () => {
+    const api = createRealGrid()
+    vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+    const events: IssueEvent[] = []
+
+    const { result } = renderSync({ api, onIssue: event => events.push(event) })
+    await settle()
+
+    expect(result.current.status).toBe('destroyed')
+    expect(events.map(event => [event.issue.code, event.source])).toEqual([
+      ['GRID_ERROR', 'api']
+    ])
+    expect(events[0]?.issue.message).toContain('Initialization failed')
+  })
+
+  test('StrictMode reports a grid that cannot take a listener one time (#286)', async () => {
+    const api = createRealGrid()
+    vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+    const events: IssueEvent[] = []
+
+    renderSync({ api, onIssue: event => events.push(event) }, true)
+    await settle()
+
+    expect(events.map(event => event.issue.code)).toEqual(['GRID_ERROR'])
+  })
+
+  test('a new sync reports a listener failure after a working sync (#286)', async () => {
+    const api = createRealGrid()
+    const events: IssueEvent[] = []
+    const onIssue = (event: IssueEvent) => events.push(event)
+
+    const { result, rerender } = renderSync({ api, onIssue })
+    await settle()
+    vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+    rerender({ api, onIssue, maxValueLength: 50 })
+    await settle()
+
+    expect(result.current.status).toBe('destroyed')
+    expect(events.map(event => event.issue.code)).toEqual(['GRID_ERROR'])
+  })
 })
 
 describe('useGridUrlSync: issues across a new sync (#271 review)', () => {

@@ -1139,8 +1139,25 @@ export function createSync(
     ? viewList.find(view => view.id === pointer)
     : undefined
 
-  api.addEventListener('filterChanged', onFilterChanged)
-  api.addEventListener('gridPreDestroyed', destroy)
+  try {
+    api.addEventListener('filterChanged', onFilterChanged)
+    api.addEventListener('gridPreDestroyed', destroy)
+  } catch (cause) {
+    // A grid that cannot take a listener cannot be followed (#286): report
+    // it, and remove the listener that it took
+    status = 'destroyed'
+
+    try {
+      api.removeEventListener('filterChanged', onFilterChanged)
+    } catch {
+      // The grid fails here too: nothing more to remove
+    }
+
+    fail(startCall('api', 'report'), cause, 'GRID_ERROR')
+    publish()
+
+    return sync
+  }
 
   if (listensToPopstate && hasWindow()) {
     window.addEventListener('popstate', onPopstate)

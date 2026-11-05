@@ -628,7 +628,7 @@ The hook returns the snapshot and the methods of the sync:
 - **Options can change after mount.** A new codec, `maxValueLength`, history mode, `popstate` or `storageKey` makes a new sync on the same grid. It does not apply the URL again, and it keeps the active view. A new `storageKey` restores that store's view. A new codec object with the same settings, a new `onIssue` or a new `history` function makes no new sync.
 - **The result is stable.** It is the same object until a snapshot value changes, and the methods never change.
 - **A method with no sync** (no grid yet, `enabled: false`): `applyUrl` and `applyFilters` report `NOT_READY` to `onIssue`, and so do `saveView` and `loadView` with a `storageKey`. `getUrl` returns the base URL. `deleteView` still works with storage only.
-- **Issues stay across a new sync.** After an option change or a `StrictMode` remount, `issues` still shows the latest apply's issues until the next apply. `onIssue` gets each issue one time.
+- **Issues stay across a new sync.** After an option change or a `StrictMode` remount, `issues` still shows the latest apply's issues until the next apply. A new `storageKey` that restores its stored view clears them, as `loadView` does. `onIssue` gets each issue one time.
 - `StrictMode`, React's `<Activity>` and server rendering are supported.
 
 #### Address bar (`history` and `popstate`)

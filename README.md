@@ -640,7 +640,7 @@ The options are the [`createGridUrlSync` options](#vanilla-js-creategridurlsync)
 | `api`          | none    | The AG Grid API, or `null` while the grid starts                                                                                                                                                                |
 | `storageKey`   | none    | Enables saved views, kept in `localStorage` under this key (in place of the core's `views` store). With no key, the view methods do nothing                                                                     |
 | `enabled`      | `true`  | With `false`, the hook makes no sync: `status` is `'idle'`, and a method reports `NOT_READY`. `views` still shows what is in storage. Back to `true` starts again, as a new sync does: the URL is applied again |
-| `throwOnError` | `false` | As in TanStack Query: the hook throws a picked issue of `issues` during render, so an error boundary catches it. Failures go to `onIssue` only. The methods do not throw                                        |
+| `throwOnError` | `false` | As in TanStack Query: the hook throws a picked issue of `issues` during render, so an error boundary catches it. Failures other than `HISTORY_WRITE_FAILED` go to `onIssue` only. The methods do not throw      |
 
 The hook returns the snapshot and the methods of the sync:
 

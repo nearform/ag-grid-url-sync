@@ -231,6 +231,27 @@ describe('createGridUrlSync: before the first row data', () => {
     })
   })
 
+  it('reports a grid that cannot take the row data listener (#286 review)', () => {
+    window.history.replaceState(null, '', '/?f_age_eq=30')
+    const api = inferredGrid({ rowData: null })
+    const add = api.addEventListener.bind(api)
+
+    vi.spyOn(api, 'addEventListener').mockImplementation((type, listener) => {
+      if (type === 'rowDataUpdated') throw new Error('No row data listener')
+
+      add(type, listener)
+    })
+
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const sync = createGridUrlSync({ api, onIssue })
+
+    expect(sync.getSnapshot().status).toBe('active')
+    expect(
+      onIssue.mock.calls.map(([event]) => [event.issue.code, event.source])
+    ).toEqual([['GRID_ERROR', 'url']])
+  })
+
   it('waits for applyUrl too, which gives no issues yet', async () => {
     const api = inferredGrid({ rowData: null })
     const sync = createGridUrlSync({ api })

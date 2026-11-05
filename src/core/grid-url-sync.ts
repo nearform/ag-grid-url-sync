@@ -120,6 +120,11 @@ export interface Handover {
    * setFilterModel for it, so the grid does not hold it: the next sync must.
    */
   readonly parked: ParkedApply | null
+  /**
+   * The grid could not take the old sync's listeners, and onIssue got that
+   * GRID_ERROR (#286). The next sync does not report the same failure again.
+   */
+  readonly listenerFailed: boolean
 }
 
 /** The handover of each sync that createSync made. Not public. */
@@ -155,12 +160,6 @@ export interface SyncStart {
    * replaces them.
    */
   readonly keepApplyIssues?: boolean | undefined
-  /**
-   * The earlier sync on the same grid stopped, so onIssue got its reason
-   * (#286). A grid that still cannot take a listener is not reported
-   * again. Other issues of the create are reported as usual.
-   */
-  readonly earlierStopped?: boolean | undefined
 }
 
 /**
@@ -201,6 +200,8 @@ export function createSync(
   const columnTypes = gridColumnTypes(api)
   // A URL apply that waits for AG Grid to infer a column type (#224)
   let parked: ParkedApply | null = null
+  // The grid could not take the listeners on create (#286)
+  let listenerFailed = false
 
   /**
    * Sends an issue to onIssue. An error from the app's handler is reported
@@ -356,7 +357,14 @@ export function createSync(
     onCreate: boolean
   ): ApplyResult {
     if (waitsForTypes(target)) {
-      park({ target, source, mode, onCreate })
+      try {
+        park({ target, source, mode, onCreate })
+      } catch (cause) {
+        // The grid cannot take the row data listener (#286 review): the
+        // apply cannot wait, and the grid keeps its filters
+        fail(startCall(source, mode), cause, 'GRID_ERROR')
+        publish()
+      }
 
       return { issues: NO_ISSUES }
     }
@@ -1241,7 +1249,8 @@ export function createSync(
     source: ownSource,
     keys,
     applyIssues,
-    parked
+    parked,
+    listenerFailed
   }))
 
   // The view that the stored pointer names. A pointer to a missing view is
@@ -1260,10 +1269,12 @@ export function createSync(
     // A grid that cannot take a listener cannot be followed (#286): remove
     // each listener that it took, and report it
     status = 'destroyed'
+    listenerFailed = true
     removeQuietly('filterChanged', onFilterChanged)
     removeQuietly('gridPreDestroyed', destroy)
 
-    if (!start.earlierStopped) {
+    // The earlier sync on this grid reported the same failure
+    if (!handed?.listenerFailed) {
       fail(startCall('api', 'report'), cause, 'GRID_ERROR')
     }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { GridApi } from 'ag-grid-community'
-import { createGridUrlSync } from './grid-url-sync.js'
+import { createGridUrlSync, createSync, handOver } from './grid-url-sync.js'
 import { grouped } from './codecs.js'
 import { serializeGrouped } from './serialization/grouped.js'
 import type { IssueEvent } from './types.js'
@@ -489,5 +489,39 @@ describe('createGridUrlSync: lifecycle', () => {
       'gridPreDestroyed',
       expect.any(Function)
     )
+  })
+
+  it('a sync after a listener failure does not report it again (#286 review)', () => {
+    const api = createRealGrid()
+
+    vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+
+    const first = createSync({ api, onIssue: () => {} })
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const next = createSync({ api, onIssue }, { handover: handOver(first) })
+
+    expect(next.getSnapshot().status).toBe('destroyed')
+    expect(onIssue).not.toHaveBeenCalled()
+  })
+
+  it('a sync after a destroyed sync reports its own listener failure (#286 review)', () => {
+    const api = createRealGrid()
+    const first = createSync({ api })
+    first.destroy()
+
+    vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    createSync({ api, onIssue }, { handover: handOver(first) })
+
+    expect(onIssue.mock.calls.map(([event]) => event.issue.code)).toEqual([
+      'GRID_ERROR'
+    ])
   })
 })

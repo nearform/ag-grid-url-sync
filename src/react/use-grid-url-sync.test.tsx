@@ -491,6 +491,28 @@ describe('useGridUrlSync: issues (#271)', () => {
     ])
   })
 
+  test('a grid with no isDestroyed reports a listener failure after its destroy (#286 review)', async () => {
+    const api = createRealGrid()
+    const events: IssueEvent[] = []
+    const onIssue = (event: IssueEvent) => events.push(event)
+
+    const { result, rerender } = renderSync({ api, onIssue })
+    await settle()
+    // AG Grid before v31: gridPreDestroyed comes, but isDestroyed is not there
+    vi.spyOn(api, 'isDestroyed').mockReturnValue(false)
+    act(() => api.dispatchEvent({ type: 'gridPreDestroyed' }))
+
+    vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+
+    rerender({ api, onIssue, maxValueLength: 50 })
+    await settle()
+
+    expect(result.current.status).toBe('destroyed')
+    expect(events.map(event => event.issue.code)).toEqual(['GRID_ERROR'])
+  })
+
   test('a new sync reports a listener failure after a working sync (#286)', async () => {
     const api = createRealGrid()
     const events: IssueEvent[] = []

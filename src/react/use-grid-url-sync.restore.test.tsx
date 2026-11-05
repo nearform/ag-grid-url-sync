@@ -70,7 +70,7 @@ function setSearch(search: string): void {
 
 /** A stored view that is the active one, as an earlier session left it */
 function seedActiveView(model: FilterModel = savedModel): string {
-  return createViewStore(KEY).saveView('Seeded', model).id
+  return createViewStore(KEY).saveView('Seeded', { filterModel: model }).id
 }
 
 /** The hook on the grid fake, with views and the default apply on create */
@@ -214,7 +214,10 @@ describe('useGridUrlSync: a restore that the grid changes (#226)', () => {
     }
 
     test('stays loaded when the grid sends the event in the call', async () => {
-      const id = createViewStore(KEY).saveView('Dated', handBuilt).id
+      const id = createViewStore(KEY).saveView('Dated', {
+        filterModel: handBuilt
+      }).id
+
       createViewStore(KEY).persistActiveViewId(null)
 
       let model: FilterModel = {}
@@ -239,7 +242,9 @@ describe('useGridUrlSync: a restore that the grid changes (#226)', () => {
     })
 
     test('stays loaded when a deferred restore lands', async () => {
-      const id = createViewStore(KEY).saveView('Dated', handBuilt).id
+      const id = createViewStore(KEY).saveView('Dated', {
+        filterModel: handBuilt
+      }).id
 
       let model: FilterModel = {}
       mockGridApi.getFilterModel = vi.fn(() => model)
@@ -261,7 +266,9 @@ describe('useGridUrlSync: a restore that the grid changes (#226)', () => {
     })
 
     test('unloads on a user edit over a restore that the grid never applied', async () => {
-      const id = createViewStore(KEY).saveView('Dated', handBuilt).id
+      const id = createViewStore(KEY).saveView('Dated', {
+        filterModel: handBuilt
+      }).id
 
       let model: FilterModel = {}
       mockGridApi.getFilterModel = vi.fn(() => model)
@@ -304,7 +311,10 @@ describe('useGridUrlSync: a filter write while a restore is pending (#226)', () 
     view: FilterModel = savedModel,
     initial: FilterModel = {}
   ) => {
-    const id = createViewStore(KEY).saveView('Pending', view).id
+    const id = createViewStore(KEY).saveView('Pending', {
+      filterModel: view
+    }).id
+
     let model = initial
     mockGridApi.getFilterModel = vi.fn(() => model)
 

@@ -1140,7 +1140,7 @@ export function createSync(
       let view: GridView
 
       try {
-        view = views.saveView(name, model)
+        view = views.saveView(name, { filterModel: model })
       } catch (cause) {
         fail(call, cause, 'STORAGE_WRITE_FAILED')
 

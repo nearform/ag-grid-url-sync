@@ -308,7 +308,10 @@ describe('useGridUrlSync: save, load and delete on a grid fake (#226)', () => {
   })
 
   test('the check of a filter change reads no storage', async () => {
-    const id = createViewStore(KEY).saveView('Seeded', savedModel).id
+    const id = createViewStore(KEY).saveView('Seeded', {
+      filterModel: savedModel
+    }).id
+
     mockGridApi.getFilterModel = vi.fn(() => savedModel)
     const { result } = renderSync({ storageKey: KEY })
 
@@ -327,10 +330,9 @@ describe('useGridUrlSync: a storageKey change on a grid fake (#226)', () => {
   test('restores the stored view when storageKey comes after the first render', async () => {
     mockGridApi.getFilterModel = vi.fn(() => savedModel)
 
-    const id = createViewStore('tenant-b').saveView(
-      'Engineering',
-      savedModel
-    ).id
+    const id = createViewStore('tenant-b').saveView('Engineering', {
+      filterModel: savedModel
+    }).id
 
     type Props = { storageKey?: string | undefined }
 
@@ -360,7 +362,9 @@ describe('useGridUrlSync: a storageKey change on a grid fake (#226)', () => {
 
   test('a change to a namespace with no views keeps the grid', async () => {
     mockGridApi.getFilterModel = vi.fn(() => savedModel)
-    createViewStore('tenant-a').saveView('Engineering', savedModel)
+    createViewStore('tenant-a').saveView('Engineering', {
+      filterModel: savedModel
+    })
 
     const { result, rerender } = renderHook(
       (props: { storageKey: string }) =>
@@ -391,7 +395,9 @@ describe('useGridUrlSync: a storageKey change on a grid fake (#226)', () => {
 
   test('keeps the grid when storageKey changes to undefined', async () => {
     mockGridApi.getFilterModel = vi.fn(() => savedModel)
-    createViewStore('tenant-b').saveView('Engineering', savedModel)
+    createViewStore('tenant-b').saveView('Engineering', {
+      filterModel: savedModel
+    })
 
     type Props = { storageKey?: string | undefined }
 

@@ -273,7 +273,9 @@ describe('useGridUrlSync issues (#229)', () => {
   test('a URL with a bad param still wins over a stored view with throwOnError', async () => {
     window.localStorage.clear()
     createViewStore('issues-key').saveView('Eng', {
-      dept: { filterType: 'text', type: 'equals', filter: 'eng' }
+      filterModel: {
+        dept: { filterType: 'text', type: 'equals', filter: 'eng' }
+      }
     })
     Object.defineProperty(window.location, 'search', {
       value: '?f_name_contains=bob&f_age_gt=abc',
@@ -363,7 +365,9 @@ describe('useGridUrlSync issues (#229)', () => {
   test('drops the apply issues when a stored view is restored (#285)', async () => {
     window.localStorage.clear()
     createViewStore('restore-b').saveView('Eng', {
-      dept: { filterType: 'text', type: 'equals', filter: 'eng' }
+      filterModel: {
+        dept: { filterType: 'text', type: 'equals', filter: 'eng' }
+      }
     })
     const { api } = createGridApi()
 
@@ -496,7 +500,9 @@ describe('useGridUrlSync issues (#229)', () => {
       window.localStorage.clear()
 
       const view = createViewStore('carry-load').saveView('Eng', {
-        name: { filterType: 'text', type: 'equals', filter: 'eng' }
+        filterModel: {
+          name: { filterType: 'text', type: 'equals', filter: 'eng' }
+        }
       })
 
       // The view is stored, but no view is active on mount

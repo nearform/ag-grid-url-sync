@@ -23,17 +23,25 @@ const keyFor = (storageKey: string): string =>
   `ag-grid-url-sync:views:${SCHEMA_VERSION}:${storageKey}`
 
 /**
- * A saved snapshot of a grid's filters.
+ * The grid state that a view keeps. Later releases can add optional fields,
+ * for example the sort. A custom store must keep every field of it.
  */
-export interface GridView {
+export interface ViewState {
+  /** AG Grid's native filter model, stored as-is */
+  filterModel: FilterModel
+}
+
+/**
+ * A saved snapshot of a grid's filters: the fields of its `ViewState`, and
+ * an id, a name and the time of the last write.
+ */
+export interface GridView extends ViewState {
   /** Stable generated id */
   id: string
   /** User-supplied display name */
   name: string
   /** Epoch millis of the last write */
   updatedAt: number
-  /** AG Grid's native filter model, stored as-is */
-  filterModel: FilterModel
 }
 
 interface StoredViews {
@@ -60,7 +68,11 @@ export interface ViewStore {
    */
   persistActiveViewId(id: string | null): void
   /**
-   * Saves a filter model under a name and makes it active.
+   * Saves the state under a name and makes it active.
+   *
+   * A custom store must keep every field of `state` and give them back in
+   * the `GridView`, for example `{ ...state, id, name, updatedAt }`. Then the
+   * fields that later releases add to `ViewState` need no change here.
    *
    * Names are unique and matched exactly after trimming, so saving over an
    * existing name updates that view in place, keeping its id and its position
@@ -73,7 +85,7 @@ export interface ViewStore {
    * @throws when the name is empty, or when the write fails: storage full,
    *   blocked by policy, or no DOM present
    */
-  saveView(name: string, filterModel: FilterModel): GridView
+  saveView(name: string, state: ViewState): GridView
   /**
    * Deletes a view, clearing the active id if it pointed at that view.
    *
@@ -197,7 +209,7 @@ export function createViewStore(storageKey: string): ViewStore {
       write({ ...current, activeId: id })
     },
 
-    saveView: (name: string, filterModel: FilterModel): GridView => {
+    saveView: (name: string, { filterModel }: ViewState): GridView => {
       const trimmedName = name.trim()
 
       if (!trimmedName) {

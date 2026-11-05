@@ -251,19 +251,12 @@ export function useGridUrlSync(
     session.stopped = false
 
     // A new sync on a grid that AG Grid destroyed: the core reports
-    // NOT_READY on create, but the app called nothing. A new sync on a grid
-    // that could not take a listener: the core reports GRID_ERROR again,
-    // but onIssue got it from the last sync (#286). Later method calls
+    // NOT_READY on create, but the app called nothing. Later method calls
     // report as usual.
     let creating = true
 
     const onIssue = (event: IssueEvent): void => {
-      const { code } = event.issue
-
-      const repeated =
-        code === 'NOT_READY' || (stopped && code === 'GRID_ERROR')
-
-      if (creating && !first && repeated) return
+      if (creating && !first && event.issue.code === 'NOT_READY') return
 
       report(event)
     }
@@ -281,8 +274,9 @@ export function useGridUrlSync(
         onIssue,
         views: viewStore ?? undefined
       },
-      // The new sync shows the last one's apply issues, as one sync would
-      { keptViewId, handover, keepApplyIssues: true }
+      // The new sync shows the last one's apply issues, as one sync would.
+      // A stopped last sync reported its grid failure already (#286).
+      { keptViewId, handover, keepApplyIssues: true, earlierStopped: stopped }
     )
 
     creating = false

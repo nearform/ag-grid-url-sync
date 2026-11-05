@@ -445,4 +445,23 @@ describe('createGridUrlSync: lifecycle', () => {
 
     expect(remove).toHaveBeenCalledWith('filterChanged', expect.any(Function))
   })
+
+  it('removes a listener that the grid took before it threw (#286 review)', () => {
+    const api = createRealGrid()
+    const add = api.addEventListener.bind(api)
+    vi.spyOn(api, 'addEventListener').mockImplementation((type, listener) => {
+      add(type, listener)
+
+      if (type === 'gridPreDestroyed') throw new Error('Initialization failed')
+    })
+    const remove = vi.spyOn(api, 'removeEventListener')
+
+    createGridUrlSync({ api, onIssue: () => {} })
+
+    expect(remove).toHaveBeenCalledWith('filterChanged', expect.any(Function))
+    expect(remove).toHaveBeenCalledWith(
+      'gridPreDestroyed',
+      expect.any(Function)
+    )
+  })
 })

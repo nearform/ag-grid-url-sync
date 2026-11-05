@@ -465,6 +465,32 @@ describe('useGridUrlSync: issues (#271)', () => {
     expect(events.map(event => event.issue.code)).toEqual(['GRID_ERROR'])
   })
 
+  test('a new sync after a listener failure reports its own GRID_ERROR (#286 review)', async () => {
+    const api = createRealGrid()
+
+    const add = vi.spyOn(api, 'addEventListener').mockImplementation(() => {
+      throw new Error('Initialization failed')
+    })
+
+    const events: IssueEvent[] = []
+    const onIssue = (event: IssueEvent) => events.push(event)
+
+    const { rerender } = renderSync({ api, onIssue })
+    await settle()
+    // The grid takes listeners now, but its filter model read fails
+    add.mockRestore()
+    vi.spyOn(api, 'getFilterModel').mockImplementation(() => {
+      throw new Error('Read failed')
+    })
+    rerender({ api, onIssue, maxValueLength: 50 })
+    await settle()
+
+    expect(events.map(event => event.issue.message)).toEqual([
+      expect.stringContaining('Initialization failed'),
+      expect.stringContaining('Read failed')
+    ])
+  })
+
   test('a new sync reports a listener failure after a working sync (#286)', async () => {
     const api = createRealGrid()
     const events: IssueEvent[] = []

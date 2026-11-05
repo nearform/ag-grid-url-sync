@@ -2,8 +2,9 @@ import { Activity, StrictMode } from 'react'
 import { render, renderHook, act } from '@testing-library/react'
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { FilterModel, GridApi } from 'ag-grid-community'
-import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
-import type { UseAGGridUrlSyncOptions } from './types.js'
+import { useGridUrlSync } from './use-grid-url-sync.js'
+import type { UseGridUrlSyncOptions } from './types.js'
+import { grouped } from '../core/codecs.js'
 import { createViewStore } from '../core/view-storage.js'
 import {
   createRealGrid,
@@ -13,7 +14,8 @@ import {
 } from '../test-helpers.js'
 
 // The hook's history and popstate options on a real AG Grid in jsdom (#270).
-// The hook gets the same address-bar sync as createGridUrlSync.
+// The hook gets the same address-bar sync as createGridUrlSync. Ported from
+// the tests of the removed 0.5 hook (#226).
 
 const NAME_JO = {
   name: { filterType: 'text', type: 'contains', filter: 'jo' }
@@ -54,9 +56,16 @@ function params(): URLSearchParams {
   return new URLSearchParams(window.location.search)
 }
 
-type Props = { api: GridApi | null; options: UseAGGridUrlSyncOptions }
+type Props = {
+  api: GridApi | null
+  options: Omit<UseGridUrlSyncOptions, 'api'>
+}
 
-const useSync = ({ api, options }: Props) => useAGGridUrlSync(api, options)
+const useSync = ({ api, options }: Props) => useGridUrlSync({ api, ...options })
+
+/** The code and the source of each issue that onIssue got */
+const issuesOf = (onIssue: ReturnType<typeof vi.fn>) =>
+  onIssue.mock.calls.map(([event]) => [event.issue.code, event.source])
 
 function renderSync(props: Props, strict = false) {
   if (strict) {
@@ -100,31 +109,14 @@ describe('history option (#270)', () => {
     expect(window.location.hash).toBe('#top')
     expect(window.history.state).toEqual({ app: 1 })
     expect(window.history.length).toBe(length)
-    expect(result.current.currentUrl).toBe(window.location.href)
+    expect(result.current.url).toBe(window.location.href)
   })
 
-  test('push adds one entry for each user edit', async () => {
-    const api = createRealGrid()
-    renderSync({ api, options: { history: 'push' } })
-    await settle()
-    const length = window.history.length
-
-    await edit(api, NAME_JO)
-    await edit(api, NAME_X)
-
-    expect(window.history.length).toBe(length + 2)
-    expect(params().get('f_name_contains')).toBe('x')
-  })
-
-  test('uses the paramPrefix and format options in the address bar', async () => {
+  test('uses the codec in the address bar', async () => {
     const api = createRealGrid()
     renderSync({
       api,
-      options: {
-        history: 'replace',
-        serialization: 'grouped',
-        groupedParam: 'g'
-      }
+      options: { history: 'replace', codec: grouped({ param: 'g' }) }
     })
     await settle()
 
@@ -155,69 +147,44 @@ describe('history option (#270)', () => {
     expect(adds).not.toHaveBeenCalled()
   })
 
-  test('a history change after mount takes effect', async () => {
-    const api = createRealGrid()
-    const { rerender } = renderSync({ api, options: {} })
-    await settle()
-
-    rerender({ api, options: { history: 'replace' } })
-    await settle()
-    await edit(api, NAME_JO)
-
-    expect(params().get('f_name_contains')).toBe('jo')
-  })
-
-  test('auto-apply on mount writes no history entry', async () => {
-    window.history.replaceState(null, '', '/?f_name_contains=jo')
-    const length = window.history.length
-    const push = vi.spyOn(window.history, 'pushState')
-    const api = createRealGrid()
-    renderSync({ api, options: { history: 'push', autoApplyOnMount: true } })
-    await settle()
-
-    expect(api.getFilterModel()).toMatchObject(NAME_JO)
-    expect(push).not.toHaveBeenCalled()
-    expect(window.history.length).toBe(length)
-  })
-
-  test('applyUrlFilters writes no history entry', async () => {
+  test('applyUrl writes no history entry', async () => {
     const api = createRealGrid()
     const { result } = renderSync({ api, options: { history: 'push' } })
     await settle()
     const push = vi.spyOn(window.history, 'pushState')
 
-    act(() =>
-      result.current.applyUrlFilters('https://x.test/?f_name_contains=jo')
-    )
+    act(() => {
+      result.current.applyUrl('https://x.test/?f_name_contains=jo')
+    })
     await settle()
 
     expect(api.getFilterModel()).toMatchObject(NAME_JO)
     expect(push).not.toHaveBeenCalled()
   })
 
-  test('applyFilters and clearFilters write as a user edit does', async () => {
+  test('applyFilters writes as a user edit does, also to clear', async () => {
     const api = createRealGrid()
     const { result } = renderSync({ api, options: { history: 'push' } })
     await settle()
     const length = window.history.length
 
-    act(() =>
-      result.current.applyFilters({
-        name: { filterType: 'text', type: 'contains', filter: 'jo' }
-      })
-    )
+    act(() => {
+      result.current.applyFilters(NAME_JO)
+    })
     await settle()
-    act(() => result.current.clearFilters())
+    act(() => {
+      result.current.applyFilters({})
+    })
     await settle()
 
     expect(window.history.length).toBe(length + 2)
     expect(window.location.search).toBe('')
   })
 
-  test('a history write that throws goes to onError', async () => {
+  test('a history write that throws goes to onIssue', async () => {
     const api = createRealGrid()
-    const onError = vi.fn()
-    renderSync({ api, options: { history: 'replace', onError } })
+    const onIssue = vi.fn()
+    renderSync({ api, options: { history: 'replace', onIssue } })
     await settle()
     vi.spyOn(window.history, 'replaceState').mockImplementation(() => {
       throw new Error('blocked')
@@ -225,29 +192,11 @@ describe('history option (#270)', () => {
 
     await edit(api, NAME_JO)
 
-    expect(onError).toHaveBeenCalledTimes(1)
-    expect(onError.mock.calls[0]?.[0]).toMatchObject({
-      code: 'HISTORY_WRITE_FAILED'
-    })
-    expect(onError.mock.calls[0]?.[1]).toBe('filter-change')
+    expect(issuesOf(onIssue)).toEqual([['HISTORY_WRITE_FAILED', 'grid']])
   })
 })
 
 describe('popstate option (#270)', () => {
-  test('push follows the back button by default', async () => {
-    const api = createRealGrid()
-    const { result } = renderSync({ api, options: { history: 'push' } })
-    await settle()
-    await edit(api, NAME_JO)
-    await edit(api, NAME_X)
-
-    await back()
-
-    expect(api.getFilterModel()).toMatchObject(NAME_JO)
-    expect(result.current.currentUrl).toContain('f_name_contains=jo')
-    expect(result.current.currentUrl).toBe(window.location.href)
-  })
-
   test('back to an entry with no filters clears the grid', async () => {
     const api = createRealGrid()
     const { result } = renderSync({ api, options: { history: 'push' } })
@@ -278,7 +227,7 @@ describe('popstate option (#270)', () => {
     const api = createRealGrid()
     renderSync({
       api,
-      options: { history: 'replace', popstate: true, autoApplyOnMount: true }
+      options: { history: 'replace', popstate: true }
     })
     await settle()
 
@@ -287,10 +236,10 @@ describe('popstate option (#270)', () => {
     expect(api.getFilterModel()).toMatchObject(NAME_JO)
   })
 
-  test('a grid error on back goes to onError with the popstate context', async () => {
+  test('a grid error on back goes to onIssue with the source url', async () => {
     const api = createRealGrid()
-    const onError = vi.fn()
-    renderSync({ api, options: { history: 'push', onError } })
+    const onIssue = vi.fn()
+    renderSync({ api, options: { history: 'push', onIssue } })
     await settle()
     await edit(api, NAME_JO)
     vi.spyOn(api, 'setFilterModel').mockImplementation(() => {
@@ -299,9 +248,7 @@ describe('popstate option (#270)', () => {
 
     await back()
 
-    expect(onError).toHaveBeenCalledTimes(1)
-    expect(onError.mock.calls[0]?.[0]).toMatchObject({ code: 'GRID_ERROR' })
-    expect(onError.mock.calls[0]?.[1]).toBe('popstate')
+    expect(issuesOf(onIssue)).toEqual([['GRID_ERROR', 'url']])
   })
 
   test('keeps no popstate listener for a grid that is already destroyed', async () => {
@@ -326,19 +273,6 @@ describe('popstate option (#270)', () => {
     expect(live).toEqual([])
   })
 
-  test('stops after unmount', async () => {
-    const api = createRealGrid()
-    const { unmount } = renderSync({ api, options: { history: 'push' } })
-    await settle()
-    await edit(api, NAME_JO)
-    await edit(api, NAME_X)
-    unmount()
-
-    await back()
-
-    expect(api.getFilterModel()).toMatchObject(NAME_X)
-  })
-
   test('follows the back button one time in StrictMode', async () => {
     const api = createRealGrid()
     renderSync({ api, options: { history: 'push' } }, true)
@@ -353,13 +287,13 @@ describe('popstate option (#270)', () => {
     expect(api.getFilterModel()).toMatchObject(NAME_JO)
   })
 
-  test('a bad param on back goes to issues and to onParseError one time', async () => {
+  test('a bad param on back goes to issues and to onIssue one time', async () => {
     const api = createRealGrid()
-    const onParseError = vi.fn()
+    const onIssue = vi.fn()
 
     const { result } = renderSync({
       api,
-      options: { history: 'push', onParseError }
+      options: { history: 'push', onIssue }
     })
 
     await settle()
@@ -373,7 +307,7 @@ describe('popstate option (#270)', () => {
     await back()
 
     expect(api.getFilterModel()).toMatchObject(NAME_JO)
-    expect(onParseError).toHaveBeenCalledTimes(1)
+    expect(issuesOf(onIssue)).toEqual([['INVALID_PARAM', 'url']])
     expect(result.current.issues).toHaveLength(1)
     expect(result.current.issues[0]?.column).toBe('age')
   })
@@ -385,7 +319,7 @@ describe('popstate option (#270)', () => {
 
     const { result, rerender } = renderSync({
       api,
-      options: { history: 'push', autoApplyOnMount: true }
+      options: { history: 'push' }
     })
 
     await settle()
@@ -394,7 +328,7 @@ describe('popstate option (#270)', () => {
     // A new sync on the same grid shows the earlier sync's apply issues
     rerender({
       api,
-      options: { history: 'push', autoApplyOnMount: true, maxValueLength: 50 }
+      options: { history: 'push', maxValueLength: 50 }
     })
     await settle()
     expect(result.current.issues).toHaveLength(1)
@@ -449,7 +383,7 @@ describe('saved views with history (#270)', () => {
       const { result } = renderSync(
         {
           api,
-          options: { history: 'push', storageKey: 't', autoApplyOnMount: true }
+          options: { history: 'push', storageKey: 't' }
         },
         strict
       )
@@ -474,7 +408,7 @@ describe('saved views with history (#270)', () => {
 
     const { result } = renderSync({
       api,
-      options: { history: 'push', storageKey: 't', autoApplyOnMount: true }
+      options: { history: 'push', storageKey: 't' }
     })
 
     await settle()
@@ -514,12 +448,12 @@ describe('saved views with history (#270)', () => {
 })
 
 describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
-  test('keeps the view on an option change with autoApplyOnMount', async () => {
+  test('keeps the view on an option change', async () => {
     const store = createViewStore('t')
     const view = store.saveView('A', NAME_JO)
     store.persistActiveViewId(null)
     const { api } = createTimedGrid(timing)
-    const options = { storageKey: 't', autoApplyOnMount: true } as const
+    const options = { storageKey: 't' } as const
     const { result, rerender } = renderSync({ api, options })
     await settle()
     act(() => result.current.loadView(view.id))
@@ -534,13 +468,13 @@ describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
     expect(store.getActiveViewId()).toBe(view.id)
   })
 
-  test('a kept-view restore that fails gets the initialization context', async () => {
+  test('a kept-view restore that fails reports GRID_ERROR one time', async () => {
     const store = createViewStore('t')
     const view = store.saveView('A', NAME_JO)
     store.persistActiveViewId(null)
-    const onError = vi.fn()
+    const onIssue = vi.fn()
     const { api } = createTimedGrid(timing)
-    const options = { storageKey: 't', onError } as const
+    const options = { storageKey: 't', onIssue } as const
     const { result, rerender } = renderSync({ api, options })
     await settle()
     act(() => result.current.loadView(view.id))
@@ -553,21 +487,19 @@ describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
     rerender({ api, options: { ...options, maxValueLength: 50 } })
     await settle()
 
-    expect(onError).toHaveBeenCalledTimes(1)
-    expect(onError.mock.calls[0]?.[0]).toMatchObject({ code: 'GRID_ERROR' })
-    expect(onError.mock.calls[0]?.[1]).toBe('initialization')
+    expect(issuesOf(onIssue)).toEqual([['GRID_ERROR', 'url']])
   })
 
-  test('a failed address-bar write of a kept-view restore is a filter change', async () => {
+  test('a failed address-bar write of a kept-view restore reports HISTORY_WRITE_FAILED', async () => {
     const store = createViewStore('t')
     const view = store.saveView('A', NAME_JO)
     store.persistActiveViewId(null)
-    const onError = vi.fn()
+    const onIssue = vi.fn()
     const { api } = createTimedGrid(timing)
 
     const { result, rerender } = renderSync({
       api,
-      options: { storageKey: 't', onError }
+      options: { storageKey: 't', onIssue }
     })
 
     await settle()
@@ -578,38 +510,11 @@ describe.each(GRID_TIMINGS)('saved views with push, %s grid (#270)', timing => {
       throw new Error('blocked')
     })
 
-    rerender({ api, options: { storageKey: 't', onError, history: 'push' } })
+    rerender({ api, options: { storageKey: 't', onIssue, history: 'push' } })
     await settle()
     await settle()
 
-    expect(onError).toHaveBeenCalledTimes(1)
-    expect(onError.mock.calls[0]?.[0]).toMatchObject({
-      code: 'HISTORY_WRITE_FAILED'
-    })
-    expect(onError.mock.calls[0]?.[1]).toBe('filter-change')
-  })
-
-  test('a stored view on mount in StrictMode writes no entry', async () => {
-    const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
-    store.persistActiveViewId(view.id)
-    const push = vi.spyOn(window.history, 'pushState')
-    const { api } = createTimedGrid(timing)
-
-    const { result } = renderSync(
-      {
-        api,
-        options: { history: 'push', storageKey: 't', autoApplyOnMount: true }
-      },
-      true
-    )
-
-    await settle()
-    await settle()
-
-    expect(result.current.activeViewId).toBe(view.id)
-    expect(params().get('f_name_contains')).toBe('jo')
-    expect(push).not.toHaveBeenCalled()
+    expect(issuesOf(onIssue)).toEqual([['HISTORY_WRITE_FAILED', 'url']])
   })
 
   test('a new sync on the same grid keeps the view with no new entry', async () => {
@@ -653,7 +558,7 @@ describe.each(GRID_TIMINGS)(
         renderSync(
           {
             api,
-            options: { history: 'push', autoApplyOnMount: true, storageKey }
+            options: { history: 'push', storageKey }
           },
           true
         )
@@ -672,7 +577,7 @@ describe.each(GRID_TIMINGS)(
       window.history.replaceState(null, '', URL_WITH_DROPPED)
       const push = vi.spyOn(window.history, 'pushState')
       const { api } = createTimedGrid(timing)
-      const options = { history: 'push', autoApplyOnMount: true } as const
+      const options = { history: 'push' } as const
 
       const { rerender } = renderSync({ api, options })
       rerender({ api, options: { ...options, popstate: false } })
@@ -687,10 +592,7 @@ describe.each(GRID_TIMINGS)(
       window.history.replaceState(null, '', URL_WITH_DROPPED)
       const { api, userEdit } = createTimedGrid(timing)
 
-      renderSync(
-        { api, options: { history: 'push', autoApplyOnMount: true } },
-        true
-      )
+      renderSync({ api, options: { history: 'push' } }, true)
       await settle()
       await settle()
       const length = window.history.length
@@ -709,7 +611,7 @@ describe.each(GRID_TIMINGS)(
 // the grid stays. A write can land while no sync listens (#276 review).
 describe.each(GRID_TIMINGS)('a hidden Activity, %s grid (#276)', timing => {
   function Probe(props: Props) {
-    useAGGridUrlSync(props.api, props.options)
+    useGridUrlSync({ api: props.api, ...props.options })
 
     return null
   }
@@ -728,7 +630,7 @@ describe.each(GRID_TIMINGS)('a hidden Activity, %s grid (#276)', timing => {
 
     const props = {
       api,
-      options: { history: 'push', autoApplyOnMount: true }
+      options: { history: 'push' }
     } as const
 
     const view = render(renderActivity(props, 'visible'))

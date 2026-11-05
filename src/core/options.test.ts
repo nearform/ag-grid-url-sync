@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { DEFAULT_CONFIG, resolveOptions } from './options.js'
 import { DEFAULT_CONFIG as VALIDATION_DEFAULT_CONFIG } from './validation.js'
-import type { ParseConfig } from './types.js'
 import { asGridApi, createGridApiSpies } from '../test-helpers.js'
 
 // Config defaults live in one place, and each entry point resolves a partial
@@ -58,7 +57,7 @@ describe('resolveOptions', () => {
   })
 
   it('leaves out gridApi and other keys that are not options', () => {
-    const config: ParseConfig = {
+    const config = {
       ...DEFAULT_CONFIG,
       gridApi: asGridApi(createGridApiSpies())
     }

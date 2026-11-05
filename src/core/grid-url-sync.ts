@@ -14,9 +14,9 @@ import { DEFAULT_CONFIG } from './options.js'
 import { codecOptions, individual } from './codecs.js'
 import { reportIssue, rethrowIfThrown, toIssue } from './issues.js'
 import { toError } from './to-error.js'
-import { parseUrlFilters } from './url-parser.js'
+import { readUrlFilters } from './url-parser.js'
 import { gridColumnType, gridColumnTypes } from './column-types.js'
-import { generateUrl } from './url-generator.js'
+import { writeUrlFilters } from './url-generator.js'
 import { resolveParamPrefix } from './individual-params.js'
 import { checkColumnTypes } from './grid-integration.js'
 import { keyForm, mergeUrlModel, urlForm as urlFormOf } from './model-form.js'
@@ -327,7 +327,7 @@ export function createSync(
     state = urlFormOf(model, call.options)
 
     url = hasWindow()
-      ? generateUrl(window.location.href, state, call.options)
+      ? writeUrlFilters(window.location.href, state, call.options)
       : ''
 
     const known = new Set(readIssues.map(issueKey))
@@ -361,7 +361,7 @@ export function createSync(
     let filters: FilterModel | undefined
 
     try {
-      filters = parseUrlFilters(target, call.options)
+      filters = readUrlFilters(target, call.options)
     } catch (cause) {
       fail(call, cause, 'INVALID_URL')
     }
@@ -410,7 +410,7 @@ export function createSync(
    */
   function waitsForTypes(target: string): boolean {
     try {
-      const filters = parseUrlFilters(
+      const filters = readUrlFilters(
         target,
         startCall('url', 'collect').options
       )
@@ -780,7 +780,7 @@ export function createSync(
    */
   function givesFilters(target: string): boolean {
     try {
-      const filters = parseUrlFilters(
+      const filters = readUrlFilters(
         target,
         startCall('url', 'collect').options
       )
@@ -814,7 +814,7 @@ export function createSync(
     const normal = keyForm(filters, options)
     const sorted = Object.fromEntries(Object.entries(normal).sort(byColumnId))
 
-    return generateUrl('http://key.invalid/', sorted, options)
+    return writeUrlFilters('http://key.invalid/', sorted, options)
   }
 
   /** Writes the snapshot's URL to the address bar, or gives it to the router */
@@ -842,7 +842,7 @@ export function createSync(
 
     const key = filtersKey(state)
 
-    const current = parseUrlFilters(
+    const current = readUrlFilters(
       window.location.href,
       startCall('grid', 'collect').options
     )
@@ -867,7 +867,7 @@ export function createSync(
    */
   function holdsView(target: string, view: GridView): boolean {
     try {
-      const filters = parseUrlFilters(
+      const filters = readUrlFilters(
         target,
         startCall('url', 'collect').options
       )
@@ -1045,7 +1045,7 @@ export function createSync(
       }
 
       try {
-        return generateUrl(base, filters, call.options)
+        return writeUrlFilters(base, filters, call.options)
       } catch (cause) {
         fail(call, cause, 'INVALID_URL')
 

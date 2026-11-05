@@ -1,27 +1,27 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
-import { generateUrl, serializeFilters } from './url-generator.js'
+import { writeUrlFilters, serializeFilters } from './url-generator.js'
 import { serializeGrouped } from './serialization/grouped.js'
-import { parseUrlFilters } from './url-parser.js'
+import { readUrlFilters } from './url-parser.js'
 import { resolveParamPrefix } from './individual-params.js'
 import { stateToModel } from './model-form.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import type {
   ColumnFilter,
   FilterState,
-  ParseConfig,
+  ResolvedOptions,
   SerializationFormat
 } from './types.js'
-import {
-  TEXT_ONLY_OPERATIONS,
-  NUMBER_ONLY_OPERATIONS,
-  DATE_ONLY_OPERATIONS
-} from './types.js'
+import { operationsOnlyFor } from './operators.js'
+
+const TEXT_ONLY_OPERATIONS = operationsOnlyFor('text')
+const NUMBER_ONLY_OPERATIONS = operationsOnlyFor('number')
+const DATE_ONLY_OPERATIONS = operationsOnlyFor('date')
 
 // Property-based round-trip tests (#216).
 //
 // The main property: for any valid filter state s, with m its AG Grid model,
-// parseUrlFilters(generateUrl(base, m, cfg), cfg) deep-equals m, and the
+// readUrlFilters(writeUrlFilters(base, m, cfg), cfg) deep-equals m, and the
 // host app's params in `base` are kept exactly (#225: the public functions
 // take and give AG Grid's FilterModel; the arbitraries make the library's
 // own filter state, the form that the individual codec holds).
@@ -242,12 +242,12 @@ const baseUrl = hostParams.map(params => {
 // Configs and helpers
 // ----------------------------------------------------------------------------
 
-type Mode = { name: string; config: ParseConfig }
+type Mode = { name: string; config: ResolvedOptions }
 
 const makeConfig = (
   serialization: 'individual' | 'grouped',
   format: SerializationFormat = 'querystring'
-): ParseConfig => ({
+): ResolvedOptions => ({
   ...DEFAULT_CONFIG,
   serialization,
   format,
@@ -284,13 +284,13 @@ const UNTYPED_MODES = MODES.filter(mode => !TYPED_MODES.includes(mode))
  * Encode, then decode with the column types of the state, as the grid gives
  * them (#224)
  */
-const roundTrip = (state: FilterState, base: string, config: ParseConfig) =>
-  parseUrlFilters(generateUrl(base, stateToModel(state), config), {
+const roundTrip = (state: FilterState, base: string, config: ResolvedOptions) =>
+  readUrlFilters(writeUrlFilters(base, stateToModel(state), config), {
     ...config,
     columnTypes: column => state[column]?.filterType
   })
 
-const isFilterParam = (key: string, config: ParseConfig) =>
+const isFilterParam = (key: string, config: ResolvedOptions) =>
   key === config.groupedParam ||
   key.startsWith(resolveParamPrefix(config.paramPrefix))
 
@@ -367,7 +367,7 @@ describe('URL round-trip properties (#216)', () => {
       fc.assert(
         fc.property(filterState(unambiguousFilter), baseUrl, (state, base) => {
           const url = new URL(
-            generateUrl(base.url, stateToModel(state), config)
+            writeUrlFilters(base.url, stateToModel(state), config)
           )
 
           const kept = [...url.searchParams].filter(
@@ -419,9 +419,9 @@ describe('URL round-trip properties (#216)', () => {
           baseUrl,
           (state, others, base) => {
             const model = { ...stateToModel(state), ...others }
-            const url = generateUrl(base.url, model, config)
+            const url = writeUrlFilters(base.url, model, config)
 
-            expect(parseUrlFilters(url, config)).toEqual(model)
+            expect(readUrlFilters(url, config)).toEqual(model)
           }
         )
       )
@@ -438,8 +438,8 @@ describe('URL round-trip properties (#216)', () => {
           baseUrl,
           (state, base) => {
             expect(
-              parseUrlFilters(
-                generateUrl(base.url, stateToModel(state), config),
+              readUrlFilters(
+                writeUrlFilters(base.url, stateToModel(state), config),
                 config
               )
             ).toEqual(stateToModel(state))
@@ -487,7 +487,7 @@ describe('encode never throws (#220)', () => {
           const options = { ...config, maxValueLength, onParseError: () => {} }
           const model = stateToModel(state)
 
-          expect(() => generateUrl(base.url, model, options)).not.toThrow()
+          expect(() => writeUrlFilters(base.url, model, options)).not.toThrow()
           expect(() => serializeFilters(model, options)).not.toThrow()
           expect(() => serializeGrouped(model, options)).not.toThrow()
         }

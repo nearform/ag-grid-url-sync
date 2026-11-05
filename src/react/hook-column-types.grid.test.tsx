@@ -4,10 +4,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { GridOptions } from 'ag-grid-community'
 import type { UseGridUrlSyncOptions } from './types.js'
 import { useGridUrlSync } from './use-grid-url-sync.js'
-import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
 import { createRealGrid, useRealLocation } from '../test-helpers.js'
 
-// The React hooks and a URL that waits for the row data (#224): a new sync
+// The React hook and a URL that waits for the row data (#224): a new sync
 // on the same grid (StrictMode, a new option) keeps the waiting URL.
 
 const ROWS = [
@@ -59,21 +58,6 @@ describe('useGridUrlSync: a URL that waits for the row data', () => {
 
     await settle()
     hook.rerender({ api, history: 'replace' })
-    await settle()
-
-    act(() => api.setGridOption('rowData', ROWS))
-    await settle()
-
-    expect(api.getFilterModel()).toEqual(AGE_30)
-  })
-})
-
-describe('useAGGridUrlSync (deprecated): a URL that waits for the row data', () => {
-  it('applies it in StrictMode', async () => {
-    const api = gridWithNoRows()
-    renderHook(() => useAGGridUrlSync(api, { autoApplyOnMount: true }), {
-      wrapper: StrictMode
-    })
     await settle()
 
     act(() => api.setGridOption('rowData', ROWS))

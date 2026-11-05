@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { GridOptions } from 'ag-grid-community'
 import { createGridUrlSync, createSync, handOver } from './grid-url-sync.js'
-import { AGGridUrlSync } from './ag-grid-url-sync.js'
 import type { IssueEvent } from './types.js'
 import { createRealGrid, useRealLocation } from '../test-helpers.js'
 
@@ -356,31 +355,6 @@ describe('createGridUrlSync: before the first row data', () => {
     api.setGridOption('rowData', ROWS)
     await settle()
 
-    expect(api.getFilterModel()).toEqual({})
-  })
-})
-
-describe('AGGridUrlSync (deprecated): the type of a shared operation', () => {
-  it('takes the type from the grid', () => {
-    const api = inferredGrid()
-    const sync = new AGGridUrlSync(api)
-
-    sync.applyFromUrl('?f_zip_eq=01234&f_age_eq=30')
-
-    expect(api.getFilterModel()).toEqual({
-      zip: { filterType: 'text', type: 'equals', filter: '01234' },
-      age: { filterType: 'number', type: 'equals', filter: 30 }
-    })
-  })
-
-  it('lets config.columnTypes win', () => {
-    const api = inferredGrid()
-    const sync = new AGGridUrlSync(api, { columnTypes: () => 'number' })
-
-    // A number filter on the text column: the grid check rejects it
-    const { issues } = sync.applyFromUrl('?f_zip_eq=01234')
-
-    expect(issues).toMatchObject([{ code: 'TYPE_MISMATCH', column: 'zip' }])
     expect(api.getFilterModel()).toEqual({})
   })
 })

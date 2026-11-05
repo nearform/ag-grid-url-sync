@@ -2,25 +2,26 @@
 
 # AG Grid URL Sync
 
-A lightweight TypeScript library for synchronizing AG Grid text and number filters with URL parameters, enabling shareable filter states through clean, human-readable URLs.
+A TypeScript library that syncs AG Grid filters (text, number and date) with the URL. It gives shareable links, browser history and saved views, with clean, human-readable URLs. It has a framework-free core and a React hook.
+
+> **Upgrade from 0.5?** Version 0.6.0 is a breaking release. Read [Migrating from 0.5 to 0.6](#migrating-from-05-to-06).
 
 ## Features
 
 - 🔍 **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - 🔢 **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
-- 🔢 **Complete date filter support** - All 9 AG Grid date operations (equals, not equal, before, before or equal, after, after or equal, in range, blank, not blank) with strict ISO date validation (YYYY-MM-DD)
-- � **Grouped serialization** - Package all filters into a single URL parameter with querystring, JSON, or base64 encoding
-- �🔗 Manual URL generation for sharing filter states
-- ↔️ Bidirectional sync between grid and URL
-- 🛠️ Framework agnostic - works with any AG Grid setup
-- ⚛️ **React hook** - dedicated `useAGGridUrlSync` with state management
+- 📅 **Complete date filter support** - All 9 AG Grid date operations (equals, not equal, before, before or equal, after, after or equal, in range, blank, not blank) with strict ISO date validation (YYYY-MM-DD)
+- 🔄 **Full sync in one call** - `createGridUrlSync` applies the URL, follows the grid's filter changes, and can write the address bar (replace, push or your router)
+- 📦 **Grouped serialization** - Put all filters in one URL parameter with querystring, JSON or base64 encoding. JSON and base64 hold any AG Grid filter model
+- 💾 **Saved views** - Let users name and load filter sets, kept in `localStorage` or in your own store
+- ⚛️ **React hook** - `useGridUrlSync`, with `StrictMode` and server rendering support
+- 🔗 URL functions with no grid: `parseUrlFilters` and `generateUrl`
+- 🚦 One issue callback, `onIssue`, with a `code` and a `severity` on each issue. The library never writes to the console
 - 📝 Full TypeScript support with strict mode compliance
-- 🚦 Graceful error handling with configurable error callbacks
-- 🧹 Clean, human-readable URL format
+- 🧹 Clean, human-readable URL format, with a prefix that you can set
 - ⚡ High performance - handles 100+ filters efficiently (<20ms)
-- 🔧 Configurable URL prefixes
 - 🛡️ Robust edge case handling (special characters, malformed URLs)
-- 📦 Lightweight bundle size (~3KB gzipped)
+- 🌲 ESM only, tree-shakable, with three entry points
 
 ## Supported Filter Types
 
@@ -83,14 +84,13 @@ The column type comes from the column definition that AG Grid resolved:
 2. Else the `cellDataType`, set by you or inferred by AG Grid 31+ from the data: `number` is a number; `date`, `dateString`, `dateTime` and `dateTimeString` are dates; a custom data type uses its `baseDataType`; all others are text.
 3. Else text.
 
-AG Grid infers the data types from the first row. Before the first row data arrives, the types are not known, and AG Grid holds a filter model until then. So `createGridUrlSync` waits too: a URL with a filter on such a column is applied at the first `rowDataUpdated` with rows. Then the value of `eq`, `neq`, `blank` and `notBlank` gets the column's type, and a filter of the wrong type for the column is a `TYPE_MISMATCH` issue. The React hooks keep the wait across a new sync on the same grid (StrictMode, an option change).
+AG Grid infers the data types from the first row. Before the first row data arrives, the types are not known, and AG Grid holds a filter model until then. So `createGridUrlSync` waits too: a URL with a filter on such a column is applied at the first `rowDataUpdated` with rows. Then the value of `eq`, `neq`, `blank` and `notBlank` gets the column's type, and a filter of the wrong type for the column is a `TYPE_MISMATCH` issue. The React hook keeps the wait across a new sync on the same grid (StrictMode, an option change).
 
 - A newer apply, a filter write, a user filter change or `destroy` cancels the wait.
 - An `applyUrl` that waits returns no issues and does not throw. The issues of the URL go to `onIssue` and the snapshot when it is applied.
 - The wait is only for the client-side row model.
-- The deprecated `AGGridUrlSync` class does not wait. Before the first row data, it reads these values as text.
 
-With no grid (`parseUrlFilters`, `parseFilterParam`), the value of these four operations stays text. Give `columnTypes` to read it as a number or a date:
+With no grid (`parseUrlFilters`), the value of these four operations stays text. Give `columnTypes` to read it as a number or a date:
 
 ```typescript
 parseUrlFilters('?f_age_eq=30', {
@@ -99,7 +99,7 @@ parseUrlFilters('?f_age_eq=30', {
 // { age: { filterType: 'number', type: 'equals', filter: 30 } }
 ```
 
-> **Breaking change in 0.6.0:** before 0.6.0, the library guessed the type from the value, so `f_zip_eq=01234` became the number `1234`, and `f_note_eq=2024-01-15` on a text column became a date filter that the grid then rejected (`TYPE_MISMATCH`).
+> **Breaking change in 0.6.0:** before 0.6.0, the library guessed the type from the value. See [part 6 of the migration guide](#6-the-filter-type-comes-from-the-column-224).
 
 ### Filter Models
 
@@ -112,13 +112,13 @@ The library uses AG Grid's own `FilterModel` (the value of `gridApi.getFilterMod
 | `grouped({ format: 'json' })`, `grouped({ format: 'base64' })` | Any filter model: set, multi and custom filters, and combined conditions (`AND`, `OR`) |
 
 - **A URL apply changes only the columns that the format holds.** With `individual()`, a set filter or combined conditions on the grid stay when the user opens a link. A URL filter on the same column replaces it.
-- **A filter that the format cannot hold is an issue.** When the grid has one, the sync reports `UNSUPPORTED_FILTER` (a warning) one time, and leaves it out of the URL. This includes AG Grid's custom `filterOptions`. Use `grouped({ format: 'json' })` to keep it in the URL. The issue stays in `issues` while the grid has the filter, so with `throwOnError: true` the React hook throws again after each reset of the error boundary. To not throw for it, give `throwOnError: issue => issue.code !== 'UNSUPPORTED_FILTER'`. The deprecated `useAGGridUrlSync` and `AGGridUrlSync` do not report it.
+- **A filter that the format cannot hold is an issue.** When the grid has one, the sync reports `UNSUPPORTED_FILTER` (a warning) one time, and leaves it out of the URL. This includes AG Grid's custom `filterOptions`. Use `grouped({ format: 'json' })` to keep it in the URL. The issue stays in `issues` while the grid has the filter, so with `throwOnError: true` the React hook throws again after each reset of the error boundary. To not throw for it, give `throwOnError: issue => issue.code !== 'UNSUPPORTED_FILTER'`.
 - `applyFilters(model)` replaces the full model, as `gridApi.setFilterModel(model)` does.
 - A custom filter's model can be any JSON value (an object, an array, a string, a number). `json` and `base64` hold each one. `individual()` reports one that is not an object as `UNSUPPORTED_FILTER`, and a URL apply keeps it on the grid. AG Grid ignores a value that a built-in filter cannot read.
 - The JSON and base64 values have the keys in sorted order, so the same filters give the same URL.
 - Links from 0.5 in the `json` and `base64` formats still open: the old form of a filter (for example `type: 'eq'`) is read as AG Grid's form.
 
-> **Breaking change in 0.6.0:** `parseUrlFilters`, `deserializeGrouped` and the serializers give AG Grid's model, and `generateUrl`, `serializeFilters`, `serializeGrouped` and `applyFilters` take it. So an operation has AG Grid's name (`equals`, not `eq`; `lessThan`, not `dateBefore`), and a date filter has `dateFrom` and `dateTo`. A URL apply no longer clears the filters that the format cannot hold. The library's own `FilterState` type is deprecated, with the deprecated `AGGridUrlSync`, `useAGGridUrlSync`, `getFilterModel`, `applyFilterModel` and `parseFilterParam`.
+> **Breaking change in 0.6.0:** before 0.6.0, the library had its own filter model. See [part 5 of the migration guide](#5-filterstate-becomes-ag-grids-filtermodel-225).
 
 ### URL Examples
 
@@ -176,107 +176,34 @@ https://app.com/data?f_comments_blank=true&f_bonus_blank=true&f_name_notBlank=tr
 npm install ag-grid-url-sync
 ```
 
+The package is ESM only:
+
+- Bundlers and `import` load it.
+- `require('ag-grid-url-sync')` needs Node 20.19+ (or 22.12+), which can `require()` an ES module. A CommonJS test runner needs one of these Node versions, or its ESM support.
+- TypeScript with `moduleResolution: node10` (the old `node`) cannot find the types of `ag-grid-url-sync/react` and `ag-grid-url-sync/views`. Use `bundler`, `node16` or `nodenext`.
+
 ## Usage
 
 ### Importing the Library
 
-The library provides two main entry points:
+The library has three entry points:
 
 ```typescript
-// Core functionality - works with any framework
-import { createGridUrlSync } from 'ag-grid-url-sync'
+// The core: works with any framework
+import { createGridUrlSync, individual, grouped } from 'ag-grid-url-sync'
 
-// React hook - for React applications
-import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+// The React hook
+import { useGridUrlSync } from 'ag-grid-url-sync/react'
 
-// TypeScript types (available from both imports)
-import type { AGGridUrlSyncConfig } from 'ag-grid-url-sync'
+// The saved-view store
+import { createViewStore } from 'ag-grid-url-sync/views'
+
+// TypeScript types
+import type { GridUrlSyncOptions, IssueEvent } from 'ag-grid-url-sync'
 import type { FilterModel } from 'ag-grid-community'
 ```
 
-### Tree-Shaking & Granular Imports
-
-For optimal bundle sizes, you can import only the specific utilities you need:
-
-```typescript
-import {
-  validateFilterValue,
-  DEFAULT_CONFIG
-} from 'ag-grid-url-sync/validation'
-
-import { parseUrlFilters, parseFilterParam } from 'ag-grid-url-sync/url-parser'
-
-import { serializeFilters, generateUrl } from 'ag-grid-url-sync/url-generator'
-
-import {
-  getFilterModel,
-  applyFilterModel
-} from 'ag-grid-url-sync/grid-integration'
-
-import type {
-  FilterState,
-  ColumnFilter,
-  FilterOperation
-} from 'ag-grid-url-sync/types'
-```
-
-#### Bundle Size Comparison
-
-| Import Pattern   | Bundle Size | Use Case               |
-| ---------------- | ----------- | ---------------------- |
-| Full library     | 5KB         | Complete functionality |
-| Core class only  | 3.2KB       | Basic URL sync         |
-| React hook only  | 7KB         | React applications     |
-| URL parsing only | 1.05KB      | Parse existing URLs    |
-| Validation only  | 318B        | Input validation       |
-| Types only       | 0B          | TypeScript types       |
-
-#### Example: Custom URL Parser
-
-```typescript
-import { parseUrlFilters } from 'ag-grid-url-sync/url-parser'
-import type { FilterModel } from 'ag-grid-community'
-
-// AG Grid's filter model, for example for `initialState.filter.filterModel`
-function getFiltersFromUrl(url: string): FilterModel {
-  // Options that you leave out get their defaults. No grid is needed.
-  return parseUrlFilters(url, {
-    onParseError: error => console.error('Parse error:', error)
-  })
-}
-```
-
-`parseUrlFilters` reads the input with these rules, in this order:
-
-| #   | Input                       | Result                   | Example                                   |
-| --- | --------------------------- | ------------------------ | ----------------------------------------- |
-| 1   | A host with no scheme       | Throws `InvalidURLError` | `example.com?…`, `localhost:3000?…`       |
-| 2   | Starts with a scheme        | Absolute URL             | `https://example.com/users?f_name_eq=bob` |
-| 3   | Starts with `/`, `?` or `#` | Relative URL             | `/users?f_name_eq=bob`, `?f_name_eq=bob`  |
-| 4   | Anything else               | Raw query string         | `f_name_eq=bob`                           |
-
-- A relative path must start with `/`. `users?f_name_eq=bob` matches rule 4, so it gives no filters.
-- A bare `localhost?…` with no port cannot be told apart from a raw query, so it matches rule 4.
-- In a raw query string, a `?` or `#` is part of a param name or value.
-
-`InvalidURLError` is thrown for rule 1, and for any input that the `URL` constructor rejects under rules 2 and 3 (for example `http://` or `//[`). A param that is not valid is skipped and sent to `onParseError`.
-
-#### Example: Custom URL Generator
-
-```typescript
-import { generateUrl } from 'ag-grid-url-sync/url-generator'
-import type { FilterModel } from 'ag-grid-community'
-
-function createShareableUrl(model: FilterModel, baseUrl: string): string {
-  return generateUrl(baseUrl, model, { maxValueLength: 500 })
-}
-```
-
-#### Example: Read and Write the Grid Filters
-
-`getFilterModel` and `applyFilterModel` are deprecated: they use the library's own filter state. Use AG Grid's `gridApi.getFilterModel()` and `gridApi.setFilterModel(model)`, or `sync.applyFilters(model)`.
-
-**💡 Pro Tip**: Use granular imports in libraries and applications where bundle size matters. All existing import patterns remain fully supported for backward compatibility.
+`createViewStore` is in its own entry point, so an app with no saved views does not get the storage code. See [Exports](#exports) for the names of each entry point.
 
 ### Vanilla JS: `createGridUrlSync`
 
@@ -305,6 +232,7 @@ sync.getUrl('https://app.com/share') // a share link for the grid's filters
 sync.applyFilters({
   name: { filterType: 'text', type: 'contains', filter: 'jo' }
 }) // { issues }
+sync.applyFilters({}) // clear the filters
 sync.destroy()
 ```
 
@@ -318,45 +246,63 @@ sync.destroy()
 | `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL, for a router. The page's other params, the `#hash` and `history.state` stay                                                                               |
 | `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                                                                                                       |
 | `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace                                                                                 |
-| `views`            | none                      | The saved views. Give `createViewStore(key)` from `ag-grid-url-sync/view-storage`. See [Saved Views](#saved-views)                                                                                                                                                             |
+| `views`            | none                      | The saved views. Give `createViewStore(key)` from `ag-grid-url-sync/views`. See [Saved Views](#saved-views)                                                                                                                                                                    |
 | `throwOnError`     | `false`                   | Throw an issue instead of reporting it, in the methods that the app calls (`applyUrl`, `getUrl`, `applyFilters`, `saveView`, `loadView`, `deleteView`). `createGridUrlSync` and its listeners never throw, and an `applyUrl` that waits for the row data does not throw either |
 | `onIssue`          | none                      | Gets each issue one time, as `{ issue, source }`. `source` is `'url'` (the sync read the address bar), `'grid'` (it read the grid) or `'api'` (a method that the app called)                                                                                                   |
 
 The snapshot `status` is `'active'` from create, and `'destroyed'` after `destroy()` or after the grid is destroyed. After that, `applyUrl`, `applyFilters`, `saveView` and `loadView` report `NOT_READY` to `onIssue`. `deleteView` needs only storage, so it still works. `IDLE_SNAPSHOT` (`status: 'idle'`) is the snapshot for a time when there is no sync yet. `getSnapshot()` returns the same object until something changes, so it works with React's `useSyncExternalStore`. The sync writes no history for an `applyUrl` apply, because the URL holds those filters already. `applyFilters` and `loadView` write the URL as a user edit does. Nothing reads `window` when the module loads, and a sync made with no `window` does nothing to the address bar.
 
-### Basic Example (deprecated `createUrlSync`)
+### URL Functions With No Grid
 
-`createUrlSync` and `AGGridUrlSync` will be removed in 0.6.0. Use `createGridUrlSync`.
+`parseUrlFilters` and `generateUrl` read and write the URL with no grid, for example on a server or for `initialState`. They take the same option names as `createGridUrlSync` (see [`UrlOptions`](#urloptions)).
 
 ```typescript
-import { createUrlSync } from 'ag-grid-url-sync'
+import { parseUrlFilters, generateUrl, individual } from 'ag-grid-url-sync'
+import type { FilterModel } from 'ag-grid-community'
 
-// Initialize with AG Grid API
-const urlSync = createUrlSync(gridApi)
+const codec = individual({ prefix: 'f_' })
 
-// Generate shareable URL with current filters (text and number)
-const shareableUrl = urlSync.generateUrl()
-// Result: https://app.com/data?f_name_contains=john&f_salary_gte=80000&f_age_range=25,45
+// AG Grid's filter model, for example for `initialState.filter.filterModel`
+function getFiltersFromUrl(url: string): FilterModel {
+  return parseUrlFilters(url, {
+    codec,
+    onIssue: ({ issue }) => console.warn(issue.code, issue.column)
+  })
+}
 
-// Apply filters from URL (the column types come from the grid)
-urlSync.applyFromUrl(
-  'https://app.com/data?f_name_contains=manager&f_salary_gt=75000'
-)
-
-// Apply specific filter programmatically
-urlSync.applyFilters({
-  name: { filterType: 'text', type: 'contains', filter: 'john' },
-  salary: { filterType: 'number', type: 'greaterThan', filter: 75000 },
-  age: { filterType: 'number', type: 'inRange', filter: 25, filterTo: 45 }
-})
-
-// Clear all text and number filters
-urlSync.clearFilters()
+// A share link. The page's own params stay.
+function createShareableUrl(model: FilterModel, baseUrl: string): string {
+  return generateUrl(baseUrl, model, { codec, maxValueLength: 500 })
+}
 ```
+
+`parseUrlFilters` reads the input with these rules, in this order:
+
+| #   | Input                       | Result                   | Example                                   |
+| --- | --------------------------- | ------------------------ | ----------------------------------------- |
+| 1   | A host with no scheme       | Throws `InvalidURLError` | `example.com?…`, `localhost:3000?…`       |
+| 2   | Starts with a scheme        | Absolute URL             | `https://example.com/users?f_name_eq=bob` |
+| 3   | Starts with `/`, `?` or `#` | Relative URL             | `/users?f_name_eq=bob`, `?f_name_eq=bob`  |
+| 4   | Anything else               | Raw query string         | `f_name_eq=bob`                           |
+
+- A relative path must start with `/`. `users?f_name_eq=bob` matches rule 4, so it gives no filters.
+- A bare `localhost?…` with no port cannot be told apart from a raw query, so it matches rule 4.
+- In a raw query string, a `?` or `#` is part of a param name or value.
+
+`InvalidURLError` is thrown for rule 1, and for any input that the `URL` constructor rejects under rules 2 and 3 (for example `http://` or `//[`). A param that is not valid is skipped and sent to `onIssue`.
+
+`generateUrl` needs an absolute `baseUrl`. It keeps the page's own params, and replaces the filter params of both codecs: each param that starts with the codec's prefix, and the codec's grouped param. So a URL never holds filters of both kinds.
+
+Rules for both functions:
+
+- Give the same `codec` that wrote the URL.
+- `onIssue` gets each issue one time, with `source: 'api'`.
+- An `onIssue` that throws stops the call, and the error goes to the caller. (The sync of `createGridUrlSync` catches such an error, so it cannot stop the sync.)
+- A codec that did not come from `individual()` or `grouped()` throws a `TypeError`.
 
 ## Grouped Serialization
 
-Grouped serialization provides an alternative to individual URL parameters by packaging all filters into a single URL parameter. This is particularly useful for applications with many filters or when you need more compact URLs.
+Grouped serialization puts all filters in one URL parameter, in place of one parameter for each filter. It is useful for apps with many filters, or when you need more compact URLs.
 
 ### Why Use Grouped Serialization?
 
@@ -376,30 +322,28 @@ Benefits of grouped serialization:
 
 - **Cleaner URLs** with a single parameter instead of many
 - **Better for sharing** - easier to copy/paste and less prone to URL manipulation
-
 - **Format flexibility** - choose between querystring, JSON, or base64 encoding
-- **Future-proof** - easier to extend with additional metadata
+- **Full filter models** - the JSON and base64 formats hold set, multi and custom filters, and combined conditions
 
 ### Configuration
 
+Give the `grouped()` codec to `createGridUrlSync`, `useGridUrlSync`, `parseUrlFilters` or `generateUrl`:
+
 ```typescript
-interface AGGridUrlSyncConfig {
-  // Serialization mode
-  serialization?: 'individual' | 'grouped' // default: 'individual'
+import { createGridUrlSync, grouped } from 'ag-grid-url-sync'
 
-  // Format for grouped serialization
-  format?: 'querystring' | 'json' | 'base64' // default: 'querystring'
-
-  // Parameter name for grouped mode
-  groupedParam?: string // default: 'grid_filters'
-
-  // ... other existing options
-}
+const sync = createGridUrlSync({
+  api: gridApi,
+  codec: grouped({
+    param: 'grid_filters', // the param name (default: 'grid_filters')
+    format: 'querystring' // 'querystring' (default) | 'json' | 'base64'
+  })
+})
 ```
 
-When the library reads a URL, it reads only the `groupedParam` name and decodes it with the configured `format`. It does not guess the format. This works in both modes, so a grouped link opens in an app in individual mode when the name and format match. If the param is present and not empty, the prefixed params are not read.
+When the library reads a URL, it reads the codec's grouped param first, and decodes it with the codec's format. It does not guess the format. If that param is present and not empty, the library does not read the prefixed params. Else it reads the prefixed params. `individual()` reads the grouped param `grid_filters` in the `querystring` format, and `grouped()` reads the prefix `f_`. So an app that changes from `individual()` to `grouped()`, both with their defaults, still opens its old links.
 
-> **Note:** A URL written with a different `groupedParam` or `format` does not decode. If you change either option, links that were shared before the change stop working.
+> **Note:** A URL written with a different `param` or `format` does not decode. If you change either setting, links that were shared before the change stop working.
 
 ### Format Options
 
@@ -408,23 +352,25 @@ When the library reads a URL, it reads only the `groupedParam` name and decodes 
 Filters are URL-encoded as a query string within the parameter:
 
 ```typescript
-const urlSync = createUrlSync(gridApi, {
-  serialization: 'grouped',
-  format: 'querystring' // default
+const sync = createGridUrlSync({
+  api: gridApi,
+  codec: grouped({ format: 'querystring' }) // the default format
 })
 
 // Result: ?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25
 // Decoded: f_name_contains=john&f_age_gt=25
 ```
 
+The querystring value always uses the prefix `f_` inside it.
+
 #### JSON Format
 
-Filters are JSON-encoded, ideal for complex filter states:
+Filters are JSON-encoded. Use it for complex filter models:
 
 ```typescript
-const urlSync = createUrlSync(gridApi, {
-  serialization: 'grouped',
-  format: 'json'
+const sync = createGridUrlSync({
+  api: gridApi,
+  codec: grouped({ format: 'json' })
 })
 
 // Result: ?grid_filters=%7B%22name%22%3A%7B%22filter%22%3A%22john%22...
@@ -434,153 +380,135 @@ const urlSync = createUrlSync(gridApi, {
 
 #### Base64 Format
 
-Filters are JSON-encoded then base64-encoded for maximum compactness:
+Filters are JSON-encoded, then base64-encoded:
 
 ```typescript
-const urlSync = createUrlSync(gridApi, {
-  serialization: 'grouped',
-  format: 'base64'
+const sync = createGridUrlSync({
+  api: gridApi,
+  codec: grouped({ format: 'base64' })
 })
 
 // Result: ?grid_filters=eyJuYW1lIjp7ImZpbHRlclR5cGUiOiJ0ZXh0Ii...
-// Most compact representation, ideal for sharing
 ```
 
 ### Basic Usage
 
 ```typescript
-import { createUrlSync } from 'ag-grid-url-sync'
+import { createGridUrlSync, grouped } from 'ag-grid-url-sync'
 
-// Basic grouped serialization
-const urlSync = createUrlSync(gridApi, {
-  serialization: 'grouped'
-})
+const sync = createGridUrlSync({ api: gridApi, codec: grouped() })
 
-// Generate grouped URL
-const url = urlSync.generateUrl('https://app.com/data')
+// Generate a grouped URL
+const url = sync.getUrl('https://app.com/data')
 // Result: https://app.com/data?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25
 
-// Apply filters from grouped URL
-urlSync.applyFromUrl(url)
-
-// Get current serialization mode and format
-console.log(urlSync.getSerializationMode()) // 'grouped'
-console.log(urlSync.getCurrentFormat()) // 'querystring'
+// Apply the filters of a grouped URL
+sync.applyUrl(url)
 ```
 
 ### Advanced Examples
 
-#### Format Conversion Utility
+#### Compare the Formats
+
+`generateUrl` writes a filter model with any codec, so you can compare the formats with no second sync:
 
 ```typescript
-// Convert current filters to any format
-const jsonFormat = urlSync.getFiltersAsFormat('json')
-const base64Format = urlSync.getFiltersAsFormat('base64')
-const querystringFormat = urlSync.getFiltersAsFormat('querystring')
+import { generateUrl, grouped } from 'ag-grid-url-sync'
 
-console.log('JSON:', jsonFormat)
-console.log('Base64:', base64Format)
-console.log('QueryString:', querystringFormat)
+const model = gridApi.getFilterModel()
+
+for (const format of ['querystring', 'json', 'base64'] as const) {
+  const url = generateUrl('https://app.com/data', model, {
+    codec: grouped({ format })
+  })
+
+  console.log(format, url.length)
+}
 ```
 
-#### Dynamic Format Switching
+#### Change the Codec
+
+A sync has one codec. To change it, destroy the sync and make a new one. The grid keeps its filters.
 
 ```typescript
-// Start with individual mode
-const urlSync = createUrlSync(gridApi, {
-  serialization: 'individual'
+sync.destroy()
+
+const groupedSync = createGridUrlSync({
+  api: gridApi,
+  codec: grouped({ param: 'filters', format: 'base64' }),
+  applyUrlOnCreate: false // keep the grid's filters, do not read the old URL
 })
-
-// Switch to grouped mode when needed
-const groupedSync = createUrlSync(gridApi, {
-  serialization: 'grouped',
-  format: 'base64',
-  groupedParam: 'filters'
-})
-
-// Use utility to maintain filters across mode changes
-const currentFilters = urlSync.getFiltersAsFormat('json')
 ```
 
-### Granular Import: Grouped Serialization
-
-You can import grouped serialization utilities and format serializers directly for advanced use cases or custom integrations:
-
-```typescript
-import {
-  serializeGrouped,
-  deserializeGrouped
-} from 'ag-grid-url-sync/serialization'
-import {
-  QueryStringSerializer,
-  JsonSerializer,
-  Base64Serializer
-} from 'ag-grid-url-sync/serialization/formats'
-```
+In React, give a new `codec` to `useGridUrlSync`. The hook makes a new sync on the same grid, and does not apply the URL again.
 
 ---
 
 ### Error Handling
 
-The library never writes to the console. Each problem goes to one callback, and each error that the library makes has a `code` that you can switch on:
+The library never writes to the console. Each issue goes to `onIssue` one time, as `{ issue, source }`. `issue` is a `URLSyncError` with a `code`, a `severity` and, when it is known, a `column`:
 
-| Code                                                          | Meaning                                                                            | Callback                                                                                                 |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `INVALID_PARAM`                                               | A param name that is not valid, or an unknown operation                            | `onParseError`                                                                                           |
-| `INVALID_NUMBER`                                              | A value that is not a number, or that would be rounded                             | `onParseError`                                                                                           |
-| `INVALID_DATE`                                                | A date that does not exist, or a date range in the wrong order                     | `onParseError`                                                                                           |
-| `VALUE_TOO_LONG`                                              | A text value over `maxValueLength`                                                 | `onParseError`                                                                                           |
-| `INVALID_GROUPED`                                             | A grouped value that does not decode (bad JSON or base64)                          | `onParseError`                                                                                           |
-| `TYPE_MISMATCH`                                               | A number or date filter on a column of another type                                | `onParseError`                                                                                           |
-| `INVALID_URL`                                                 | A URL that the parser cannot read                                                  | Thrown by `parseUrlFilters` and `applyFromUrl`. The React hook catches it and sends it to `onParseError` |
-| `UNSUPPORTED_FILTER`                                          | A filter that the URL format cannot hold (set, multi, custom, combined conditions) | `onParseError`, and the sync's `onIssue` when it reads the grid                                          |
-| `GRID_ERROR`                                                  | The AG Grid API threw                                                              | `onParseError` in the core, `onError` in the React hook                                                  |
-| `NOT_READY`                                                   | A hook operation called before the grid is ready                                   | `onError` (React)                                                                                        |
-| `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | A saved view operation that cannot run                                             | `onError` (React)                                                                                        |
-| `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | Browser storage for saved views failed                                             | `onError` (React)                                                                                        |
-| `HISTORY_WRITE_FAILED`                                        | The sync could not write the address bar                                           | `onIssue` in the core, `onError` in the React hook                                                       |
+| Code                                                          | Severity  | Meaning                                                                                         |
+| ------------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `INVALID_PARAM`                                               | `warning` | A param name that is not valid, or an unknown operation                                         |
+| `INVALID_NUMBER`                                              | `warning` | A value that is not a number, or that would be rounded                                          |
+| `INVALID_DATE`                                                | `warning` | A date that does not exist, or a date range in the wrong order                                  |
+| `VALUE_TOO_LONG`                                              | `warning` | A text value over `maxValueLength`                                                              |
+| `INVALID_GROUPED`                                             | `warning` | A grouped value that does not decode (bad JSON or base64)                                       |
+| `TYPE_MISMATCH`                                               | `warning` | A number or date filter on a column of another type                                             |
+| `INVALID_URL`                                                 | `warning` | A URL that the parser cannot read. The sync and the hook report it. `parseUrlFilters` throws it |
+| `UNSUPPORTED_FILTER`                                          | `warning` | A filter that the URL format cannot hold (set, multi, custom, combined conditions)              |
+| `GRID_ERROR`                                                  | `error`   | The AG Grid API threw                                                                           |
+| `NOT_READY`                                                   | `error`   | A method called before the grid is ready, or after the sync is destroyed                        |
+| `VIEW_NOT_FOUND`, `VIEW_NAME_REQUIRED`                        | `error`   | A saved view operation that cannot run                                                          |
+| `STORAGE_UNAVAILABLE`, `STORAGE_FULL`, `STORAGE_WRITE_FAILED` | `error`   | Browser storage for saved views failed                                                          |
+| `HISTORY_WRITE_FAILED`                                        | `error`   | The sync could not write the address bar                                                        |
+| `UNKNOWN`                                                     | `error`   | An error with no other code                                                                     |
 
-Each error has a `severity`: `'warning'` for the first eight rows, `'error'` for the others. `createGridUrlSync` sends every issue to `onIssue`; the callbacks in the table are for the deprecated API and the React hook.
+The codes with the severity `'warning'` are data issues: a filter that is dropped or is not valid. The library skips that filter and keeps the others. The codes with the severity `'error'` are operations that failed.
 
-The codes in the first eight rows are data issues: a filter that is dropped or is not valid. The library skips that filter and keeps the others. When the library knows the column, it is in `error.column`. `onParseError` is typed with `Error`, so check `instanceof URLSyncError` before you read `code` or `column`.
+`source` tells where the work started: `'url'` (the sync read the address bar, on create or on `popstate`), `'grid'` (the sync read the grid after a filter change) or `'api'` (a method that the app called, or a pure URL function).
 
-Every error is a `URLSyncError`. The classes from earlier versions (`InvalidFilterError`, `InvalidDateError`, `InvalidURLError`, `InvalidSerializationError`) are subclasses of it, so an `instanceof` check still works.
+Every error is a `URLSyncError`. The classes `InvalidFilterError`, `InvalidDateError`, `InvalidURLError` and `InvalidSerializationError` are subclasses of it, so an `instanceof` check works.
 
 ```typescript
-import { createUrlSync, URLSyncError } from 'ag-grid-url-sync'
+import { createGridUrlSync } from 'ag-grid-url-sync'
 
-const urlSync = createUrlSync(gridApi, {
-  onParseError: error => {
-    if (error instanceof URLSyncError && error.code === 'VALUE_TOO_LONG') {
-      showToast(`The link leaves out the filter on ${error.column}`)
+const sync = createGridUrlSync({
+  api: gridApi,
+  onIssue: ({ issue }) => {
+    if (issue.code === 'VALUE_TOO_LONG') {
+      showToast(`The link leaves out the filter on ${issue.column}`)
     }
   }
 })
 ```
 
-In grouped mode, an error that comes from the grouped URL value is an `InvalidSerializationError`, and the original error is in `error.cause`. When the original error is an issue with one filter (for example a value over `maxValueLength`), the wrapper has the same `code` and `column`. So a check on `error.code` works the same in both modes. `INVALID_GROUPED` means that the grouped value itself does not decode.
+In grouped mode, an error that comes from the grouped URL value is an `InvalidSerializationError`, and the original error is in `error.cause`. When the original error is an issue with one filter (for example a value over `maxValueLength`), the wrapper has the same `code` and `column`. So a check on `issue.code` works the same in both modes. `INVALID_GROUPED` means that the grouped value itself does not decode.
 
-In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onParseError`, both when the URL is generated and when it is parsed. In `json` and `base64`, the limit is also for each set filter value and each string of a custom filter's model, and the column with the long value is dropped.
+In every grouped format (`querystring`, `json`, `base64`), a text value over `maxValueLength` (default 200) is dropped and reported through `onIssue`, both when the URL is generated and when it is parsed. In `json` and `base64`, the limit is also for each set filter value and each string of a custom filter's model, and the column with the long value is dropped.
+
+An `onIssue` that throws does not stop the sync of `createGridUrlSync` (also the sync inside `useGridUrlSync`): the sync reports the error with `globalThis.reportError` (or a timer that throws it), as the browser does for an event listener. When `useGridUrlSync` has no sync (no grid yet, `enabled: false`, a server render), its methods call `onIssue` directly, so an error that `onIssue` throws goes to the caller of the method. In `parseUrlFilters` and `generateUrl`, an `onIssue` that throws stops the call, and the error goes to the caller.
 
 #### Dropped Filters in the Result
 
-A caller does not need a callback to see dropped filters. `getUrlState()` and the apply methods return the issues of each call. They are the same objects that `onParseError` gets.
+A caller does not need a callback to see dropped filters. The snapshot has the issues of the latest apply and of the latest grid read, and each apply method returns the issues of its call. They are the same objects that `onIssue` gets.
 
 ```typescript
-const { url, hasFilters, issues } = urlSync.getUrlState()
+const { issues } = sync.getSnapshot()
 
 if (issues.length > 0) {
   // The link leaves out these filters, so the recipient sees other rows
   showToast(`The link leaves out ${issues.length} filter(s)`)
 }
 
-const { issues: urlIssues } = urlSync.applyFromUrl()
+const { issues: urlIssues } = sync.applyUrl()
 ```
 
-In React, the hook returns `issues`: the issues of the latest URL apply (`applyUrlFilters`, `applyFilters`, auto-apply), followed by the issues of the latest URL write. The apply issues stay until the next apply, `clearFilters` or `loadView`. Operation failures (`onError`) are not in the list:
+In React, the hook returns the same `issues`:
 
 ```tsx
-const { shareUrl, issues } = useAGGridUrlSync(gridApi)
+const { issues } = useGridUrlSync({ api })
 
 return issues.length > 0 ? (
   <Warning>The link leaves out a filter</Warning>
@@ -589,12 +517,17 @@ return issues.length > 0 ? (
 
 #### `throwOnError`
 
-Like TanStack Query, the library can throw an issue instead of reporting it. Set `throwOnError: true` to throw every issue, or give a function that picks issues. In the core, a thrown issue does not go to `onParseError`, and the first one stops the call. In React, the hook keeps reporting each issue to `onParseError` one time, and then throws the picked issue during render, so an error boundary catches it. The default is `false`.
+Like TanStack Query, the library can throw an issue instead of reporting it. Set `throwOnError: true` to throw every issue, or give a function that picks issues. The default is `false`.
+
+- In `createGridUrlSync`, the methods that the app calls throw the picked issue. The sync's own work (create, the listeners) never throws.
+- In `parseUrlFilters` and `generateUrl`, a thrown issue does not go to `onIssue`, and the first one stops the call.
+- In React, the hook reports each issue to `onIssue` one time, and then throws the picked issue during render, so an error boundary catches it. The hook's methods do not throw.
 
 Only `createGridUrlSync` or the hook with `history` changes the address bar. Before an error boundary resets, remove the bad param from the URL (or the filter from the grid), or the same issue is thrown again.
 
 ```tsx
-useAGGridUrlSync(gridApi, {
+useGridUrlSync({
+  api,
   // Throw only when a link would leave out a filter
   throwOnError: issue => issue.code === 'VALUE_TOO_LONG'
 })
@@ -602,22 +535,27 @@ useAGGridUrlSync(gridApi, {
 
 ### Exports
 
-The package supports granular subpath exports for advanced usage and optimal bundle size:
+The package has three entry points. Each one lists its names.
 
-- `ag-grid-url-sync/serialization` – grouped serialization utilities
-- `ag-grid-url-sync/serialization/formats` – format-specific serializers
-- `ag-grid-url-sync/validation` – validation helpers
-- `ag-grid-url-sync/url-parser` – URL parsing utilities
-- `ag-grid-url-sync/url-generator` – URL generation utilities
-- `ag-grid-url-sync/grid-integration` – AG Grid integration helpers
-- `ag-grid-url-sync/view-storage` – localStorage-backed saved views
-- `ag-grid-url-sync/types` – TypeScript types
+`ag-grid-url-sync`:
 
-Refer to the [package.json](./package.json) for the full export map.
+| Kind            | Names                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sync            | `createGridUrlSync`, `IDLE_SNAPSHOT`                                                                                                                                                                                                                                   |
+| Codecs          | `individual`, `grouped`                                                                                                                                                                                                                                                |
+| Pure functions  | `parseUrlFilters`, `generateUrl`                                                                                                                                                                                                                                       |
+| Errors (values) | `URLSyncError`, `InvalidFilterError`, `InvalidURLError`, `InvalidDateError`, `InvalidSerializationError`                                                                                                                                                               |
+| Types           | `GridUrlSync`, `GridUrlSyncOptions`, `GridUrlSyncSnapshot`, `UrlOptions`, `Codec`, `HistoryMode`, `SyncStatus`, `ApplyResult`, `IssueCode`, `IssueSeverity`, `IssueSource`, `IssueEvent`, `IssueDetails`, `FilterType`, `SerializationFormat`, `GridView`, `ViewStore` |
+
+`ag-grid-url-sync/react`: `useGridUrlSync`, and the types `UseGridUrlSyncOptions` and `UseGridUrlSyncResult`. The other types come from `ag-grid-url-sync`.
+
+`ag-grid-url-sync/views`: `createViewStore`, and the types `GridView` and `ViewStore`.
+
+The filter model types (`FilterModel`, `TextFilterModel`, `NumberFilterModel`, `DateFilterModel`) and `GridApi` come from `ag-grid-community`.
 
 ## React Integration
 
-For React applications, use the `useGridUrlSync` hook. It is a thin adapter on [`createGridUrlSync`](#vanilla-js-creategridurlsync): it takes the same options, and the grid behaves as with the vanilla sync. The older `useAGGridUrlSync` hook is deprecated and will be removed in 0.6.0 (see [Migrating from `useAGGridUrlSync`](#migrating-from-useaggridurlsync)).
+For React applications, use the `useGridUrlSync` hook. It is a thin adapter on [`createGridUrlSync`](#vanilla-js-creategridurlsync): it takes the same options, and the grid behaves as with the vanilla sync.
 
 ### Installation for React
 
@@ -672,7 +610,7 @@ The options are the [`createGridUrlSync` options](#vanilla-js-creategridurlsync)
 | -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `api`          | none    | The AG Grid API, or `null` while the grid starts                                                                                                                                                                |
 | `storageKey`   | none    | Enables saved views, kept in `localStorage` under this key (in place of the core's `views` store). With no key, the view methods do nothing                                                                     |
-| `enabled`      | `true`  | With `false`, the hook makes no sync: `status` is `'idle'`, and a method reports `NOT_READY`. `views` still shows what is in storage. Back to `true` starts again, as a new sync does: the URL is applied again |
+| `enabled`      | `true`  | With `false`, the hook makes no sync: `status` is `'idle'`, and a method reports `NOT_READY`. `views` still shows what is in storage. Back to `true` starts again, as a new grid does: the URL is applied again |
 | `throwOnError` | `false` | As in TanStack Query: the hook throws a picked issue during render, so an error boundary catches it. The methods do not throw                                                                                   |
 
 The hook returns the snapshot and the methods of the sync:
@@ -693,200 +631,22 @@ The hook returns the snapshot and the methods of the sync:
 - **Issues stay across a new sync.** After an option change or a `StrictMode` remount, `issues` still shows the latest apply's issues until the next apply. `onIssue` gets each issue one time.
 - `StrictMode`, React's `<Activity>` and server rendering are supported.
 
-### Migrating from `useAGGridUrlSync`
-
-| `useAGGridUrlSync`                                              | `useGridUrlSync`                                                                      |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `useAGGridUrlSync(gridApi, options)`                            | `useGridUrlSync({ api: gridApi, ...options })`                                        |
-| `paramPrefix`, `serialization`, `groupedParam`, `format`        | `codec: individual({ prefix })` or `grouped({ param, format })`                       |
-| `autoApplyOnMount` (default `false`)                            | `applyUrlOnCreate` (default `true`). A URL with no filters keeps the grid's filters   |
-| `enabledWhenReady`                                              | `enabled`                                                                             |
-| `onParseError`, `onError(error, context)`                       | `onIssue({ issue, source })`                                                          |
-| `isReady`                                                       | `status === 'active'`                                                                 |
-| `currentUrl`, `shareUrl(baseUrl?)`                              | `url`, `getUrl(baseUrl?)`                                                             |
-| `applyUrlFilters(url?)`, `clearFilters()`                       | `applyUrl(url?)`, `applyFilters({})`                                                  |
-| `getQueryParams()`                                              | `new URL(getUrl()).search`, while `status` is `'active'`                              |
-| `parseUrlFilters`, `getFiltersAsFormat`, `getSerializationMode` | The module functions `parseUrlFilters` and `serializeGrouped` from `ag-grid-url-sync` |
-
-### Basic React Usage (deprecated `useAGGridUrlSync`)
-
-```tsx
-import React, { useState } from 'react'
-import { AgGridReact } from 'ag-grid-react'
-import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
-
-function GridComponent() {
-  const [gridApi, setGridApi] = useState(null)
-
-  const {
-    shareUrl,
-    applyUrlFilters,
-    clearFilters,
-    hasFilters,
-    isReady,
-    currentUrl
-  } = useAGGridUrlSync(gridApi, {
-    autoApplyOnMount: true,
-    paramPrefix: 'filter_'
-  })
-
-  const handleShare = async () => {
-    const url = shareUrl()
-    await navigator.clipboard.writeText(url)
-    alert('Filter URL copied!')
-  }
-
-  return (
-    <div>
-      <div style={{ marginBottom: '10px' }}>
-        <button onClick={handleShare} disabled={!isReady}>
-          📋 Share Filters
-        </button>
-        <button onClick={clearFilters} disabled={!hasFilters}>
-          🗑️ Clear Filters
-        </button>
-        <button onClick={applyUrlFilters}>🔄 Apply URL Filters</button>
-      </div>
-
-      <div className="ag-theme-alpine" style={{ height: 400, width: '100%' }}>
-        <AgGridReact
-          onGridReady={params => setGridApi(params.api)}
-          rowData={rowData}
-          columnDefs={[
-            {
-              field: 'name',
-              filter: 'agTextColumnFilter',
-              floatingFilter: true
-            },
-            {
-              field: 'email',
-              filter: 'agTextColumnFilter',
-              floatingFilter: true
-            },
-            {
-              field: 'salary',
-              filter: 'agNumberColumnFilter',
-              floatingFilter: true
-            },
-            {
-              field: 'age',
-              filter: 'agNumberColumnFilter',
-              floatingFilter: true
-            }
-          ]}
-          defaultColDef={{
-            flex: 1,
-            sortable: true,
-            resizable: true
-          }}
-        />
-      </div>
-    </div>
-  )
-}
-```
-
-### React Hook API (deprecated `useAGGridUrlSync`)
-
-#### `useAGGridUrlSync(gridApi, options?)`
-
-```tsx
-import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
-
-const {
-  shareUrl,
-  getQueryParams,
-  applyUrlFilters,
-  clearFilters,
-  isReady,
-  currentUrl,
-  hasFilters,
-  issues,
-  parseUrlFilters,
-  applyFilters,
-  getFiltersAsFormat,
-  getSerializationMode
-} = useAGGridUrlSync(gridApi, options)
-```
-
-The hook runs on [`createGridUrlSync`](#vanilla-js-creategridurlsync) and reads its state with `useSyncExternalStore`:
-
-- **Options can change after mount.** A change to `paramPrefix`, `maxValueLength`, `serialization`, `groupedParam`, `format`, `history` (the mode) or `popstate` makes a new sync. The grid keeps its filters, and `currentUrl` uses the new format. The URL is not applied again. A new options object with the same values, or a new callback, makes no new sync.
-- **The returned object is stable.** It is the same object across renders until a value in it changes.
-- **A grid-read issue goes to `onParseError` one time** while it stays. It is reported again only after it goes away and comes back.
-- **After AG Grid destroys the grid**, `isReady` is `false` and `currentUrl` is `''`, as with no grid. `applyUrlFilters`, `clearFilters`, `applyFilters`, `saveView` and `loadView` then report `NOT_READY` to `onError`. `shareUrl`, `getQueryParams` and `getFiltersAsFormat` return their fallback values.
-- **The hook writes to the address bar only with `history`.** With the default `'none'`, use `currentUrl` or `shareUrl()` to update it.
-
 #### Address bar (`history` and `popstate`)
 
 The hook takes the `history` and `popstate` options of [`createGridUrlSync`](#vanilla-js-creategridurlsync), so a React app gets the same address-bar sync with one option:
 
 ```tsx
 // Each filter change adds a history entry, and back and forward apply the URL
-useAGGridUrlSync(gridApi, { autoApplyOnMount: true, history: 'push' })
+useGridUrlSync({ api, history: 'push' })
 
 // Or give the URL to a router. A new function on each render is fine.
-useAGGridUrlSync(gridApi, { history: url => router.replace(url) })
+useGridUrlSync({ api, history: url => router.replace(url) })
 ```
 
-- A user edit, `applyFilters`, `clearFilters` and `loadView` write the URL. `'push'` adds one entry for each of them.
-- A URL apply writes nothing, because the URL holds those filters already: auto-apply on mount, `applyUrlFilters` and the back button.
-- The restore of a stored view on mount replaces the entry. A new sync for an option change, or a `StrictMode` remount, adds no entry.
-- `popstate` is `true` by default with `'push'`. On back or forward, the hook applies the new URL. The view is then no longer active, and the issues of that apply are in `issues`. A grid error goes to `onError` with the context `'popstate'`. A failed address-bar write is `HISTORY_WRITE_FAILED`, to `onError` with the context `'filter-change'`.
-
-#### Hook Options
-
-```tsx
-interface UseAGGridUrlSyncOptions {
-  // Core options (same as createUrlSync)
-  paramPrefix?: string // Default: 'f_'
-  maxValueLength?: number // Default: 200
-  onParseError?: (error: Error) => void
-  throwOnError?: boolean | ((issue: URLSyncError) => boolean) // Default: false
-
-  // Address bar (see Address bar above)
-  history?: 'none' | 'replace' | 'push' | ((url: string) => void) // Default: 'none'
-  popstate?: boolean // Default: true with 'push', else false
-
-  // React-specific options
-  autoApplyOnMount?: boolean // Default: false
-  enabledWhenReady?: boolean // Default: true
-  onError?: (error: Error, context: string) => void // Operation failures (see Error Handling)
-
-  // Saved views: setting a key enables the feature and namespaces its storage
-  storageKey?: string // Default: undefined (saved views disabled)
-}
-```
-
-#### Hook Return Values
-
-| Property               | Type                                                      | Description                                                                                       |
-| ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `shareUrl`             | `(baseUrl?: string) => string`                            | Generate shareable URL with current filters                                                       |
-| `getQueryParams`       | `() => string`                                            | Get filter state as query parameters                                                              |
-| `applyUrlFilters`      | `(url?: string) => void`                                  | Apply filters from URL to grid                                                                    |
-| `clearFilters`         | `() => void`                                              | Clear all text filters                                                                            |
-| `isReady`              | `boolean`                                                 | Whether the grid API is available and the hook is ready. `false` after AG Grid destroys the grid. |
-| `currentUrl`           | `string`                                                  | Current URL with filters applied                                                                  |
-| `hasFilters`           | `boolean`                                                 | Whether the grid has supported filters                                                            |
-| `issues`               | `readonly URLSyncError[]`                                 | Filters that the latest URL apply or URL write dropped (see Error Handling)                       |
-| `parseUrlFilters`      | `(url: string) => FilterState`                            | Parse filters from URL without applying                                                           |
-| `applyFilters`         | `(filters: FilterState) => void`                          | Apply filter state object to grid                                                                 |
-| `getFiltersAsFormat`   | `(format: 'querystring' \| 'json' \| 'base64') => string` | Serialize filters to any supported format (for sharing/export)                                    |
-| `getSerializationMode` | `() => 'individual' \| 'grouped'`                         | Get the current serialization mode (individual or grouped)                                        |
-| `getCurrentFormat`     | `() => 'individual' \| 'grouped'`                         | **Deprecated** (removed in 0.6.0): use `getSerializationMode`                                     |
-
-Saved views (inert unless `storageKey` is set):
-
-| Property       | Type                                 | Description                                                             |
-| -------------- | ------------------------------------ | ----------------------------------------------------------------------- |
-| `views`        | `GridView[]`                         | Saved views for this grid, in save order. Empty when views are disabled |
-| `activeViewId` | `string \| null`                     | Id of the view currently applied to the grid, or `null` when none is    |
-| `saveView`     | `(name: string) => GridView \| null` | Save current filters under a name; overwrites an existing name in place |
-| `loadView`     | `(id: string \| null) => void`       | Apply a saved view, or pass `null` to reset to unfiltered               |
-| `deleteView`   | `(id: string) => void`               | Delete a saved view                                                     |
-
-> **Note:** `getFiltersAsFormat` and `getSerializationMode` are especially useful for grouped serialization, format conversion, and advanced sharing scenarios.
+- A user edit, `applyFilters` and `loadView` write the URL. `'push'` adds one entry for each of them.
+- A URL apply writes nothing, because the URL holds those filters already: the apply on mount, `applyUrl` and the back button.
+- A new sync for an option change, or a `StrictMode` remount, adds no entry.
+- `popstate` is `true` by default with `'push'`. On back or forward, the hook applies the new URL. The view is then no longer active, and the issues of that apply are in `issues`. A failed address-bar write is `HISTORY_WRITE_FAILED`.
 
 ### Saved Views
 
@@ -894,11 +654,11 @@ The views are part of `createGridUrlSync`. The React hook uses the same code, so
 
 #### Saved views in vanilla JS
 
-Give the `views` option a view store. `createViewStore` is in its own entry, so an app with no saved views does not get the storage code.
+Give the `views` option a view store. `createViewStore` is in its own entry point, so an app with no saved views does not get the storage code.
 
 ```ts
 import { createGridUrlSync } from 'ag-grid-url-sync'
-import { createViewStore } from 'ag-grid-url-sync/view-storage'
+import { createViewStore } from 'ag-grid-url-sync/views'
 
 const sync = createGridUrlSync({
   api: gridApi,
@@ -909,9 +669,12 @@ const sync = createGridUrlSync({
 const { views, activeViewId } = sync.getSnapshot()
 
 const view = sync.saveView('Open orders') // GridView, or null if the save failed
-sync.loadView(view.id)
-sync.loadView(null) // clear the filters
-sync.deleteView(view.id)
+
+if (view) {
+  sync.loadView(view.id)
+  sync.loadView(null) // clear the filters
+  sync.deleteView(view.id)
+}
 ```
 
 You can also give your own `ViewStore`, for example one that talks to a server. With no `views` option, `views` is `[]`, `activeViewId` is `null`, and the three methods do nothing.
@@ -938,144 +701,87 @@ A stored pointer that names a missing view is ignored.
 
 #### Saved views in React
 
-Pass a `storageKey` to let users name and revisit filter sets. The key both enables
-the feature and namespaces its storage, so two grids on the same origin must use
-different keys:
+Give a `storageKey` to let users name and load filter sets. The key enables the feature and is the name of its storage, so two grids on the same origin must use different keys:
 
 ```tsx
-const { views, activeViewId, saveView, loadView, deleteView } =
-  useAGGridUrlSync(gridApi, { storageKey: 'employee-grid' })
+const { views, activeViewId, saveView, loadView, deleteView } = useGridUrlSync({
+  api,
+  storageKey: 'employee-grid'
+})
 
-// One handler each, as a user drives them: save whatever is currently filtered,
-// then apply or remove a view by id in a later interaction.
+// One handler for each user action
 const handleSave = () => saveView('Engineering, high salary')
 const handleLoad = (id: string) => loadView(id)
 const handleDelete = (id: string) => deleteView(id)
-const handleReset = () => loadView(null) // back to an unfiltered grid
+const handleReset = () => loadView(null) // back to a grid with no filters
 ```
 
-Render the list from `views` and drive the buttons from it. `views[i].id` is only
-stale immediately after a mutation, not during render. If you do need the new
-view's id in the same handler that saved it, use `saveView`'s return value rather
-than reading it back out of `views`: that array is React state, so it does not
-update until the next render.
+The rules are the [rules of the vanilla API](#saved-views-in-vanilla-js). Render the list from `views`. `views` is React state, so it changes at the next render. If you need the id of a new view in the handler that saved it, use the return value of `saveView`.
 
-Only the filter model is stored, using AG Grid's native format so set filters and
-combined conditions survive a round trip. Column order, row selection and expanded
-groups are not stored.
+Only the filter model is stored, in AG Grid's native format, so set filters and combined conditions stay. Column order, row selection and expanded groups are not stored.
 
-Behaviour worth knowing:
-
-- **Names are unique.** Saving over an existing name updates that view in place,
-  keeping its id and list position, so "load, adjust, save under the same name" is
-  how you update one. Names are trimmed and must not be empty.
-- **`activeViewId` describes the live grid**, not what is persisted. A stored view
-  is only applied on mount when `autoApplyOnMount` is set, so with it off this
-  stays `null` until you call `loadView` or `saveView`.
-- **Filtering away from a view unloads it.** `activeViewId` returns to `null` as
-  soon as the grid stops showing that view, including through routes that never
-  mention views: `clearFilters`, `applyFilters`, `applyUrlFilters`, or the user
-  editing a filter in the grid's own UI. The stored pointer is cleared with it,
-  so `autoApplyOnMount` will not bring the view back on the next load. The grid
-  is compared against what it reported once the view was applied, so a view AG
-  Grid normalises (one naming a column the grid no longer has, say) stays loaded
-  and keeps its stored pointer. A write AG Grid defers, such as a restore made
-  before column data types are inferred, is recognised when it lands by the
-  event's `source: 'api'`; on AG Grid versions that do not report a source, a
-  deferred view the grid also normalises unloads when it lands. An API change
-  that filters a column the view does not, such as your own `setFilterModel`
-  over a view the grid ignored, is not taken for the view and unloads it. One
-  that filters only the view's columns cannot be told from the view landing.
-  Render the
-  active state from `activeViewId` and it follows the grid on its own. Replacing
-  `gridApi` also clears `activeViewId`, but keeps the stored pointer, so with
-  `autoApplyOnMount` the view is restored against the new grid.
-- **URL filters win on mount.** With `autoApplyOnMount` set, an incoming URL that
-  carries filters takes precedence over the stored view, so a shared link shows the
-  sender's filters rather than the recipient's saved default. It wins once per
-  grid: switching `storageKey` later restores the new namespace's stored view
-  instead of applying the link again.
-- **Deleting is conservative.** `deleteView` clears the grid only if it still shows
-  exactly that view's filters, so hand-edited filters survive.
-- **Failures are reported, not silent.** A save that cannot be persisted (quota
-  exhausted, storage blocked by policy) returns `null` and reports through
-  `onError` with context `'save-view'`. Reads degrade to an empty list instead of
-  throwing, so server rendering is safe.
+- **Names are unique.** A save with the name of a view updates that view, and keeps its id and its position in the list. So to change a view, load it, change the filters, and save it with the same name. Names are trimmed and must not be empty.
+- **`activeViewId` shows the live grid**, not what is in storage.
+- **Failures go to `onIssue`.** A save that cannot be written (storage full, storage blocked by policy) returns `null` and reports `STORAGE_FULL`, `STORAGE_UNAVAILABLE` or `STORAGE_WRITE_FAILED`. A read that fails gives an empty list and does not throw, so server rendering is safe.
 
 The store is also available directly:
 
 ```ts
-import { createViewStore } from 'ag-grid-url-sync/view-storage'
+import { createViewStore } from 'ag-grid-url-sync/views'
 
 const store = createViewStore('employee-grid')
 store.saveView('Engineering', gridApi.getFilterModel())
 ```
 
-### React Features
-
-- **🔄 Automatic State Management**: Tracks grid state and filter changes automatically
-- **⚡ Ready State**: `isReady` indicates when the grid API is available
-- **🎯 Auto-Apply**: `autoApplyOnMount` applies URL filters when component mounts.
-  It is attempted once per grid: a failure is reported one time (a bad filter
-  through `onParseError`, any other failure through `onError`) and is not
-  retried on later renders
-- **🧹 Cleanup**: Automatically cleans up resources when component unmounts
-- **🛡️ Error Boundaries**: Graceful error handling with configurable callbacks
-- **📊 Filter Status**: `hasFilters` tracks whether any filters are active
-- **💾 Saved Views**: `storageKey` enables naming and revisiting filter sets
-
 ### React with Grouped Serialization
 
-The React hook fully supports grouped serialization with all format options:
+The React hook takes every codec:
 
 ```tsx
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { AgGridReact } from 'ag-grid-react'
-import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+import type { GridApi } from 'ag-grid-community'
+import { grouped } from 'ag-grid-url-sync'
+import { useGridUrlSync } from 'ag-grid-url-sync/react'
+
+// Grouped serialization with the base64 format
+const codec = grouped({ param: 'grid_state', format: 'base64' })
 
 function AdvancedGridComponent() {
-  const [gridApi, setGridApi] = useState(null)
+  const [api, setApi] = useState<GridApi | null>(null)
 
-  // Grouped serialization with base64 format
-  const { shareUrl, applyUrlFilters, clearFilters, hasFilters, isReady } =
-    useAGGridUrlSync(gridApi, {
-      serialization: 'grouped',
-      format: 'base64',
-      groupedParam: 'grid_state',
-      autoApplyOnMount: true
-    })
+  const { status, hasFilters, getUrl, applyFilters } = useGridUrlSync({
+    api,
+    codec
+  })
 
   const handleShareCompact = async () => {
-    // Base64 format creates very compact URLs
-    const url = shareUrl()
-    await navigator.clipboard.writeText(url)
+    await navigator.clipboard.writeText(getUrl())
     alert('Compact filter URL copied!')
   }
 
-  const handleShareJSON = async () => {
-    // Get filters in JSON format for debugging
-    const jsonFilters = urlSync?.getFiltersAsFormat?.('json')
-    console.log('Current filters as JSON:', jsonFilters)
+  const handleDebug = () => {
+    // AG Grid's own filter model
+    console.log('Current filters:', JSON.stringify(api?.getFilterModel()))
   }
 
   return (
     <div>
       <div style={{ marginBottom: '10px' }}>
-        <button onClick={handleShareCompact} disabled={!isReady}>
+        <button onClick={handleShareCompact} disabled={status !== 'active'}>
           📋 Share Compact URL
         </button>
-        <button onClick={handleShareJSON} disabled={!isReady}>
+        <button onClick={handleDebug} disabled={status !== 'active'}>
           🔍 Debug Filters
         </button>
-        <button onClick={clearFilters} disabled={!hasFilters}>
+        <button onClick={() => applyFilters({})} disabled={!hasFilters}>
           🗑️ Clear Filters
         </button>
       </div>
 
-      {/* Grid component */}
       <div className="ag-theme-alpine" style={{ height: 400, width: '100%' }}>
         <AgGridReact
-          onGridReady={params => setGridApi(params.api)}
+          onGridReady={params => setApi(params.api)}
           // ... grid configuration
         />
       </div>
@@ -1087,71 +793,72 @@ function AdvancedGridComponent() {
 ### Advanced React Example
 
 ```tsx
-import React, { useState, useEffect } from 'react'
-import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+import { useState, useEffect } from 'react'
+import type { GridApi } from 'ag-grid-community'
+import { individual, parseUrlFilters } from 'ag-grid-url-sync'
+import { useGridUrlSync } from 'ag-grid-url-sync/react'
+
+const codec = individual({ prefix: 'emp_' })
 
 function AdvancedGridComponent() {
-  const [gridApi, setGridApi] = useState(null)
+  const [api, setApi] = useState<GridApi | null>(null)
   const [shareMessage, setShareMessage] = useState('')
 
-  const {
-    shareUrl,
-    applyUrlFilters,
-    clearFilters,
-    hasFilters,
-    isReady,
-    currentUrl,
-    parseUrlFilters
-  } = useAGGridUrlSync(gridApi, {
-    autoApplyOnMount: true,
-    paramPrefix: 'emp_',
+  const { status, url, hasFilters, getUrl, applyFilters } = useGridUrlSync({
+    api,
+    codec,
     maxValueLength: 100,
-    onParseError: error => {
-      console.warn('Filter parsing error:', error.message)
-      setShareMessage('Invalid filter URL detected')
+    onIssue: ({ issue }) => {
+      if (issue.severity === 'warning') {
+        setShareMessage('Invalid filter URL detected')
+      }
     }
   })
 
   // Watch for URL changes
   useEffect(() => {
-    if (currentUrl !== window.location.href) {
+    if (url && url !== window.location.href) {
       setShareMessage('Filters have changed - URL ready to share')
     }
-  }, [currentUrl])
+  }, [url])
 
   const handleShareToEmail = () => {
-    const url = shareUrl()
     const subject = 'Check out this filtered data'
-    const body = `View the filtered data here: ${url}`
+    const body = `View the filtered data here: ${getUrl()}`
     window.open(
       `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
     )
   }
 
   const handlePreviewFilters = () => {
-    const url = prompt('Enter URL to preview filters:')
-    if (url) {
-      const filters = parseUrlFilters(url)
-      console.log('Parsed filters:', filters)
+    const input = prompt('Enter URL to preview filters:')
+
+    if (!input) return
+
+    try {
+      // The pure function, with the same codec as the hook
+      const filters = parseUrlFilters(input, { codec })
       alert(`Found ${Object.keys(filters).length} filter(s)`)
+    } catch {
+      alert('The URL is not valid')
     }
   }
 
   return (
     <div>
       <div className="controls">
-        <button onClick={handleShareToEmail} disabled={!isReady}>
+        <button onClick={handleShareToEmail} disabled={status !== 'active'}>
           📧 Share via Email
         </button>
         <button onClick={handlePreviewFilters}>👁️ Preview URL Filters</button>
-        <button onClick={clearFilters} disabled={!hasFilters}>
+        <button onClick={() => applyFilters({})} disabled={!hasFilters}>
           Clear ({hasFilters ? 'has filters' : 'no filters'})
         </button>
       </div>
 
       {shareMessage && <div className="message">{shareMessage}</div>}
 
-      {/* Grid component */}
+      {/* Grid component, with onGridReady={params => setApi(params.api)} */}
     </div>
   )
 }
@@ -1170,7 +877,7 @@ Mixed filters: https://app.com/page?f_name_contains=john&f_salary_gte=75000&f_ag
 
 Parameter structure:
 
-- Prefix: `f_` (configurable)
+- Prefix: `f_` (set it with `individual({ prefix })`)
 - Format: `f_{columnName}_{operation}={value}`
 - **Text Operations**: `contains`, `eq`, `neq`, `startsWith`, `endsWith`, `notContains`, `blank`, `notBlank`
 - **Number Operations**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `range`, `blank`, `notBlank`
@@ -1183,137 +890,345 @@ Parameter structure:
 
 ### `createGridUrlSync(options)`
 
-See [Vanilla JS: `createGridUrlSync`](#vanilla-js-creategridurlsync) for the options. It returns `{ getSnapshot, subscribe, applyUrl, applyFilters, getUrl, saveView, loadView, deleteView, destroy }`. The snapshot is `{ status, url, hasFilters, issues, views, activeViewId }`. See [Saved Views](#saved-views) for the view methods.
+```typescript
+createGridUrlSync(options: GridUrlSyncOptions): GridUrlSync
+```
 
-### `createUrlSync(gridApi, config?)` (deprecated)
+Makes a sync between one grid and the URL. See [Vanilla JS: `createGridUrlSync`](#vanilla-js-creategridurlsync) for the options.
 
-Factory function to create a new AGGridUrlSync instance. Deprecated: use `createGridUrlSync`. It will be removed in 0.6.0.
+| Method                 | Returns               | Description                                                                        |
+| ---------------------- | --------------------- | ---------------------------------------------------------------------------------- |
+| `getSnapshot()`        | `GridUrlSyncSnapshot` | The current state. The same object until something changes                         |
+| `subscribe(listener)`  | `() => void`          | Calls the listener after each snapshot change. Returns the unsubscribe function    |
+| `applyUrl(url?)`       | `ApplyResult`         | Applies the filters of a URL (default: the address bar) to the grid                |
+| `applyFilters(model)`  | `ApplyResult`         | Writes an AG Grid filter model to the grid, as the app's own write. `{}` clears it |
+| `getUrl(baseUrl?)`     | `string`              | The URL with the grid's filters (default base: the address bar)                    |
+| `saveView(name)`       | `GridView \| null`    | Saves the grid's filters as a view, and makes it active                            |
+| `loadView(id \| null)` | `void`                | Loads a saved view. `null` clears the filters                                      |
+| `deleteView(id)`       | `void`                | Deletes a saved view                                                               |
+| `destroy()`            | `void`                | Removes the listeners. The snapshot keeps the last state                           |
+
+`ApplyResult` is `{ issues: readonly URLSyncError[] }`: the filters that the call dropped.
+
+The snapshot (`GridUrlSyncSnapshot`):
+
+| Field          | Type                                | Description                                           |
+| -------------- | ----------------------------------- | ----------------------------------------------------- |
+| `status`       | `'idle' \| 'active' \| 'destroyed'` | The state of the sync                                 |
+| `url`          | `string`                            | The URL with the grid's filters and the page's params |
+| `hasFilters`   | `boolean`                           | Whether the grid has filters that the library holds   |
+| `issues`       | `readonly URLSyncError[]`           | The issues of the latest apply and latest grid read   |
+| `views`        | `readonly GridView[]`               | The saved views, in save order                        |
+| `activeViewId` | `string \| null`                    | The id of the active saved view                       |
+
+`IDLE_SNAPSHOT` is the snapshot with `status: 'idle'`, `url: ''`, no filters, no issues and no views.
+
+### Codecs: `individual(options?)` and `grouped(options?)`
+
+A codec tells how the filters are written in the URL. It is opaque: give it to `createGridUrlSync`, `useGridUrlSync`, `parseUrlFilters` or `generateUrl`.
 
 ```typescript
-import { createUrlSync } from 'ag-grid-url-sync'
+individual({ prefix?: string }): Codec
+grouped({ param?: string, format?: SerializationFormat }): Codec
+```
 
-const urlSync = createUrlSync(gridApi, {
-  paramPrefix: 'f_', // Default: 'f_'
-  maxValueLength: 200, // Default: 200
-  onParseError: err => console.warn(err)
+| Codec        | Option   | Default          | Description                                                                                                                                               |
+| ------------ | -------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `individual` | `prefix` | `'f_'`           | The start of each param name. A prefix with no trailing `_` gets one, so `'filter'` gives `?filter_name_contains=john`. An empty prefix means the default |
+| `grouped`    | `param`  | `'grid_filters'` | The name of the one param                                                                                                                                 |
+| `grouped`    | `format` | `'querystring'`  | `'querystring'`, `'json'` or `'base64'`. See [Format Options](#format-options)                                                                            |
+
+Two codecs with the same settings are equal for the React hook: a new codec object with the same settings makes no new sync.
+
+### `parseUrlFilters(url, options?)`
+
+```typescript
+parseUrlFilters(url: string, options?: UrlOptions): FilterModel
+```
+
+Reads the filters from a URL, with no grid. It returns AG Grid's filter model. It throws `InvalidURLError` for a URL that it cannot read, and a `TypeError` for a codec that did not come from `individual()` or `grouped()`. See [URL Functions With No Grid](#url-functions-with-no-grid) for the rules.
+
+### `generateUrl(baseUrl, model, options?)`
+
+```typescript
+generateUrl(baseUrl: string, model: FilterModel, options?: UrlOptions): string
+```
+
+Writes the filters of an AG Grid filter model into a URL, with no grid. `baseUrl` must be an absolute URL. The page's own params stay, and the filter params of both codecs are replaced. It throws a `TypeError` for a codec that did not come from `individual()` or `grouped()`.
+
+### `UrlOptions`
+
+The options of `parseUrlFilters` and `generateUrl`. The names and meanings are the same as in `GridUrlSyncOptions`. One option is only here: `columnTypes`. A sync reads the column types from the grid.
+
+| Option           | Default        | Description                                                                                                                                                                                              |
+| ---------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codec`          | `individual()` | How the filters are written in the URL                                                                                                                                                                   |
+| `maxValueLength` | `200`          | The longest text value that is kept                                                                                                                                                                      |
+| `columnTypes`    | none           | `(column) => 'text' \| 'number' \| 'date' \| undefined`: the filter type of a column, for `eq`, `neq`, `blank` and `notBlank`. With no type, the value stays text                                        |
+| `throwOnError`   | `false`        | Throw an issue instead of reporting it. `true` throws every issue, and a function throws the issues for which it gives `true`. A thrown issue does not go to `onIssue`, and the first one stops the call |
+| `onIssue`        | none           | Gets each issue one time, with `source: 'api'`. An error that it throws goes to the caller                                                                                                               |
+
+### `createViewStore(storageKey)`
+
+```typescript
+import { createViewStore } from 'ag-grid-url-sync/views'
+
+createViewStore(storageKey: string): ViewStore
+```
+
+Makes a store for the saved views of one grid, in `localStorage`. Give it to the `views` option of `createGridUrlSync`. (The React hook makes one for you from `storageKey`.)
+
+| Method                        | Description                                                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `listViews()`                 | All saved views, in save order                                                                                                    |
+| `getActiveViewId()`           | The id of the active view, or `null`                                                                                              |
+| `persistActiveViewId(id)`     | Writes the id of the active view. It does nothing when the id does not change                                                     |
+| `saveView(name, filterModel)` | Saves a filter model with a name and makes it active. The same name updates that view. Throws for an empty name or a failed write |
+| `deleteView(id)`              | Deletes a view. An unknown id does nothing                                                                                        |
+
+A read never throws: with no storage (a server render), storage blocked by policy, or data that is not valid, it gives an empty store. A write throws a `URLSyncError` with the code `STORAGE_UNAVAILABLE`, `STORAGE_FULL` or `STORAGE_WRITE_FAILED`.
+
+A `GridView` is `{ id, name, updatedAt, filterModel }`. `updatedAt` is the time of the last write, in milliseconds. `filterModel` is AG Grid's filter model, as it was saved.
+
+### `useGridUrlSync(options)`
+
+```typescript
+import { useGridUrlSync } from 'ag-grid-url-sync/react'
+
+useGridUrlSync(options: UseGridUrlSyncOptions): UseGridUrlSyncResult
+```
+
+See [`useGridUrlSync({ api, ...options })`](#usegridurlsync-api-options-) for the options and the result.
+
+### Issue Codes and Severities
+
+`IssueCode` is the type of `issue.code`, and `IssueSeverity` (`'warning' | 'error'`) is the type of `issue.severity`. The [Error Handling](#error-handling) table gives each code and its severity. `IssueEvent` is `{ issue: URLSyncError, source: IssueSource }`, and `IssueSource` is `'url' | 'grid' | 'api'`.
+
+`URLSyncError`, `InvalidFilterError`, `InvalidURLError` and `InvalidDateError` take `(message, cause?, details?)`. `details` is an `IssueDetails`: `{ code?, column? }`. `InvalidSerializationError` takes `(format, cause)`: it copies the `code` and the `column` of a `URLSyncError` cause, else its code is `INVALID_GROUPED`. Its `format` is the grouped format.
+
+## Migrating from 0.5 to 0.6
+
+Version 0.6.0 removes the APIs that 0.5 deprecated, and changes the filter model and the issue callbacks. The URL format does not change: links from 0.5 still open.
+
+### 1. Entry points
+
+The package has three entry points: `ag-grid-url-sync`, `ag-grid-url-sync/react` and `ag-grid-url-sync/views`. The other subpaths are removed. An import of a removed subpath fails to resolve.
+
+| 0.5 subpath                              | 0.6                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ag-grid-url-sync`                       | The same entry point, with fewer names. See [Exports](#exports) and the tables below                                                                                                                                                                                                  |
+| `ag-grid-url-sync/react`                 | The same entry point. It has `useGridUrlSync` and its two types only. Import `GridView` and `HistoryMode` from `ag-grid-url-sync`, and `GridApi` from `ag-grid-community`. `FilterState`, `ColumnFilter`, `FilterOperation` and `AGGridUrlSyncConfig` are removed (see parts 2 and 5) |
+| `ag-grid-url-sync/view-storage`          | `ag-grid-url-sync/views` (`createViewStore`, `GridView`, `ViewStore`)                                                                                                                                                                                                                 |
+| `ag-grid-url-sync/url-parser`            | `parseUrlFilters` from `ag-grid-url-sync`. `parseFilterParam` is removed (see part 4)                                                                                                                                                                                                 |
+| `ag-grid-url-sync/url-generator`         | `generateUrl` from `ag-grid-url-sync`. `serializeFilters` is removed (see part 4)                                                                                                                                                                                                     |
+| `ag-grid-url-sync/grid-integration`      | Removed. Use `gridApi.getFilterModel()` and `sync.applyFilters(model)` (see part 4)                                                                                                                                                                                                   |
+| `ag-grid-url-sync/validation`            | Removed (see part 4)                                                                                                                                                                                                                                                                  |
+| `ag-grid-url-sync/types`                 | Removed. Import the types from `ag-grid-url-sync`, and the filter model types from `ag-grid-community`                                                                                                                                                                                |
+| `ag-grid-url-sync/serialization`         | Removed. Use `grouped({ param, format })` with `parseUrlFilters` and `generateUrl` (see part 4)                                                                                                                                                                                       |
+| `ag-grid-url-sync/serialization/formats` | Removed. Use `grouped({ format: 'querystring' })`, `grouped({ format: 'json' })` or `grouped({ format: 'base64' })`                                                                                                                                                                   |
+
+A 0.5 subpath also gave the other exports of its file (for example `validateNumberFilter` or `detectColumnFilterType`). They are internal in 0.6.0, with no replacement.
+
+The package is ESM only. It has no `require` build and no `typesVersions`:
+
+- `require('ag-grid-url-sync')` needs Node 20.19+ (or 22.12+), or a bundler.
+- TypeScript with `moduleResolution: node10` cannot find the types of `./react` and `./views`. Use `bundler`, `node16` or `nodenext`.
+
+### 2. `AGGridUrlSync` and `createUrlSync` become `createGridUrlSync`
+
+```typescript
+// 0.5
+const urlSync = createUrlSync(gridApi, { paramPrefix: 'filter_' })
+
+// 0.6
+const sync = createGridUrlSync({
+  api: gridApi,
+  codec: individual({ prefix: 'filter_' })
 })
 ```
 
-### `AGGridUrlSync` Class (deprecated)
+The sync does more than the class did. It listens to the grid's filter changes, and it applies the address bar's filters when you make it. Give `applyUrlOnCreate: false` to not apply them. The default `history: 'none'` does not write the address bar, as the class did not. Call `destroy()` when you no longer need the sync (a destroyed grid also removes the listeners).
 
-Deprecated: use `createGridUrlSync`. It will be removed in 0.6.0.
+| 0.5 class                     | 0.6 sync                                                                                                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `new AGGridUrlSync(api, cfg)` | `createGridUrlSync({ api, ...options })`                                                                                                                                                                                       |
+| `createUrlSync(api, cfg)`     | `createGridUrlSync({ api, ...options })`                                                                                                                                                                                       |
+| `generateUrl(baseUrl?)`       | `getUrl(baseUrl?)`                                                                                                                                                                                                             |
+| `getUrlState(baseUrl?)`       | `getSnapshot()`: `{ url, hasFilters, issues }`, for the address bar. For another base URL, use `getUrl(baseUrl)`                                                                                                               |
+| `getQueryParams()`            | `new URL(sync.getUrl()).search`, or `new URL(sync.getSnapshot().url).search` (#236)                                                                                                                                            |
+| `applyFromUrl(url?)`          | `applyUrl(url?)`. It returns `{ issues }`. A URL that it cannot read is an `INVALID_URL` issue, not an error that it throws (unless `throwOnError` picks it)                                                                   |
+| `applyFilters(filterState)`   | `applyFilters(model)`, with AG Grid's `FilterModel` (see part 5)                                                                                                                                                               |
+| `clearFilters()`              | `applyFilters({})`                                                                                                                                                                                                             |
+| `destroy()`                   | `destroy()`. It now removes the sync's listeners                                                                                                                                                                               |
+| `getSerializationMode()`      | Removed. Your app gives the codec, so it knows the mode                                                                                                                                                                        |
+| `getCurrentFormat()`          | Removed. Your app gives the codec, so it knows the format                                                                                                                                                                      |
+| `getFiltersAsFormat(format)`  | Removed. Use `new URL(generateUrl(baseUrl, gridApi.getFilterModel(), { codec: grouped({ format }) })).searchParams.get('grid_filters') ?? ''`. With no filters, the URL has no param, so `?? ''` gives the empty string of 0.5 |
 
-#### Constructor
+The options (`AGGridUrlSyncConfig` becomes `GridUrlSyncOptions`):
 
-```typescript
-new AGGridUrlSync(gridApi: GridApi, config?: AGGridUrlSyncConfig)
-```
+| 0.5 option                                           | 0.6 option                                                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `paramPrefix`                                        | `codec: individual({ prefix })`                                                                            |
+| `serialization: 'individual'`                        | `codec: individual()` (the default)                                                                        |
+| `serialization: 'grouped'`, `groupedParam`, `format` | `codec: grouped({ param, format })`                                                                        |
+| `maxValueLength`                                     | `maxValueLength`                                                                                           |
+| `throwOnError`                                       | `throwOnError`                                                                                             |
+| `onParseError(error)`                                | `onIssue({ issue, source })` (see part 7)                                                                  |
+| `columnTypes`                                        | Removed from the sync: it takes the types from the grid's columns. The pure functions keep it (see part 6) |
+| (none)                                               | New: `history`, `popstate`, `applyUrlOnCreate`, `views`                                                    |
 
-#### Methods
+The types:
 
-##### `generateUrl(baseUrl?: string): string`
+| 0.5 type                                           | 0.6                                                                  |
+| -------------------------------------------------- | -------------------------------------------------------------------- |
+| `AGGridUrlSyncConfig`                              | `GridUrlSyncOptions` (the sync) or `UrlOptions` (the pure functions) |
+| `ResolvedOptions`, `ParseConfig`, `InternalConfig` | Removed (internal)                                                   |
+| `UrlState`                                         | `GridUrlSyncSnapshot`                                                |
+| `GridApi`                                          | `import type { GridApi } from 'ag-grid-community'`                   |
 
-Generates a URL with the current filter state.
+### 3. `useAGGridUrlSync` becomes `useGridUrlSync`
 
-```typescript
-const url = urlSync.generateUrl('https://app.com/page')
-// https://app.com/page?f_name_contains=john
-```
+```tsx
+// 0.5
+const { shareUrl, isReady } = useAGGridUrlSync(gridApi, {
+  autoApplyOnMount: true,
+  paramPrefix: 'filter_'
+})
 
-##### `getUrlState(baseUrl?: string): { url: string; hasFilters: boolean; issues: readonly URLSyncError[] }`
-
-Generates the same URL as `generateUrl`, and tells if the grid has filters that the library supports. It reads the grid one time for both values. `hasFilters` comes from the filter state, not from the URL, because the URL also keeps the page's own params.
-
-```typescript
-const { url, hasFilters } = urlSync.getUrlState('https://app.com/page?tab=1')
-// url: https://app.com/page?tab=1 (no filters), hasFilters: false
-```
-
-`issues` holds the filters that this call dropped, for example a text value over `maxValueLength`.
-
-##### `getQueryParams(): string`
-
-Gets the current filter state as URL query parameters.
-
-```typescript
-const params = urlSync.getQueryParams()
-// ?f_name_contains=john
-```
-
-##### `applyFromUrl(url?: string): { issues: readonly URLSyncError[] }`
-
-Applies filters from a URL to the grid, and returns the filters in the URL that were dropped.
-
-```typescript
-urlSync.applyFromUrl('https://app.com/page?f_name_contains=john')
-```
-
-##### `applyFilters(filterState: FilterState): { issues: readonly URLSyncError[] }`
-
-Applies a filter state object to the grid, and returns the filters that were dropped (for example a number filter on a text column).
-
-```typescript
-urlSync.applyFilters({
-  name: {
-    filterType: 'text',
-    type: 'contains',
-    filter: 'john'
-  }
+// 0.6
+const { getUrl, status } = useGridUrlSync({
+  api: gridApi,
+  codec: individual({ prefix: 'filter_' })
 })
 ```
 
-##### `clearFilters(): { issues: readonly URLSyncError[] }`
+The types `UseAGGridUrlSyncOptions` and `UseAGGridUrlSyncReturn` become `UseGridUrlSyncOptions` and `UseGridUrlSyncResult`.
 
-Clears all text filters from the grid.
+The options:
+
+| 0.5 option                                                            | 0.6 option                                                                                                                       |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `useAGGridUrlSync(gridApi, options)`                                  | `useGridUrlSync({ api: gridApi, ...options })`                                                                                   |
+| `paramPrefix`, `serialization`, `groupedParam`, `format`              | `codec: individual({ prefix })` or `grouped({ param, format })`                                                                  |
+| `autoApplyOnMount` (default `false`)                                  | `applyUrlOnCreate` (default `true`). A URL with no filters keeps the grid's filters. Give `false` for the 0.5 default            |
+| `enabledWhenReady`                                                    | `enabled`. With `enabled: false`, `deleteView` still deletes from storage (in 0.5, `enabledWhenReady: false` made it do nothing) |
+| `onParseError(error)`                                                 | `onIssue({ issue, source })`                                                                                                     |
+| `onError(error, context)`                                             | `onIssue({ issue, source })`. Use `issue.code` and `source` in place of `context`                                                |
+| `maxValueLength`, `throwOnError`, `history`, `popstate`, `storageKey` | The same                                                                                                                         |
+
+The result:
+
+| 0.5 result                                           | 0.6 result                                                                                         |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `shareUrl(baseUrl?)`                                 | `getUrl(baseUrl?)`                                                                                 |
+| `currentUrl`                                         | `url`                                                                                              |
+| `isReady`                                            | `status === 'active'`                                                                              |
+| `applyUrlFilters(url?)`                              | `applyUrl(url?)`. It returns `{ issues }`                                                          |
+| `applyFilters(filters)`                              | `applyFilters(model)`, with AG Grid's `FilterModel`. It returns `{ issues }`                       |
+| `clearFilters()`                                     | `applyFilters({})`                                                                                 |
+| `parseUrlFilters(url)`                               | `parseUrlFilters(url, { codec })` from `ag-grid-url-sync`. Give the same codec as the hook         |
+| `getQueryParams()`                                   | `new URL(getUrl()).search`, while `status` is `'active'` (#236)                                    |
+| `getFiltersAsFormat(format)`                         | Removed. Use `generateUrl` with `grouped({ format })`, as in part 2                                |
+| `getSerializationMode()`                             | Removed. Your app gives the codec, so it knows the mode                                            |
+| `getCurrentFormat()`                                 | Removed. Your app gives the codec, so it knows the format (in 0.5, this hook method gave the mode) |
+| `hasFilters`, `issues`                               | The same                                                                                           |
+| `views`                                              | `views`. Its type is now `readonly GridView[]`                                                     |
+| `activeViewId`, `saveView`, `loadView`, `deleteView` | The same                                                                                           |
+
+### 4. The pure functions
+
+`parseUrlFilters` and `generateUrl` take the option names of `createGridUrlSync` (`UrlOptions`):
 
 ```typescript
-urlSync.clearFilters()
+// 0.5
+parseUrlFilters(url, { serialization: 'grouped', format: 'json', onParseError })
+
+// 0.6
+parseUrlFilters(url, { codec: grouped({ format: 'json' }), onIssue })
 ```
 
-##### `destroy(): void`
+| 0.5 config                                      | 0.6 option                                                                         |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `paramPrefix`                                   | `codec: individual({ prefix })`                                                    |
+| `serialization`, `groupedParam`, `format`       | `codec: grouped({ param, format })`                                                |
+| `onParseError(error: Error)`                    | `onIssue({ issue, source })`. `issue` is a `URLSyncError`, and `source` is `'api'` |
+| `maxValueLength`, `columnTypes`, `throwOnError` | The same                                                                           |
 
-Cleans up any resources or event listeners.
+The rules do not change: `parseUrlFilters` throws `INVALID_URL` for a URL that it cannot read, a non-empty grouped param wins over the prefixed params, and `generateUrl` keeps the page's own params. As in 0.5, a handler that throws stops the call, and the error goes to the caller.
+
+The removed helpers:
+
+| 0.5 name                                                                             | 0.6                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parseFilterParam(param, value)`                                                     | `parseUrlFilters(new URLSearchParams({ [param]: value }).toString(), { codec: individual({ prefix }) })`. Give the `prefix` that you gave as `expectedPrefix` (default `'f_'`). It gives a model with that one column. 0.5 threw for a bad param; 0.6 gives `{}` and reports the issue to `onIssue` |
+| `serializeFilters(model)`                                                            | `new URL(generateUrl('https://app.invalid/', model, { codec: individual({ prefix }) })).searchParams`. `generateUrl` keeps the base URL's own params, so give a base URL with no params                                                                                                             |
+| `serializeGrouped(model, config)`                                                    | `generateUrl(baseUrl, model, { codec: grouped({ param, format }) })`, and read the param from the URL                                                                                                                                                                                               |
+| `deserializeGrouped(value, format)`                                                  | `parseUrlFilters(new URLSearchParams({ grid_filters: value }).toString(), { codec: grouped({ format }) })`                                                                                                                                                                                          |
+| `detectGroupedSerialization`                                                         | Removed. The library does not guess the format: give the codec that wrote the URL                                                                                                                                                                                                                   |
+| `getAvailableFormats()`                                                              | The type `SerializationFormat`: `'querystring' \| 'json' \| 'base64'`                                                                                                                                                                                                                               |
+| `getFormatSerializer`, `QueryStringSerializer`, `JsonSerializer`, `Base64Serializer` | `grouped({ format })`                                                                                                                                                                                                                                                                               |
+| `getFilterModel(gridApi)`                                                            | `gridApi.getFilterModel()` (AG Grid's model)                                                                                                                                                                                                                                                        |
+| `applyFilterModel(state, gridApi)`                                                   | `sync.applyFilters(model)`, or `gridApi.setFilterModel(model)`                                                                                                                                                                                                                                      |
+| `validateFilterValue`                                                                | Removed. The library checks each value when it reads or writes a URL, and reports an issue                                                                                                                                                                                                          |
+| `DEFAULT_CONFIG`                                                                     | Removed. The defaults are: prefix `'f_'`, param `'grid_filters'`, format `'querystring'`, `maxValueLength` `200`                                                                                                                                                                                    |
+| `GroupedSerializationResult`, `FormatSerializer`, `GroupedDetectionResult`           | Removed                                                                                                                                                                                                                                                                                             |
+| `SerializationMode`                                                                  | Removed. The codec gives the mode                                                                                                                                                                                                                                                                   |
+
+### 5. `FilterState` becomes AG Grid's `FilterModel` (#225)
+
+`applyFilters`, `parseUrlFilters` and `generateUrl` take and give AG Grid's `FilterModel` (the value of `gridApi.getFilterModel()`). The library's own `FilterState` is removed.
 
 ```typescript
-urlSync.destroy()
+// 0.5 (FilterState)
+sync.applyFilters({
+  created: { filterType: 'date', type: 'dateBefore', filter: '2024-01-01' }
+})
+
+// 0.6 (AG Grid's FilterModel)
+sync.applyFilters({
+  created: { filterType: 'date', type: 'lessThan', dateFrom: '2024-01-01' }
+})
 ```
 
-### Configuration
+- An operation has AG Grid's name: `eq` is `equals`, `dateBefore` is `lessThan`, `dateBeforeOrEqual` is `lessThanOrEqual`, `dateAfter` is `greaterThan`, `dateAfterOrEqual` is `greaterThanOrEqual`, `dateRange` is `inRange`. The other names do not change.
+- A date filter has `dateFrom` and `dateTo`, not `filter` and `filterTo`.
+- A URL apply merges. It changes only the columns that the codec holds. The columns that it cannot hold (set, multi, combined conditions, custom filters) stay on the grid. In 0.5, a URL apply cleared them.
+- `applyFilters(model)` replaces the full model, as `gridApi.setFilterModel(model)` does.
+- A new issue code, `UNSUPPORTED_FILTER` (a warning): the grid has a filter that the codec cannot hold. The sync reports it when it reads the grid, and `generateUrl` reports it too.
+- The `json` and `base64` formats write AG Grid's native model, with sorted keys, so they hold any filter model. 0.6 writes only this form. It still reads the 0.5 form, so 0.5 links open.
 
-```typescript
-interface AGGridUrlSyncConfig {
-  // Serialization mode (default: 'individual')
-  // 'individual': Each filter becomes a separate URL parameter
-  // 'grouped': All filters are packaged into a single URL parameter
-  serialization?: 'individual' | 'grouped'
+The removed types and constants:
 
-  // Format for grouped serialization (default: 'querystring')
-  // 'querystring': URL-encoded querystring format (most compatible)
-  // 'json': JSON-encoded format (good for complex filters)
-  // 'base64': Base64-encoded JSON (most compact)
-  format?: 'querystring' | 'json' | 'base64'
+| 0.5 name                                                                                                                                                                      | 0.6                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `FilterState`                                                                                                                                                                 | `FilterModel` from `ag-grid-community`                                             |
+| `ColumnFilter`, `TextColumnFilter`, `NumberColumnFilter`, `DateColumnFilter`, `AGGridFilter`, `RawAGGridFilter`                                                               | `TextFilterModel`, `NumberFilterModel`, `DateFilterModel` from `ag-grid-community` |
+| `FilterOperation`, `TextFilterOperation`, `NumberFilterOperation`, `DateFilterOperation`, `RangeOperation`, `BlankOperation`                                                  | The `type` of AG Grid's filter models                                              |
+| `TEXT_FILTER_OPERATIONS`, `NUMBER_FILTER_OPERATIONS`, `DATE_FILTER_OPERATIONS`, `TEXT_ONLY_OPERATIONS`, `NUMBER_ONLY_OPERATIONS`, `DATE_ONLY_OPERATIONS`, `SHARED_OPERATIONS` | Removed. See [Supported Filter Types](#supported-filter-types) for the operations  |
+| `isTextFilter`, `isNumberFilter`, `isDateFilter`                                                                                                                              | Check `filter.filterType`                                                          |
+| `isTextFilterOperation`, `isNumberFilterOperation`, `isDateFilterOperation`, `isRangeOperation`, `isBlankOperation`                                                           | Removed                                                                            |
+| `OPERATION_MAP`, `INTERNAL_TO_URL_OPERATION_MAP`, `AG_GRID_OPERATION_NAMES`, `REVERSE_AG_GRID_OPERATION_NAMES`                                                                | Removed. The URL names are in [Supported Filter Types](#supported-filter-types)    |
+| `ParsedFilterParam`                                                                                                                                                           | Removed                                                                            |
 
-  // Parameter name for grouped mode (default: 'grid_filters')
-  groupedParam?: string
+### 6. The filter type comes from the column (#224)
 
-  // Prefix for URL parameters in individual mode (default: 'f_')
-  // A prefix without a trailing '_' gets one ('filter' -> 'filter_name_contains').
-  // An empty prefix means the default. Grouped mode always uses 'f_' inside the
-  // grouped value, so grouped URLs do not change with this option.
-  paramPrefix?: string
+`eq`, `neq`, `blank` and `notBlank` do not say their filter type in the URL. 0.5 guessed it from the value: `f_zip_eq=01234` became the number `1234`, and `f_note_eq=2024-01-15` on a text column became a date filter that the grid then rejected (`TYPE_MISMATCH`).
 
-  // Maximum length for filter values (default: 200)
-  maxValueLength?: number
+0.6 takes the type from the grid's column, so `?f_zip_eq=01234` keeps its leading zero on a text column. `createGridUrlSync` and `useGridUrlSync` read the types from the grid, and wait for the first row data when AG Grid has not inferred them yet. With no grid, the value stays text. Give `columnTypes` to `parseUrlFilters` to read it as a number or a date. See [Filter Types of `eq`, `neq`, `blank` and `notBlank`](#filter-types-of-eq-neq-blank-and-notblank).
 
-  // Optional error handler for parsing errors
-  // Called when URLs contain invalid filter parameters
-  onParseError?: (error: Error) => void
+### 7. Issues
 
-  // The filter type of each column, for eq, neq, blank and notBlank (0.6.0)
-  // undefined means text. The grid APIs take the types from the grid.
-  columnTypes?: (column: string) => 'text' | 'number' | 'date' | undefined
-}
-```
+One callback, `onIssue({ issue, source })`, replaces `onParseError(error)` and the hook's `onError(error, context)`.
+
+| 0.5                                                       | 0.6                                                                                                     |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `onParseError(error)` (data issues)                       | `onIssue({ issue, source })`                                                                            |
+| `onError(error, context)` (the hook's operation failures) | `onIssue({ issue, source })`. `issue.code` tells the failure, and `source` tells where the work started |
+| `error instanceof URLSyncError` check                     | Not necessary: `issue` is always a `URLSyncError`                                                       |
+| (none)                                                    | `issue.severity`: `'warning'` for a data issue, `'error'` for an operation that failed                  |
+| (none)                                                    | The code `UNSUPPORTED_FILTER` (see part 5)                                                              |
+
+`createGridUrlSync` and `useGridUrlSync` send every issue to `onIssue` one time. See [Error Handling](#error-handling).
 
 ## Examples
 
@@ -1321,7 +1236,7 @@ Check out the [examples](./examples) directory for comprehensive working demos:
 
 ### 🚀 [Vanilla JavaScript Demo](./examples/vanilla-js/demo.html)
 
-Comprehensive demonstration showcasing all features:
+Comprehensive demonstration of `createGridUrlSync`:
 
 - **Complete text filter support** - All 8 AG Grid text operations (contains, equals, not contains, not equal, starts with, ends with, blank, not blank)
 - **Complete number filter support** - All 9 AG Grid number operations (equals, not equal, greater than, greater than or equal, less than, less than or equal, in range, blank, not blank)
@@ -1329,20 +1244,20 @@ Comprehensive demonstration showcasing all features:
 - **Grouped serialization** - Package all filters into a single URL parameter with querystring, JSON, or base64 encoding
 - **Manual URL generation** - Generate shareable URLs with current filter states
 - **Bidirectional sync** - Automatic synchronization between AG Grid and URL
-- **Framework agnostic** - Works with any AG Grid setup, no dependencies
+- **Framework agnostic** - Works with any AG Grid setup, with no framework
 - **High performance** - Efficiently handles 100+ filters with <20ms latency
 - **Robust error handling** - Graceful handling of malformed URLs and special characters
-- **Lightweight** - Minimal bundle size (~3KB gzipped), ideal for modern web applications
 
 ### ⚛️ [React Integration](./examples/react-basic/basic-grid.tsx)
 
-Clean React component showing the `useAGGridUrlSync` hook:
+A React component that uses the `useGridUrlSync` hook:
 
 - React hook integration with AG Grid for text, number, and date filters
-- Automatic filter state management for mixed filter types
+- A codec that changes between `individual()` and `grouped()` at run time
 - Share button with clipboard functionality
 - Filter status indicators and controls
-- Auto-apply filters on component mount with all filter types
+- Saved views with `storageKey`
+- The URL filters are applied on mount, for all filter types
 - Enhanced employee data with salary, age, and experience columns
 - Full TypeScript support with comprehensive type coverage
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { FilterModel } from 'ag-grid-community'
-import { parseUrlFilters } from './url-parser.js'
-import { generateUrl, serializeFilters } from './url-generator.js'
+import { readUrlFilters } from './url-parser.js'
+import { writeUrlFilters, serializeFilters } from './url-generator.js'
 import {
   deserializeGrouped,
   serializeGrouped
@@ -62,9 +62,9 @@ describe.each(['json', 'base64'] as const)('%s format', format => {
   })
 
   it('round-trips through a URL', () => {
-    const url = generateUrl('https://app.test/?tab=1', ALL, grouped(format))
+    const url = writeUrlFilters('https://app.test/?tab=1', ALL, grouped(format))
 
-    expect(parseUrlFilters(url, grouped(format))).toEqual(ALL)
+    expect(readUrlFilters(url, grouped(format))).toEqual(ALL)
   })
 
   it('gives the same value for the same model in another key order', () => {
@@ -161,10 +161,10 @@ describe.each(['json', 'base64'] as const)('%s format', format => {
   })
 })
 
-describe('parseUrlFilters: the AG Grid model', () => {
+describe('readUrlFilters: the AG Grid model', () => {
   it('gives AG Grid operation names and date fields', () => {
     expect(
-      parseUrlFilters(
+      readUrlFilters(
         '?f_name_eq=john&f_age_gt=30&f_born_before=2024-01-15&f_size_blank=true',
         {
           columnTypes: column =>
@@ -189,13 +189,13 @@ describe('parseUrlFilters: the AG Grid model', () => {
   })
 
   it('gives the AG Grid model for a grouped querystring value', () => {
-    const url = generateUrl('https://app.test/', SIMPLE, {
+    const url = writeUrlFilters('https://app.test/', SIMPLE, {
       serialization: 'grouped',
       format: 'querystring'
     })
 
     expect(
-      parseUrlFilters(url, { serialization: 'grouped', format: 'querystring' })
+      readUrlFilters(url, { serialization: 'grouped', format: 'querystring' })
     ).toEqual(SIMPLE)
   })
 })
@@ -210,7 +210,7 @@ describe('the individual codec: filters that it cannot hold', () => {
     const issues: Error[] = []
     const onParseError = (error: Error) => issues.push(error)
 
-    const url = generateUrl(
+    const url = writeUrlFilters(
       'https://app.test/',
       { ...model, ...SIMPLE },
       {
@@ -218,7 +218,7 @@ describe('the individual codec: filters that it cannot hold', () => {
       }
     )
 
-    expect(parseUrlFilters(url)).toEqual(SIMPLE)
+    expect(readUrlFilters(url)).toEqual(SIMPLE)
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({
       code: 'UNSUPPORTED_FILTER',
@@ -247,7 +247,7 @@ describe('the individual codec: filters that it cannot hold', () => {
   it('does not report a filter that the user is still editing', () => {
     const onParseError = vi.fn<(error: Error) => void>()
 
-    generateUrl(
+    writeUrlFilters(
       'https://app.test/',
       { age: { filterType: 'number', type: 'equals', filter: null } },
       { onParseError }
@@ -287,7 +287,7 @@ describe('the individual codec: simple filters that it cannot read', () => {
     const onParseError = vi.fn<(error: Error) => void>()
 
     expect(
-      generateUrl('http://x.test/', { col: column }, { onParseError })
+      writeUrlFilters('http://x.test/', { col: column }, { onParseError })
     ).toBe('http://x.test')
     expect(onParseError).toHaveBeenCalledOnce()
     expect(onParseError.mock.calls[0]?.[0]).toMatchObject({
@@ -361,13 +361,13 @@ describe('a custom filter with a model that is not an object', () => {
   ])('json round-trips %s with no issue', (_name, custom) => {
     const onParseError = vi.fn<(error: Error) => void>()
 
-    const url = generateUrl(
+    const url = writeUrlFilters(
       'http://x.test/',
       { ...SET, custom },
       { ...grouped('json'), onParseError }
     )
 
-    expect(parseUrlFilters(url, grouped('json'))).toEqual({ ...SET, custom })
+    expect(readUrlFilters(url, grouped('json'))).toEqual({ ...SET, custom })
     expect(onParseError).not.toHaveBeenCalled()
   })
 
@@ -375,7 +375,11 @@ describe('a custom filter with a model that is not an object', () => {
     const onParseError = vi.fn<(error: Error) => void>()
 
     expect(
-      generateUrl('http://x.test/', { custom: 'after-2008' }, { onParseError })
+      writeUrlFilters(
+        'http://x.test/',
+        { custom: 'after-2008' },
+        { onParseError }
+      )
     ).toBe('http://x.test')
     expect(onParseError.mock.calls[0]?.[0]).toMatchObject({
       code: 'UNSUPPORTED_FILTER',

@@ -267,7 +267,7 @@ describe('createViewStore', () => {
       expect(a.listViews()).not.toBe(b.listViews())
 
       // A consumer mutating its own result must not affect any other store:
-      // listViews is public API through the ./view-storage subpath.
+      // listViews is public API through the ./views entry point.
       const mine = a.listViews()
       mine.push({
         id: 'x',

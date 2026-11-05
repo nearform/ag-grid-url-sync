@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { serializeFilters, generateUrl } from './url-generator.js'
-import { parseUrlFilters } from './url-parser.js'
+import { serializeFilters, writeUrlFilters } from './url-generator.js'
+import { readUrlFilters } from './url-parser.js'
 import type { FilterModel } from 'ag-grid-community'
-import type { InternalConfig } from './types.js'
+import type { ResolvedOptions } from './types.js'
 import { InvalidFilterError } from './types.js'
-import { asGridApi } from '../test-helpers.js'
 
 describe('URL Generator', () => {
-  const mockConfig: InternalConfig = {
-    gridApi: asGridApi({}),
+  const mockConfig: ResolvedOptions = {
     paramPrefix: 'f_',
     maxValueLength: 200,
     onParseError: vi.fn(),
@@ -156,18 +154,23 @@ describe('URL Generator', () => {
     })
   })
 
-  describe('generateUrl', () => {
+  describe('writeUrlFilters', () => {
     it('should generate URL with filters', () => {
       const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
-      const result = generateUrl('https://example.com', filterState, mockConfig)
+      const result = writeUrlFilters(
+        'https://example.com',
+        filterState,
+        mockConfig
+      )
+
       expect(result).toBe('https://example.com/?f_name_contains=john')
     })
 
     it('should handle empty filter state', () => {
-      const result = generateUrl('https://example.com', {}, mockConfig)
+      const result = writeUrlFilters('https://example.com', {}, mockConfig)
       expect(result).toBe('https://example.com')
     })
 
@@ -176,7 +179,7 @@ describe('URL Generator', () => {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
-      const result = generateUrl(
+      const result = writeUrlFilters(
         'https://example.com?page=1',
         filterState,
         mockConfig
@@ -198,8 +201,13 @@ describe('URL Generator', () => {
         }
       }
 
-      const url = generateUrl('https://example.com', filterState, mockConfig)
-      expect(parseUrlFilters(url, mockConfig)).toEqual(filterState)
+      const url = writeUrlFilters(
+        'https://example.com',
+        filterState,
+        mockConfig
+      )
+
+      expect(readUrlFilters(url, mockConfig)).toEqual(filterState)
     })
 
     describe('host params', () => {
@@ -212,7 +220,7 @@ describe('URL Generator', () => {
         ['grouped', { ...mockConfig, serialization: 'grouped' as const }]
       ])('should keep repeated host params in %s mode', (_label, config) => {
         const result = new URL(
-          generateUrl(
+          writeUrlFilters(
             'https://example.com/?tag=a&page=1&tag=b',
             filterState,
             config
@@ -229,7 +237,7 @@ describe('URL Generator', () => {
       ])(
         'should keep repeated host params with no filters in %s mode',
         (_label, config) => {
-          const result = generateUrl(
+          const result = writeUrlFilters(
             'https://example.com/?tag=a&tag=b',
             {},
             config
@@ -247,7 +255,7 @@ describe('URL Generator', () => {
       'should remove old filter params when filters are cleared in %s mode',
       (_label, config) => {
         expect(
-          generateUrl(
+          writeUrlFilters(
             'https://example.com/?f_a_contains=old&grid_filters=f_b_eq%3D1',
             {},
             config
@@ -258,7 +266,7 @@ describe('URL Generator', () => {
 
     it('should keep the hash when filters are cleared', () => {
       expect(
-        generateUrl(
+        writeUrlFilters(
           'https://example.com/list?f_a_contains=old#top',
           {},
           mockConfig
@@ -280,17 +288,22 @@ describe('URL Generator', () => {
         ['', 'f_name_contains']
       ])('should write prefix %j as %s and parse it back', (prefix, key) => {
         const config = { ...mockConfig, paramPrefix: prefix }
-        const url = generateUrl('https://example.com/?page=2', state, config)
+
+        const url = writeUrlFilters(
+          'https://example.com/?page=2',
+          state,
+          config
+        )
 
         expect([...new URL(url).searchParams.keys()]).toEqual([key, 'page'])
-        expect(parseUrlFilters(url, config)).toEqual(state)
+        expect(readUrlFilters(url, config)).toEqual(state)
         expect(mockConfig.onParseError).not.toHaveBeenCalled()
       })
 
       it('should remove stale filter params when the prefix is empty', () => {
         const config = { ...mockConfig, paramPrefix: '' }
 
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?f_old_contains=x&page=2',
           state,
           config
@@ -306,7 +319,7 @@ describe('URL Generator', () => {
       }
 
       it('should remove the grouped param in individual mode', () => {
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?grid_filters=f_a_contains%3Dold&page=1',
           newState,
           mockConfig
@@ -314,11 +327,11 @@ describe('URL Generator', () => {
 
         expect(new URL(url).searchParams.has('grid_filters')).toBe(false)
         expect(new URL(url).searchParams.get('page')).toBe('1')
-        expect(parseUrlFilters(url, mockConfig)).toEqual(newState)
+        expect(readUrlFilters(url, mockConfig)).toEqual(newState)
       })
 
       it('should remove the grouped param in individual mode with no filters', () => {
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?grid_filters=f_a_contains%3Dold&page=1',
           {},
           mockConfig
@@ -330,7 +343,7 @@ describe('URL Generator', () => {
       it('should remove a custom grouped param in individual mode', () => {
         const config = { ...mockConfig, groupedParam: 'gf' }
 
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?gf=f_a_contains%3Dold',
           newState,
           config
@@ -342,7 +355,7 @@ describe('URL Generator', () => {
       it('should remove prefixed params in grouped mode', () => {
         const config = { ...mockConfig, serialization: 'grouped' as const }
 
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?f_a_contains=old&page=1',
           newState,
           config
@@ -351,7 +364,7 @@ describe('URL Generator', () => {
         const params = new URL(url).searchParams
         expect(params.has('f_a_contains')).toBe(false)
         expect(params.get('page')).toBe('1')
-        expect(parseUrlFilters(url, config)).toEqual(newState)
+        expect(readUrlFilters(url, config)).toEqual(newState)
       })
     })
   })

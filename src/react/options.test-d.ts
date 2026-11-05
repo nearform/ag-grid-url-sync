@@ -4,20 +4,16 @@
 // file through tsconfig.typecheck.json. Vitest does not run it.
 import { expectTypeOf } from 'vitest'
 import type { GridApi } from 'ag-grid-community'
-import { AGGridUrlSync } from '../core/ag-grid-url-sync.js'
 import { DEFAULT_CONFIG } from '../core/validation.js'
 import type {
   AGGridUrlSyncConfig,
-  InternalConfig,
-  ParseConfig,
+  ResolvedOptions,
   SerializationFormat,
   SerializationMode
 } from '../core/types.js'
-import type {
-  UseAGGridUrlSyncOptions,
-  UseAGGridUrlSyncReturn
-} from './types.js'
-import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
+import type { UseGridUrlSyncOptions } from './types.js'
+import { useGridUrlSync } from './use-grid-url-sync.js'
+import { individual } from '../core/codecs.js'
 
 // Every optional option of the core takes undefined
 export const coreUndefined: AGGridUrlSyncConfig = {
@@ -30,47 +26,52 @@ export const coreUndefined: AGGridUrlSyncConfig = {
 }
 
 // Every optional option of the hook takes undefined
-export const hookUndefined: UseAGGridUrlSyncOptions = {
-  ...coreUndefined,
+export const hookUndefined: UseGridUrlSyncOptions = {
+  api: undefined,
+  codec: undefined,
+  maxValueLength: undefined,
+  history: undefined,
+  popstate: undefined,
+  applyUrlOnCreate: undefined,
+  throwOnError: undefined,
+  onIssue: undefined,
   storageKey: undefined,
-  autoApplyOnMount: undefined,
-  enabledWhenReady: undefined,
-  onError: undefined
+  enabled: undefined
 }
 
 // A component that forwards its optional props, as in the issue
-type GridProps = { tenantId?: string; format?: SerializationFormat }
+type GridProps = { tenantId?: string; prefix?: string; enabled?: boolean }
 
 export function forwardProps(api: GridApi, props: GridProps) {
-  const sync = new AGGridUrlSync(api, { format: props.format })
-
-  const hook = useAGGridUrlSync(api, {
+  const hook = useGridUrlSync({
+    api,
     storageKey: props.tenantId,
-    format: props.format
+    codec: individual({ prefix: props.prefix }),
+    enabled: props.enabled
   })
 
-  return { sync, hook }
+  return { hook }
 }
 
 // The resolved config keeps its value types, with no undefined
-expectTypeOf<ParseConfig['paramPrefix']>().toEqualTypeOf<string>()
+expectTypeOf<ResolvedOptions['paramPrefix']>().toEqualTypeOf<string>()
 
-expectTypeOf<ParseConfig['maxValueLength']>().toEqualTypeOf<number>()
+expectTypeOf<ResolvedOptions['maxValueLength']>().toEqualTypeOf<number>()
 
-expectTypeOf<ParseConfig['onParseError']>().toEqualTypeOf<
+expectTypeOf<ResolvedOptions['onParseError']>().toEqualTypeOf<
   (error: Error) => void
 >()
 
-expectTypeOf<ParseConfig['serialization']>().toEqualTypeOf<SerializationMode>()
+expectTypeOf<
+  ResolvedOptions['serialization']
+>().toEqualTypeOf<SerializationMode>()
 
-expectTypeOf<ParseConfig['groupedParam']>().toEqualTypeOf<string>()
+expectTypeOf<ResolvedOptions['groupedParam']>().toEqualTypeOf<string>()
 
-expectTypeOf<ParseConfig['format']>().toEqualTypeOf<SerializationFormat>()
-
-expectTypeOf<InternalConfig['format']>().toEqualTypeOf<SerializationFormat>()
+expectTypeOf<ResolvedOptions['format']>().toEqualTypeOf<SerializationFormat>()
 
 // A resolved config has a value for each option
-export const resolvedUndefined: ParseConfig = {
+export const resolvedUndefined: ResolvedOptions = {
   ...DEFAULT_CONFIG,
   // @ts-expect-error undefined is not a format
   format: undefined
@@ -82,17 +83,16 @@ export function ReadmeIssuesExample({
 }: {
   gridApi: import('ag-grid-community').GridApi
 }) {
-  const { issues } = useAGGridUrlSync(gridApi, {
+  const { issues } = useGridUrlSync({
+    api: gridApi,
     throwOnError: issue => issue.code === 'VALUE_TOO_LONG'
   })
 
   return issues.length > 0 ? 'The link leaves out a filter' : null
 }
 
-// getSerializationMode returns the serialization mode (#222)
-expectTypeOf<UseAGGridUrlSyncReturn['getSerializationMode']>().toEqualTypeOf<
-  () => SerializationMode
->()
+// The hook takes the column types from the grid only (#224), and the view
+// store only from storageKey
+expectTypeOf<UseGridUrlSyncOptions>().not.toHaveProperty('columnTypes')
 
-// The deprecated hook takes the column types from the grid only (#224)
-expectTypeOf<UseAGGridUrlSyncOptions>().not.toHaveProperty('columnTypes')
+expectTypeOf<UseGridUrlSyncOptions>().not.toHaveProperty('views')

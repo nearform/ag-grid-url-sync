@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseUrlFilters } from './url-parser.js'
-import { generateUrl, serializeFilters } from './url-generator.js'
-import { getFilterModel } from './grid-integration.js'
+import { readUrlFilters } from './url-parser.js'
+import { writeUrlFilters, serializeFilters } from './url-generator.js'
+import { createGridUrlSync } from './grid-url-sync.js'
+import { fromGridModel } from './grid-integration.js'
 import {
   InvalidFilterError,
   InvalidSerializationError,
@@ -9,7 +10,11 @@ import {
   type FilterState
 } from './types.js'
 import { toError } from './to-error.js'
-import { asGridApi, createGridApiSpies } from '../test-helpers.js'
+import {
+  asGridApi,
+  createGridApiSpies,
+  createGridListeners
+} from '../test-helpers.js'
 
 // throwOnError: an issue that it picks is thrown instead of reported (#229)
 
@@ -38,7 +43,7 @@ describe('throwOnError (#229)', () => {
     const onParseError = vi.fn()
 
     const error = thrown(() =>
-      parseUrlFilters('?f_age_gt=abc', { throwOnError: true, onParseError })
+      readUrlFilters('?f_age_gt=abc', { throwOnError: true, onParseError })
     )
 
     expect(error).toBeInstanceOf(InvalidFilterError)
@@ -50,7 +55,7 @@ describe('throwOnError (#229)', () => {
     const onParseError = vi.fn()
 
     const error = thrown(() =>
-      parseUrlFilters(`?f_age_gt=abc&f_name_contains=${LONG}`, {
+      readUrlFilters(`?f_age_gt=abc&f_name_contains=${LONG}`, {
         throwOnError: issue => issue.code === 'VALUE_TOO_LONG',
         onParseError
       })
@@ -69,7 +74,7 @@ describe('throwOnError (#229)', () => {
       const onParseError = vi.fn()
 
       expect(() =>
-        parseUrlFilters(`?f_age_gt=abc&f_name_contains=${LONG}`, {
+        readUrlFilters(`?f_age_gt=abc&f_name_contains=${LONG}`, {
           throwOnError,
           onParseError
         })
@@ -80,7 +85,7 @@ describe('throwOnError (#229)', () => {
 
   it('throws one wrapper for an issue inside a grouped querystring value', () => {
     const error = thrown(() =>
-      parseUrlFilters(grouped(`f_name_contains=${LONG}`), {
+      readUrlFilters(grouped(`f_name_contains=${LONG}`), {
         throwOnError: true
       })
     )
@@ -93,7 +98,7 @@ describe('throwOnError (#229)', () => {
 
   it('throws one wrapper for an issue inside a grouped base64 value', () => {
     const error = thrown(() =>
-      parseUrlFilters(grouped(btoa(JSON.stringify(longText))), {
+      readUrlFilters(grouped(btoa(JSON.stringify(longText))), {
         format: 'base64',
         throwOnError: true
       })
@@ -104,36 +109,54 @@ describe('throwOnError (#229)', () => {
     expect(error.message).not.toContain('Base64 decoding failed')
   })
 
-  it('throws from serializeFilters and generateUrl', () => {
+  it('throws from serializeFilters and writeUrlFilters', () => {
     expect(
       thrown(() => serializeFilters(longText, { throwOnError: true }))
     ).toMatchObject({ code: 'VALUE_TOO_LONG' })
     expect(
       thrown(() =>
-        generateUrl('https://example.com/', longText, { throwOnError: true })
+        writeUrlFilters('https://example.com/', longText, {
+          throwOnError: true
+        })
       )
     ).toMatchObject({ code: 'VALUE_TOO_LONG' })
   })
 
-  it('throws from getFilterModel, also for a grid error', () => {
-    const api = createGridApiSpies()
-    api.getFilterModel.mockReturnValue({
-      n: { filterType: 'number', type: 'foo', filter: 1 }
-    })
-
+  it('throws from fromGridModel for an invalid grid filter', () => {
     expect(
-      thrown(() => getFilterModel(asGridApi(api), { throwOnError: true }))
+      thrown(() =>
+        fromGridModel(
+          { n: { filterType: 'number', type: 'foo', filter: 1 } },
+          { throwOnError: true }
+        )
+      )
     ).toMatchObject({ code: 'INVALID_PARAM' })
+  })
+
+  it('throws from getUrl of the sync for a grid error', () => {
+    const api = createGridApiSpies()
+    const listeners = createGridListeners()
+    api.getFilterModel.mockReturnValue({})
+
+    const sync = createGridUrlSync({
+      api: asGridApi({
+        ...api,
+        addEventListener: listeners.addEventListener,
+        removeEventListener: listeners.removeEventListener
+      }),
+      applyUrlOnCreate: false,
+      throwOnError: true
+    })
 
     api.getFilterModel.mockImplementation(() => {
       throw new Error('grid failed')
     })
 
-    const error = thrown(() =>
-      getFilterModel(asGridApi(api), { throwOnError: true })
-    )
+    const error = thrown(() => sync.getUrl('https://example.com/'))
 
     expect(error).toBeInstanceOf(URLSyncError)
     expect(error).toMatchObject({ code: 'GRID_ERROR' })
+
+    sync.destroy()
   })
 })

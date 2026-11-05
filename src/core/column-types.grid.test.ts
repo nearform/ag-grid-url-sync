@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { ColDef, GridOptions } from 'ag-grid-community'
 import { gridColumnType } from './column-types.js'
-import { detectColumnFilterType } from './grid-integration.js'
 import { createRealGrid } from '../test-helpers.js'
 
 // The type of a column, from the column definition that AG Grid resolved
@@ -198,17 +197,5 @@ describe('gridColumnType', () => {
 
       expect(gridColumnType(api, 'age')).toBe('text')
     })
-  })
-})
-
-describe('detectColumnFilterType', () => {
-  it('uses the same rules, with text for a column that is not known', () => {
-    const api = gridWith([{ field: 'age' }, { field: 'dob' }], {
-      rowData: [ROW]
-    })
-
-    expect(detectColumnFilterType(api, 'age')).toBe('number')
-    expect(detectColumnFilterType(api, 'dob')).toBe('date')
-    expect(detectColumnFilterType(api, 'missing')).toBe('text')
   })
 })

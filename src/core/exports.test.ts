@@ -1,38 +1,71 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import * as lib from '../index.js'
-import * as core from './index.js'
 
-// The public exports of createGridUrlSync (#221)
+// The public exports of the package (#226 D1, D3)
 
-describe.each([
-  ['the package entry', lib],
-  ['the core index', core]
-])('%s', (_, entry) => {
-  it.each(['createGridUrlSync', 'individual', 'grouped'] as const)(
-    'exports %s',
-    name => {
-      expect(entry[name]).toBeInstanceOf(Function)
-    }
-  )
+// SAFETY: package.json has this shape. The tests below check it.
+const pkg = JSON.parse(
+  readFileSync(join(process.cwd(), 'package.json'), 'utf8')
+) as {
+  exports: Record<string, Record<string, string>>
+  typesVersions?: unknown
+}
 
-  it('exports IDLE_SNAPSHOT', () => {
-    expect(entry.IDLE_SNAPSHOT).toMatchObject({ status: 'idle', url: '' })
-  })
+describe('the package entry', () => {
+  it('exports the names of D3 and nothing else', async () => {
+    const lib = await import('../index.js')
 
-  it('does not export the internal DATA_ISSUE_CODES', () => {
-    expect('DATA_ISSUE_CODES' in entry).toBe(false)
-  })
-
-  it('still exports the deprecated class', () => {
-    expect(entry.AGGridUrlSync).toBeInstanceOf(Function)
-    expect(entry.createUrlSync).toBeInstanceOf(Function)
+    expect(Object.keys(lib).sort()).toEqual([
+      'IDLE_SNAPSHOT',
+      'InvalidDateError',
+      'InvalidFilterError',
+      'InvalidSerializationError',
+      'InvalidURLError',
+      'URLSyncError',
+      'createGridUrlSync',
+      'generateUrl',
+      'grouped',
+      'individual',
+      'parseUrlFilters'
+    ])
   })
 })
 
 describe('the React entry', () => {
-  it('still exports useAGGridUrlSync', async () => {
+  it('exports only useGridUrlSync', async () => {
     const react = await import('../react/index.js')
 
-    expect(react.useAGGridUrlSync).toBeInstanceOf(Function)
+    expect(Object.keys(react).sort()).toEqual(['useGridUrlSync'])
+  })
+})
+
+describe('the views entry', () => {
+  it('exports only createViewStore', async () => {
+    const views = await import('./view-storage.js')
+
+    expect(Object.keys(views).sort()).toEqual(['createViewStore'])
+  })
+})
+
+describe('package.json', () => {
+  it('has exactly three entry points', () => {
+    expect(Object.keys(pkg.exports)).toEqual(['.', './react', './views'])
+  })
+
+  it('has no typesVersions', () => {
+    expect(pkg.typesVersions).toBeUndefined()
+  })
+
+  it('has no require condition (ESM only)', () => {
+    for (const entry of Object.values(pkg.exports)) {
+      expect(Object.keys(entry)).not.toContain('require')
+    }
+  })
+
+  it('gives each entry types, import and default', () => {
+    for (const entry of Object.values(pkg.exports)) {
+      expect(Object.keys(entry)).toEqual(['types', 'import', 'default'])
+    }
   })
 })

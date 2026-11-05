@@ -2,8 +2,6 @@ import * as v from 'valibot'
 import type {
   AGGridUrlSyncConfig,
   FilterState,
-  InternalConfig,
-  ResolvedOptions,
   ColumnFilter,
   AGGridFilter
 } from './types.js'
@@ -22,7 +20,7 @@ import {
   filterTypeOf,
   isColumnModel
 } from './schemas.js'
-import { reportIssue, toIssue } from './issues.js'
+import { reportIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
 import { gridColumnType } from './column-types.js'
@@ -83,75 +81,6 @@ function toIsoDateString(val: string | undefined): string {
   const match = val.match(/^(\d{4}-\d{2}-\d{2})/)
 
   return match?.[1] ? match[1] : val || ''
-}
-
-/**
- * The filter type of a grid column, from the column definition that AG Grid
- * resolved (#224). Text for a column that the grid does not have, or whose
- * type AG Grid has not inferred yet.
- */
-export function detectColumnFilterType(
-  gridApi: GridApi,
-  columnId: string
-): 'text' | 'number' | 'date' {
-  const type = gridColumnType(gridApi, columnId)
-
-  return type === 'number' || type === 'date' ? type : 'text'
-}
-
-/**
- * Gets the current filter model from AG Grid as a filter state. Filter types
- * that the library does not support are skipped, and a filter that is not
- * valid is reported through `options.onParseError`.
- *
- * @param gridApi - AG Grid API instance
- * @param options - Optional options. Only `onParseError` is read.
- * @deprecated The public functions take AG Grid's own model (#225): use
- * `gridApi.getFilterModel()`. This function will be removed in 0.6.0.
- */
-export function getFilterModel(
-  gridApi: GridApi,
-  options?: AGGridUrlSyncConfig
-): FilterState
-/**
- * Gets the current filter model from AG Grid
- *
- * @deprecated Give the grid API as an argument:
- * `getFilterModel(gridApi, options)`. This form will be removed in 0.6.0.
- */
-export function getFilterModel(config: InternalConfig): FilterState
-export function getFilterModel(
-  source: GridApi | InternalConfig,
-  options?: AGGridUrlSyncConfig
-): FilterState {
-  // The deprecated form has the grid in its config object. A GridApi has no
-  // `gridApi` key.
-  if ('gridApi' in source) {
-    return readGridFilters(source.gridApi, resolveOptions(source))
-  }
-
-  return readGridFilters(source, resolveOptions(options))
-}
-
-function readGridFilters(
-  gridApi: GridApi,
-  options: ResolvedOptions
-): FilterState {
-  // Only the grid call is in the try. An issue report runs outside it, so a
-  // handler that throws gets its own error back, not a GRID_ERROR (#220).
-  let model: FilterModel | null
-
-  try {
-    // AG Grid can hand back null despite the declared return type
-    model = gridApi.getFilterModel()
-  } catch (error) {
-    // The grid API threw, which is not a problem with a filter
-    reportIssue(options, toIssue(error, 'GRID_ERROR'))
-
-    return {}
-  }
-
-  return fromGridModel(model, options)
 }
 
 /**
@@ -417,67 +346,6 @@ export function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
 }
 
 /**
- * Applies a filter state to AG Grid. A filter whose type does not match the
- * column is skipped with a warning. An error from the grid is reported
- * through `options.onParseError`.
- *
- * @param filterState - Filter state to apply
- * @param gridApi - AG Grid API instance
- * @param options - Optional options. Only `onParseError` is read.
- * @deprecated The public functions take AG Grid's own model (#225): use
- * `createGridUrlSync(...).applyFilters(model)` or `gridApi.setFilterModel`.
- * This function will be removed in 0.6.0.
- */
-export function applyFilterModel(
-  filterState: FilterState,
-  gridApi: GridApi,
-  options?: AGGridUrlSyncConfig
-): void
-/**
- * Applies a filter state to AG Grid
- *
- * @deprecated Give the grid API as an argument:
- * `applyFilterModel(filterState, gridApi, options)`. This form will be
- * removed in 0.6.0.
- */
-export function applyFilterModel(
-  filterState: FilterState,
-  config: InternalConfig
-): void
-export function applyFilterModel(
-  filterState: FilterState,
-  target: GridApi | InternalConfig,
-  options?: AGGridUrlSyncConfig
-): void {
-  // The deprecated form has the grid in its config object. A GridApi has no
-  // `gridApi` key.
-  if ('gridApi' in target) {
-    writeGridFilters(filterState, target.gridApi, resolveOptions(target))
-
-    return
-  }
-
-  writeGridFilters(filterState, target, resolveOptions(options))
-}
-
-function writeGridFilters(
-  filterState: FilterState,
-  gridApi: GridApi,
-  options: ResolvedOptions
-): void {
-  const model = toGridModel(filterState, gridApi, options)
-
-  // Only the grid call is in the try. An issue report runs outside it, so a
-  // handler that throws gets its own error back, not a GRID_ERROR (#220).
-  try {
-    gridApi.setFilterModel(model)
-  } catch (error) {
-    // The grid API threw, which is not a problem with a filter
-    reportIssue(options, toIssue(error, 'GRID_ERROR'))
-  }
-}
-
-/**
  * TYPE_MISMATCH when a number or date filter is on a column of another type.
  * Null while AG Grid has not inferred the column type: there is nothing to
  * check against, and AG Grid defers the model until it knows (#224). Other
@@ -537,7 +405,7 @@ export function checkColumnTypes(
 }
 
 /**
- * Converts URL filters to the AG Grid filter model that `applyFilterModel`
+ * Converts URL filters to the AG Grid filter model that the sync
  * would write. It does not call `setFilterModel`.
  */
 export function toGridModel(

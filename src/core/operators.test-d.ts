@@ -4,10 +4,6 @@
 // through tsconfig.typecheck.json. Vitest does not run it.
 import { expectTypeOf } from 'vitest'
 import {
-  TEXT_ONLY_OPERATIONS,
-  NUMBER_ONLY_OPERATIONS,
-  DATE_ONLY_OPERATIONS,
-  SHARED_OPERATIONS,
   TEXT_FILTER_OPERATIONS,
   NUMBER_FILTER_OPERATIONS,
   DATE_FILTER_OPERATIONS
@@ -16,10 +12,14 @@ import type {
   FilterOperation,
   TextFilterOperation,
   NumberFilterOperation,
-  DateFilterOperation,
-  RangeOperation,
-  BlankOperation
+  DateFilterOperation
 } from './types.js'
+import { operationsOnlyFor, sharedOperations } from './operators.js'
+
+const TEXT_ONLY_OPERATIONS = operationsOnlyFor('text')
+const NUMBER_ONLY_OPERATIONS = operationsOnlyFor('number')
+const DATE_ONLY_OPERATIONS = operationsOnlyFor('date')
+const SHARED_OPERATIONS = sharedOperations()
 
 type TextOnly = readonly ['contains', 'notContains', 'startsWith', 'endsWith']
 
@@ -78,7 +78,3 @@ expectTypeOf<DateFilterOperation>().toEqualTypeOf<
 expectTypeOf<FilterOperation>().toEqualTypeOf<
   TextOnly[number] | NumberOnly[number] | DateOnly[number] | Shared[number]
 >()
-
-expectTypeOf<RangeOperation>().toEqualTypeOf<'inRange' | 'dateRange'>()
-
-expectTypeOf<BlankOperation>().toEqualTypeOf<'blank' | 'notBlank'>()

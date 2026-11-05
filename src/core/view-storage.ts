@@ -88,7 +88,7 @@ export interface ViewStore {
  *
  * Deliberately a factory rather than a shared constant: listViews() hands its
  * array straight to callers, and a module-level sentinel would be one mutable
- * array shared by every store and every consumer of the ./view-storage subpath.
+ * array shared by every store and every consumer of the ./views entry point.
  */
 const empty = (): StoredViews => ({ views: [], activeId: null })
 

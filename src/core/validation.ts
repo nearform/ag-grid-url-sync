@@ -1,12 +1,9 @@
-import * as v from 'valibot'
 import type {
   AGGridUrlSyncConfig,
   FilterOperation,
-  DateFilterOperation,
-  ColumnFilter
+  DateFilterOperation
 } from './types.js'
 import { InvalidFilterError, InvalidDateError } from './types.js'
-import { ColumnFilterSchema } from './schemas.js'
 import { resolveOptions } from './options.js'
 
 // The defaults are in options.ts (#219). The `ag-grid-url-sync/validation`
@@ -64,7 +61,7 @@ export function validateFilterValue(
  */
 export function validateNumberFilter(value: number): ValidationResult {
   // Every finite number is valid. There is no safe-integer limit: String(n)
-  // and parseFloat give back the same number, so a number that generateUrl
+  // and parseFloat give back the same number, so a number that writeUrlFilters
   // writes comes back exactly. Text that would be rounded is rejected by
   // readNumber, which reads URL params and string values from the grid (#238).
   if (!Number.isFinite(value)) {
@@ -149,7 +146,7 @@ function significantDigits(text: string): string {
  *
  * String(n) is checked too. When the double lies exactly halfway between two
  * texts, String(n) and toPrecision can round to different ones, and the text
- * that generateUrl writes must always be kept.
+ * that writeUrlFilters writes must always be kept.
  */
 function keepsDigits(text: string, number: number): boolean {
   const key = significantDigits(text)
@@ -383,14 +380,4 @@ export function validateAndParseDateRange(
   }
 
   return [startDate, endDate]
-}
-
-/**
- * Validates if an object is a valid column filter
- *
- * @param obj - The object to validate
- * @returns Type guard that narrows the type to ColumnFilter
- */
-export function isValidColumnFilter(obj: unknown): obj is ColumnFilter {
-  return v.is(ColumnFilterSchema, obj)
 }

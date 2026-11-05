@@ -128,7 +128,7 @@ export interface GridApiFake {
  * @example
  * ```typescript
  * const api = { getFilterModel: vi.fn(() => ({})), setFilterModel: vi.fn() }
- * new AGGridUrlSync(asGridApi(api))
+ * createGridUrlSync({ api: asGridApi(api) })
  * ```
  */
 export function asGridApi(fake: GridApiFake): GridApi {
@@ -138,7 +138,7 @@ export function asGridApi(fake: GridApiFake): GridApi {
   // methods of a column. A test leaves a method out only when its code path
   // does not call it; a call to a missing method throws a TypeError, which
   // fails the test (or, in getColDef's case, gives the text filter type that
-  // detectColumnFilterType falls back to).
+  // the grid column type lookup falls back to).
   return fake as GridApi
 }
 

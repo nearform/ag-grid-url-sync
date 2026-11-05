@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { FilterModel } from 'ag-grid-community'
 import { createGridUrlSync } from './grid-url-sync.js'
 import { grouped, individual } from './codecs.js'
-import { parseUrlFilters } from './url-parser.js'
-import { generateUrl } from './url-generator.js'
+import { readUrlFilters } from './url-parser.js'
+import { writeUrlFilters } from './url-generator.js'
 import { createViewStore } from './view-storage.js'
 import type { IssueEvent } from './types.js'
 import {
@@ -168,7 +168,7 @@ describe.each(GRID_TIMINGS)('the json codec (%s timing)', timing => {
     grid.userEdit({ ...STATUS_SET, ...NAME_OR })
     await tick()
 
-    expect(parseUrlFilters(window.location.href, JSON_CODEC)).toEqual({
+    expect(readUrlFilters(window.location.href, JSON_CODEC)).toEqual({
       ...STATUS_SET,
       ...NAME_OR
     })
@@ -183,7 +183,7 @@ describe.each(GRID_TIMINGS)('the json codec (%s timing)', timing => {
     window.history.replaceState(
       null,
       '',
-      generateUrl(window.location.href, model, JSON_CODEC)
+      writeUrlFilters(window.location.href, model, JSON_CODEC)
     )
     const grid = createTimedGrid(timing, AGE_30)
     const length = window.history.length
@@ -265,7 +265,7 @@ describe.each(GRID_TIMINGS)(
       window.history.replaceState(
         null,
         '',
-        generateUrl(window.location.href, AGE_30, JSON_CODEC)
+        writeUrlFilters(window.location.href, AGE_30, JSON_CODEC)
       )
       const grid = createTimedGrid(timing, {}, { normalize: true })
 
@@ -350,7 +350,7 @@ describe('a custom filter model that is an array', () => {
     const grid = anyModelGrid(TAGS)
     const sync = createGridUrlSync({ api: grid.api, codec: individual() })
 
-    sync.applyUrl(generateUrl('http://x.test/', NAME_JO))
+    sync.applyUrl(writeUrlFilters('http://x.test/', NAME_JO))
 
     expect(grid.model()).toEqual({ ...TAGS, ...NAME_JO })
 
@@ -366,7 +366,7 @@ describe('a custom filter model that is an array', () => {
     })
 
     sync.applyUrl(
-      generateUrl('http://x.test/', { ...TAGS, ...NAME_JO }, JSON_CODEC)
+      writeUrlFilters('http://x.test/', { ...TAGS, ...NAME_JO }, JSON_CODEC)
     )
 
     expect(grid.model()).toEqual({ ...TAGS, ...NAME_JO })

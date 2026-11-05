@@ -1,12 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { FilterModel } from 'ag-grid-community'
-import {
-  serializeGrouped,
-  deserializeGrouped,
-  detectGroupedSerialization,
-  getAvailableFormats,
-  getFormatSerializer
-} from './grouped.js'
+import { serializeGrouped, deserializeGrouped } from './grouped.js'
 import {
   QueryStringSerializer,
   JsonSerializer,
@@ -14,17 +8,11 @@ import {
 } from './formats.js'
 import type {
   FilterState,
-  InternalConfig,
+  ResolvedOptions,
   SerializationFormat
 } from '../types.js'
 import { InvalidSerializationError, InvalidFilterError } from '../types.js'
-import { asGridApi } from '../../test-helpers.js'
 import { stableJson } from '../stable-json.js'
-
-const mockGridApi = asGridApi({
-  setFilterModel: () => {},
-  getFilterModel: () => ({})
-})
 
 /** A format name that a JavaScript caller can give and TypeScript rejects */
 const untypedFormat = (name: string): SerializationFormat =>
@@ -32,11 +20,13 @@ const untypedFormat = (name: string): SerializationFormat =>
   // (the case under test)
   name as SerializationFormat
 
+const serializerFor = (format: SerializationFormat) =>
+  format === 'json' ? new JsonSerializer() : new Base64Serializer()
+
 // Test configuration for grouped serialization
 const createTestConfig = (
-  overrides: Partial<InternalConfig> = {}
-): InternalConfig => ({
-  gridApi: mockGridApi,
+  overrides: Partial<ResolvedOptions> = {}
+): ResolvedOptions => ({
   paramPrefix: 'f_',
   maxValueLength: 200,
   onParseError: () => {},
@@ -178,12 +168,12 @@ describe('Grouped Serialization', () => {
   // A JS caller, or `{ onParseError: undefined }` spread over the defaults,
   // can leave the handler out. The fallback must still be returned.
   describe('without onParseError', () => {
-    const configWithoutHandler = (): InternalConfig => {
+    const configWithoutHandler = (): ResolvedOptions => {
       const { onParseError: _, ...config } = createTestConfig()
 
       // SAFETY: serializeGrouped and deserializeGrouped call onParseError with
       // `?.` (the case under test), as a JavaScript caller can leave it out
-      return config as InternalConfig
+      return config as ResolvedOptions
     }
 
     it('serializeGrouped returns the empty fallback', () => {
@@ -202,88 +192,6 @@ describe('Grouped Serialization', () => {
       expect(
         deserializeGrouped('invalid-json', 'json', configWithoutHandler())
       ).toEqual({})
-    })
-  })
-
-  describe('detectGroupedSerialization', () => {
-    it('does not write to the console for a URL it cannot read (#220)', () => {
-      const consoleError = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {})
-
-      expect(detectGroupedSerialization('not a url', ['f'])).toEqual({
-        isGrouped: false
-      })
-      expect(consoleError).not.toHaveBeenCalled()
-
-      consoleError.mockRestore()
-    })
-
-    it('should detect querystring format', () => {
-      const url =
-        'http://example.com?grid_filters=f_name_contains%3Djohn%26f_age_gt%3D25'
-
-      const result = detectGroupedSerialization(url, ['grid_filters'])
-
-      expect(result.isGrouped).toBe(true)
-      expect(result.paramName).toBe('grid_filters')
-      expect(result.format).toBe('querystring')
-      expect(result.value).toBe('f_name_contains=john&f_age_gt=25')
-    })
-
-    it('should detect JSON format', () => {
-      const jsonData = JSON.stringify(sampleFilterState)
-      const url = `http://example.com?grid_filters=${encodeURIComponent(jsonData)}`
-      const result = detectGroupedSerialization(url, ['grid_filters'])
-
-      expect(result.isGrouped).toBe(true)
-      expect(result.paramName).toBe('grid_filters')
-      expect(result.format).toBe('json')
-    })
-
-    it('should detect base64 format', () => {
-      const base64Data = btoa(JSON.stringify(sampleFilterState))
-      const url = `http://example.com?grid_filters=${encodeURIComponent(base64Data)}`
-      const result = detectGroupedSerialization(url, ['grid_filters'])
-
-      expect(result.isGrouped).toBe(true)
-      expect(result.paramName).toBe('grid_filters')
-      expect(result.format).toBe('base64')
-    })
-
-    it('should not detect grouped serialization when not present', () => {
-      const url = 'http://example.com?f_name_contains=john&f_age_gt=25'
-      const result = detectGroupedSerialization(url, ['grid_filters'])
-
-      expect(result.isGrouped).toBe(false)
-    })
-
-    it('should check multiple possible parameter names', () => {
-      const url = 'http://example.com?filters=f_name_contains%3Djohn'
-
-      const result = detectGroupedSerialization(url, [
-        'grid_filters',
-        'filters'
-      ])
-
-      expect(result.isGrouped).toBe(true)
-      expect(result.paramName).toBe('filters')
-    })
-  })
-
-  describe('utility functions', () => {
-    it('should return available formats', () => {
-      const formats = getAvailableFormats()
-      expect(formats).toEqual(['querystring', 'json', 'base64'])
-    })
-
-    it('should return format serializers', () => {
-      expect(getFormatSerializer('querystring')).toBeInstanceOf(
-        QueryStringSerializer
-      )
-      expect(getFormatSerializer('json')).toBeInstanceOf(JsonSerializer)
-      expect(getFormatSerializer('base64')).toBeInstanceOf(Base64Serializer)
-      expect(getFormatSerializer(untypedFormat('invalid'))).toBeNull()
     })
   })
 })
@@ -502,9 +410,7 @@ describe('maxValueLength in json and base64 formats (#213)', () => {
 
       it('drops and reports over-length values on parse', () => {
         const onParseError = vi.fn()
-        const serializer = getFormatSerializer(format)
-
-        if (!serializer) throw new Error(`no ${format} serializer`)
+        const serializer = serializerFor(format)
 
         const value = serializer.serialize(
           { big: state.big },

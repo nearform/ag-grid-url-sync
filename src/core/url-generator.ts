@@ -72,7 +72,7 @@ function toUrlString(url: URL, params: URLSearchParams): string {
  * The host app's own params are kept, including repeated keys. Filter params
  * from either mode are replaced.
  */
-export function generateUrl(
+export function writeUrlFilters(
   baseUrl: string,
   model: FilterModel,
   config: AGGridUrlSyncConfig = {}

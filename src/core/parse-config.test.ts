@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseUrlFilters } from './url-parser.js'
-import { generateUrl, serializeFilters } from './url-generator.js'
+import { readUrlFilters } from './url-parser.js'
+import { writeUrlFilters, serializeFilters } from './url-generator.js'
 import {
   serializeGrouped,
   deserializeGrouped
@@ -12,12 +12,15 @@ import {
 } from './serialization/formats.js'
 import { DEFAULT_CONFIG, validateFilterValue } from './validation.js'
 import type { FilterModel } from 'ag-grid-community'
-import type { FilterState, ParseConfig, SerializationFormat } from './types.js'
+import type {
+  FilterState,
+  ResolvedOptions,
+  SerializationFormat
+} from './types.js'
 import { InvalidFilterError, InvalidSerializationError } from './types.js'
 
-// The parse/serialize path must work without a grid (issue #109). These tests
-// call it with no gridApi, with gridApi: null, and with a gridApi that throws
-// when read, so a future change that reads config.gridApi fails here.
+// The parse/serialize path must work without a grid (issue #109). It takes
+// resolved options only, and has no grid argument.
 
 const BASE_URL = 'https://example.com/grid'
 
@@ -32,31 +35,16 @@ const sampleFilterState: FilterModel = {
   }
 }
 
-function withThrowingGridApi(config: ParseConfig): ParseConfig {
-  const guarded = { ...config }
-  Object.defineProperty(guarded, 'gridApi', {
-    enumerable: true,
-    get() {
-      throw new Error('gridApi must not be read on the parse/serialize path')
-    }
-  })
-
-  return guarded
-}
-
-type GridApiVariant = [string, (config: ParseConfig) => ParseConfig]
-
-const gridApiVariants: GridApiVariant[] = [
-  ['gridApi omitted', config => config],
-  ['gridApi: null', config => ({ ...config, gridApi: null })],
-  ['gridApi throws when read', withThrowingGridApi]
-]
-
 const groupedFormats: SerializationFormat[] = ['querystring', 'json', 'base64']
 
-describe.each(gridApiVariants)('ParseConfig with %s', (_, applyVariant) => {
-  const createConfig = (overrides: Partial<ParseConfig> = {}): ParseConfig =>
-    applyVariant({ ...DEFAULT_CONFIG, onParseError: vi.fn(), ...overrides })
+describe('pure functions with resolved options', () => {
+  const createConfig = (
+    overrides: Partial<ResolvedOptions> = {}
+  ): ResolvedOptions => ({
+    ...DEFAULT_CONFIG,
+    onParseError: vi.fn(),
+    ...overrides
+  })
 
   describe('individual serialization', () => {
     it('serializeFilters writes prefixed params', () => {
@@ -67,24 +55,24 @@ describe.each(gridApiVariants)('ParseConfig with %s', (_, applyVariant) => {
       expect(params.get('f_created_after')).toBe('2024-01-01')
     })
 
-    it('generateUrl and parseUrlFilters round-trip the filter state', () => {
+    it('writeUrlFilters and readUrlFilters round-trip the filter state', () => {
       const config = createConfig()
 
-      const url = generateUrl(BASE_URL, sampleFilterState, config)
+      const url = writeUrlFilters(BASE_URL, sampleFilterState, config)
 
-      expect(parseUrlFilters(url, config)).toEqual(sampleFilterState)
+      expect(readUrlFilters(url, config)).toEqual(sampleFilterState)
       expect(config.onParseError).not.toHaveBeenCalled()
     })
   })
 
   describe.each(groupedFormats)('grouped %s serialization', format => {
-    it('generateUrl and parseUrlFilters round-trip the filter state', () => {
+    it('writeUrlFilters and readUrlFilters round-trip the filter state', () => {
       const config = createConfig({ serialization: 'grouped', format })
 
-      const url = generateUrl(BASE_URL, sampleFilterState, config)
+      const url = writeUrlFilters(BASE_URL, sampleFilterState, config)
 
       expect(new URL(url).searchParams.has(config.groupedParam)).toBe(true)
-      expect(parseUrlFilters(url, config)).toEqual(sampleFilterState)
+      expect(readUrlFilters(url, config)).toEqual(sampleFilterState)
       expect(config.onParseError).not.toHaveBeenCalled()
     })
 
@@ -103,8 +91,8 @@ describe.each(gridApiVariants)('ParseConfig with %s', (_, applyVariant) => {
 
 describe('grouped querystring serialization with caller config (#201)', () => {
   const createGroupedConfig = (
-    overrides: Partial<ParseConfig> = {}
-  ): ParseConfig => ({
+    overrides: Partial<ResolvedOptions> = {}
+  ): ResolvedOptions => ({
     ...DEFAULT_CONFIG,
     serialization: 'grouped',
     format: 'querystring',
@@ -120,16 +108,16 @@ describe('grouped querystring serialization with caller config (#201)', () => {
     const config = createGroupedConfig({ maxValueLength: 500 })
     const filterState = textFilter('a'.repeat(300))
 
-    const url = generateUrl(BASE_URL, filterState, config)
+    const url = writeUrlFilters(BASE_URL, filterState, config)
 
-    expect(parseUrlFilters(url, config)).toEqual(filterState)
+    expect(readUrlFilters(url, config)).toEqual(filterState)
     expect(config.onParseError).not.toHaveBeenCalled()
   })
 
   it("reports a value over the caller's maxValueLength when generating", () => {
     const config = createGroupedConfig({ maxValueLength: 5 })
 
-    const url = generateUrl(BASE_URL, textFilter('john smith'), config)
+    const url = writeUrlFilters(BASE_URL, textFilter('john smith'), config)
 
     expect(new URL(url).searchParams.has(config.groupedParam)).toBe(false)
     expect(config.onParseError).toHaveBeenCalledOnce()
@@ -142,13 +130,13 @@ describe('grouped querystring serialization with caller config (#201)', () => {
       age: { filterType: 'number', type: 'greaterThan', filter: 25 }
     }
 
-    const url = generateUrl(
+    const url = writeUrlFilters(
       BASE_URL,
       { ...textFilter('john smith'), ...age },
       config
     )
 
-    expect(parseUrlFilters(url, config)).toEqual(age)
+    expect(readUrlFilters(url, config)).toEqual(age)
     expect(config.onParseError).toHaveBeenCalledOnce()
   })
 
@@ -159,7 +147,7 @@ describe('grouped querystring serialization with caller config (#201)', () => {
       grid_filters: 'f_name_contains=john+smith&f_age_gt=25'
     })
 
-    const filters = parseUrlFilters(`${BASE_URL}?${grouped}`, config)
+    const filters = readUrlFilters(`${BASE_URL}?${grouped}`, config)
 
     expect(filters).toEqual({
       age: { filterType: 'number', type: 'greaterThan', filter: 25 }
@@ -171,7 +159,7 @@ describe('grouped querystring serialization with caller config (#201)', () => {
     const config = createGroupedConfig()
     const grouped = new URLSearchParams({ grid_filters: 'f_age_gt=abc' })
 
-    parseUrlFilters(`${BASE_URL}?${grouped}`, config)
+    readUrlFilters(`${BASE_URL}?${grouped}`, config)
 
     const error = vi.mocked(config.onParseError).mock.calls[0]?.[0]
     expect(error).toBeInstanceOf(InvalidSerializationError)
@@ -197,7 +185,7 @@ describe('grouped querystring serialization with caller config (#201)', () => {
       grid_filters: 'f_name_contains=john&f_age_gt=abc'
     })
 
-    const filters = parseUrlFilters(`${BASE_URL}?${grouped}`, config)
+    const filters = readUrlFilters(`${BASE_URL}?${grouped}`, config)
 
     expect(filters).toEqual(textFilter('john'))
     expect(config.onParseError).toHaveBeenCalledOnce()
@@ -211,27 +199,27 @@ describe('partial config (#219)', () => {
     name: { filterType: 'text', type: 'contains', filter: 'a'.repeat(201) }
   }
 
-  it('parseUrlFilters works with no config', () => {
-    expect(parseUrlFilters('?f_name_contains=john')).toEqual({
+  it('readUrlFilters works with no config', () => {
+    expect(readUrlFilters('?f_name_contains=john')).toEqual({
       name: { filterType: 'text', type: 'contains', filter: 'john' }
     })
   })
 
-  it('serializeFilters and generateUrl work with no config', () => {
+  it('serializeFilters and writeUrlFilters work with no config', () => {
     expect(serializeFilters(sampleFilterState).get('f_age_gt')).toBe('25')
 
-    const url = generateUrl(BASE_URL, sampleFilterState)
+    const url = writeUrlFilters(BASE_URL, sampleFilterState)
 
-    expect(parseUrlFilters(url)).toEqual(sampleFilterState)
+    expect(readUrlFilters(url)).toEqual(sampleFilterState)
   })
 
-  it('generateUrl and parseUrlFilters use the options that are set', () => {
+  it('writeUrlFilters and readUrlFilters use the options that are set', () => {
     const config = { paramPrefix: 'flt_' }
 
-    const url = generateUrl(BASE_URL, sampleFilterState, config)
+    const url = writeUrlFilters(BASE_URL, sampleFilterState, config)
 
     expect(new URL(url).searchParams.get('flt_name_contains')).toBe('john')
-    expect(parseUrlFilters(url, config)).toEqual(sampleFilterState)
+    expect(readUrlFilters(url, config)).toEqual(sampleFilterState)
   })
 
   it.each(groupedFormats)(
@@ -239,10 +227,10 @@ describe('partial config (#219)', () => {
     format => {
       const config = { serialization: 'grouped', format } as const
 
-      const url = generateUrl(BASE_URL, sampleFilterState, config)
+      const url = writeUrlFilters(BASE_URL, sampleFilterState, config)
 
       expect(new URL(url).searchParams.has('grid_filters')).toBe(true)
-      expect(parseUrlFilters(url, config)).toEqual(sampleFilterState)
+      expect(readUrlFilters(url, config)).toEqual(sampleFilterState)
     }
   )
 
@@ -289,10 +277,10 @@ describe('partial config (#219)', () => {
       format: undefined
     }
 
-    const url = generateUrl(BASE_URL, sampleFilterState, config)
+    const url = writeUrlFilters(BASE_URL, sampleFilterState, config)
 
     expect(new URL(url).searchParams.get('f_name_contains')).toBe('john')
-    expect(parseUrlFilters(url, config)).toEqual(sampleFilterState)
+    expect(readUrlFilters(url, config)).toEqual(sampleFilterState)
   })
 
   it('validateFilterValue uses the default maxValueLength', () => {

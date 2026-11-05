@@ -804,7 +804,10 @@ export function createSync(
     // pending (D2)
     active = pendingView(view.id, view.filterModel)
 
-    if (!writeModel(view.filterModel, 'restore', startCall('url', 'report'))) {
+    if (writeModel(view.filterModel, 'restore', startCall('url', 'report'))) {
+      // The grid no longer shows an applied URL, as after loadView (#285)
+      applyIssues = NO_ISSUES
+    } else {
       active = null
     }
 

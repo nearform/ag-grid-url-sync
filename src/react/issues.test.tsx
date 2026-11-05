@@ -364,11 +364,7 @@ describe('useGridUrlSync issues (#229)', () => {
     expect(result.current.issues).toEqual([])
   })
 
-  // KNOWN GAP (#285): a new storageKey restores the stored view of
-  // the new store, but the new sync keeps the apply issues of the earlier
-  // URL apply. A view load drops them. The removed 0.5 hook dropped
-  // them for this restore too.
-  test.fails('drops the apply issues when a stored view is restored', async () => {
+  test('drops the apply issues when a stored view is restored (#285)', async () => {
     window.localStorage.clear()
     createViewStore('restore-b').saveView('Eng', {
       dept: { filterType: 'text', type: 'equals', filter: 'eng' }

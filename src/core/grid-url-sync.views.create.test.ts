@@ -297,3 +297,60 @@ describe('createGridUrlSync: edge cases of the landing on create', () => {
     sync.destroy()
   })
 })
+
+// A grid that lands the restore in two parts (#302), as AG Grid does with a
+// React custom filter: the late 'api' event with the full model ends the
+// same landing, so the view stays active (rule 1)
+describe('createGridUrlSync: a restore that lands in two parts', () => {
+  const BOTH = { ...NAME_JO, ...AGE_30 }
+
+  it('a reload keeps the view, its pointer and the entry', async () => {
+    const store = createViewStore('t')
+    const both = store.saveView('Both', BOTH)
+    store.persistActiveViewId(both.id)
+    window.history.replaceState(null, '', '/?f_name_contains=jo&f_age_eq=30')
+    const length = window.history.length
+
+    const grid = createTimedGrid('in-call', {}, { late: ['age'] })
+
+    const sync = createGridUrlSync({
+      api: grid.api,
+      views: store,
+      history: 'push'
+    })
+
+    await tick()
+
+    expect(grid.api.getFilterModel()).toEqual(BOTH)
+    expect(sync.getSnapshot().activeViewId).toBe(both.id)
+    expect(store.getActiveViewId()).toBe(both.id)
+    expect(window.history.length).toBe(length)
+    expect(window.location.search).toBe('?f_name_contains=jo&f_age_eq=30')
+
+    sync.destroy()
+  })
+
+  it('an empty URL restores the view with its full filters', async () => {
+    const store = createViewStore('t')
+    const both = store.saveView('Both', BOTH)
+    store.persistActiveViewId(both.id)
+    const length = window.history.length
+
+    const grid = createTimedGrid('in-call', {}, { late: ['age'] })
+
+    const sync = createGridUrlSync({
+      api: grid.api,
+      views: store,
+      history: 'push'
+    })
+
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBe(both.id)
+    expect(store.getActiveViewId()).toBe(both.id)
+    expect(window.history.length).toBe(length)
+    expect(window.location.search).toBe('?f_name_contains=jo&f_age_eq=30')
+
+    sync.destroy()
+  })
+})

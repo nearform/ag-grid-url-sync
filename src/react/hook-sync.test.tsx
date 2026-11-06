@@ -590,4 +590,67 @@ describe('the stored pointer after a hand edit', () => {
     expect(result.current.activeViewId).toBeNull()
     expect(createViewStore(KEY).getActiveViewId()).toBe(other.id)
   })
+
+  // 0.5.1 cleared the pointer in its filterChanged listener, also after the
+  // hook's own applyFilters. The sync reports it with source 'api' (#313).
+  test('a pointer write that fails after applyFilters has the context filter-change', async () => {
+    const onError = vi.fn()
+    const grid = createGrid(ANN)
+    grid.api.setFilterModel.mockImplementation((next: FilterModel) => {
+      grid.setModel(next)
+    })
+
+    const { result } = renderSync({
+      grid,
+      options: { storageKey: KEY, onError }
+    })
+
+    await waitForEffects()
+    act(() => {
+      result.current.saveView('v')
+    })
+
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError')
+    })
+    act(() => {
+      result.current.applyFilters({
+        name: { filterType: 'text', type: 'contains', filter: 'bob' }
+      })
+    })
+
+    expect(result.current.activeViewId).toBeNull()
+    expect(onError.mock.calls.map(([, context]) => context)).toEqual([
+      'filter-change'
+    ])
+  })
+
+  test('a grid read that fails after loadView has the context update-state', async () => {
+    const onError = vi.fn()
+    const grid = createGrid()
+    const view = createViewStore(KEY).saveView('v', OTHER)
+    createViewStore(KEY).persistActiveViewId(null)
+
+    const { result } = renderSync({
+      grid,
+      options: { storageKey: KEY, onError }
+    })
+
+    await waitForEffects()
+
+    // The grid takes the view, but each read after it fails
+    grid.api.setFilterModel.mockImplementation(() => {
+      grid.api.getFilterModel.mockImplementation(() => {
+        throw new Error('Read failed')
+      })
+    })
+
+    act(() => {
+      result.current.loadView(view.id)
+    })
+
+    expect(onError.mock.calls.map(([, context]) => context)).toEqual([
+      'update-state'
+    ])
+  })
 })

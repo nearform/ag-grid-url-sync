@@ -181,6 +181,12 @@ export interface SyncStart {
    * keeps them: the grid shows what it showed.
    */
   readonly newStore?: boolean | undefined
+  /**
+   * The deprecated hook: a grid read and a pointer clear report with source
+   * 'grid', whatever started the work, as before #313. The hook gives them
+   * the 0.5.1 contexts by that source.
+   */
+  readonly gridSourceForGridWork?: boolean | undefined
 }
 
 /**
@@ -231,6 +237,11 @@ export function createSync(
     } catch (error) {
       reportLater(toError(error))
     }
+  }
+
+  /** The source of a grid read or a pointer clear that the work started */
+  function gridWork(source: IssueSource): IssueSource {
+    return start.gridSourceForGridWork ? 'grid' : source
   }
 
   function startCall(source: IssueSource, mode: IssueMode): Call {
@@ -338,11 +349,20 @@ export function createSync(
   }
 
   /**
-   * Reads the grid's filters and the URL for them. Only the issues that the
-   * last read did not have go to onIssue, so a read after an apply and the
-   * late filterChanged do not report the same issue twice.
+   * Reads the grid's filters and the URL for them, and sends the new issues
+   * to onIssue with the source of the work that the read is part of: the
+   * call that wrote to the grid, or 'grid' for the grid's own filters (#313)
    */
-  function readGrid(): void {
+  function readGrid(source: IssueSource = 'grid'): void {
+    for (const issue of readGridIssues()) emit(issue, gridWork(source))
+  }
+
+  /**
+   * Reads the grid's filters and the URL for them. Gives only the issues
+   * that the last read did not have, so a read after an apply and the late
+   * filterChanged do not report the same issue twice.
+   */
+  function readGridIssues(): URLSyncError[] {
     const call = startCall('grid', 'collect')
 
     try {
@@ -357,11 +377,9 @@ export function createSync(
 
     const known = new Set(readIssues.map(issueKey))
 
-    for (const issue of call.issues) {
-      if (!known.has(issueKey(issue))) emit(issue, 'grid')
-    }
-
     readIssues = call.issues.length ? call.issues : NO_ISSUES
+
+    return call.issues.filter(issue => !known.has(issueKey(issue)))
   }
 
   /**
@@ -403,10 +421,12 @@ export function createSync(
     }
 
     applyIssues = call.issues.length ? call.issues : NO_ISSUES
-    readGrid()
+    // A read after the apply's write is part of the apply (#313). With no
+    // write, the read finds the grid's own filters.
+    readGrid(applies ? source : 'grid')
 
     if (filters && applies && settleUrlWrite(filters, before, failed)) {
-      followActiveView('url')
+      followActiveView('url', source)
     }
 
     publish()
@@ -468,10 +488,10 @@ export function createSync(
     })
 
     own = settled.own
-    readGrid()
+    readGrid(call.source)
 
     if (settled.landed) {
-      followActiveView(kind)
+      followActiveView(kind, call.source)
       writeLanding(kind, call.source)
     }
 
@@ -597,10 +617,12 @@ export function createSync(
    * later own write can have taken the place of the view's record. Any other
    * grid model clears the active view and its stored pointer, except in an
    * echo while the view is pending, and in a queued echo, where the grid
-   * passes through an earlier write.
+   * passes through an earlier write. A failed pointer clear is an issue of
+   * the work that started the rule: `source` (#313).
    */
   function followActiveView(
     landing: WriteKind | null,
+    source: IssueSource,
     seen: Seen = 'call',
     api = true
   ): void {
@@ -628,7 +650,7 @@ export function createSync(
 
     const { id } = active
     active = null
-    clearPointer(id, startCall('grid', 'report'))
+    clearPointer(id, startCall(gridWork(source), 'report'))
   }
 
   /**
@@ -858,14 +880,20 @@ export function createSync(
       return
     }
 
-    readGrid()
-
+    const found = readGridIssues()
     const result = classify(event?.source)
+
+    // An echo or a late landing of the sync's own write is part of the call
+    // that made the write (#313). Only a change is the grid's.
+    const source = result.kind === 'change' ? 'grid' : ownSource
+
+    for (const issue of found) emit(issue, gridWork(source))
 
     // On each event, echoes too: a pending view can land in an echo of a
     // later own write. The rule is the same for the same grid model.
     followActiveView(
       result.kind === 'landing' ? result.write : null,
+      source,
       result.kind !== 'echo' ? 'change' : result.queued ? 'queued' : 'echo',
       event?.source === 'api'
     )

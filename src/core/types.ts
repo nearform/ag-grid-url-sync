@@ -691,6 +691,9 @@ export type SyncStatus = 'idle' | 'active' | 'destroyed'
  * Where the work that found an issue started. `'url'`: the sync read the
  * address bar itself (on create, or on `popstate`). `'grid'`: the sync read
  * the grid after a filter change. `'api'`: a method that the app called.
+ * The work that a call starts has the source of the call: the grid read
+ * after its write, a later landing of that write, and a stored pointer
+ * write (#313).
  */
 export type IssueSource = 'url' | 'grid' | 'api'
 

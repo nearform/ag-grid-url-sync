@@ -275,6 +275,23 @@ describe('AGGridUrlSync - Grouped Serialization Integration', () => {
       expect(queryFormat).toContain('f_name_contains=john')
     })
 
+    // #309 changes only the URL. The value keeps its 0.5 text.
+    it('should keep the 0.5 values of getFiltersAsFormat with no filters', () => {
+      mockGridApi.getFilterModel.mockReturnValue({})
+
+      const urlSync = createUrlSync(asGridApi(mockGridApi), {
+        serialization: 'grouped',
+        format: 'json'
+      })
+
+      expect(urlSync.getFiltersAsFormat('json')).toBe('{}')
+      expect(urlSync.getFiltersAsFormat('base64')).toBe('e30=')
+      expect(urlSync.getFiltersAsFormat('querystring')).toBe('')
+      expect(urlSync.generateUrl('http://example.com/?tab=1')).toBe(
+        'http://example.com/?tab=1'
+      )
+    })
+
     it('should provide serialization mode and format getters', () => {
       const individualSync = createUrlSync(asGridApi(mockGridApi), {
         serialization: 'individual'

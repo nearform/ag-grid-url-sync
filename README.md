@@ -231,6 +231,8 @@ function createShareableUrl(filters: FilterState, baseUrl: string): string {
 }
 ```
 
+`generateUrl` keeps the page's own params as they are in `baseUrl`: the same text and the same order. For example, `?debug` stays `?debug`, and `%20` stays `%20`. It removes the old filter params and puts the new ones after the page's params, in both modes. With no filters, it writes no filter param. The sync, `getUrl` and the deprecated APIs write the URL in the same way.
+
 #### Example: Read and Write the Grid Filters
 
 ```typescript
@@ -278,6 +280,8 @@ sync.destroy()
 ```
 
 `applyFilters` writes filters to the grid as the app's own write. When they land, the sync writes the URL in the `history` mode, as it does for a user edit. `applyUrl` writes no history, because the URL already holds those filters.
+
+A URL write keeps the text and the order of the page's other params, and puts the filter params after them. With no filters, the URL has no filter param.
 
 | Option             | Default                   | Meaning                                                                                                                                                                                                   |
 | ------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -367,6 +371,8 @@ interface AGGridUrlSyncConfig {
 ```
 
 When the library reads a URL, it reads only the `groupedParam` name and decodes it with the configured `format`. It does not guess the format. This works in both modes, so a grouped link opens in an app in individual mode when the name and format match. If the param is present and not empty, the prefixed params are not read.
+
+With no filters, the URL has no grouped param, in each format. A link with an empty value, such as `?grid_filters=%7B%7D` (json) or `?grid_filters=e30%3D` (base64), still opens with no filters and no issue. `getFiltersAsFormat` and `serializeGrouped` do not change: with no filters, they give `'{}'` for json, `'e30='` for base64 and `''` for querystring.
 
 > **Note:** A URL written with a different `groupedParam` or `format` does not decode. If you change either option, links that were shared before the change stop working.
 

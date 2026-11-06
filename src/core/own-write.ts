@@ -2,7 +2,7 @@
 // no grid, no window. The sync keeps one record and asks these functions what
 // the record means after a call and at each filterChanged.
 
-import type { FilterModel } from 'ag-grid-community'
+import type { FilterModel } from './grid-integration.js'
 import type { FilterState } from './types.js'
 
 /** What a write is. It decides the key form and the history write at the landing. */

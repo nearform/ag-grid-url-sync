@@ -1,4 +1,4 @@
-import type { FilterModel, GridApi } from 'ag-grid-community'
+import type { GridApi } from 'ag-grid-community'
 import type {
   ApplyResult,
   FilterState,
@@ -21,7 +21,8 @@ import { resolveParamPrefix } from './individual-params.js'
 import {
   fromGridModel,
   getFilterModel,
-  toGridModel
+  toGridModel,
+  type FilterModel
 } from './grid-integration.js'
 import type { GridView } from './view-storage.js'
 import type {

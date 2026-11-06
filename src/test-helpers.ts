@@ -120,6 +120,11 @@ export interface GridApiFake {
   addEventListener?(event: string, listener: FilterChangedListener): void
   removeEventListener?(event: string, listener: FilterChangedListener): void
   getColumn?(colId: string): ColumnFake | null
+  /**
+   * AG Grid 28-30 has no getColumn on the grid API (it is on the column API),
+   * but getColumnDef is there, so the core reads the colDef from it (#300)
+   */
+  getColumnDef?(colId: string): Pick<ColDef, 'filter' | 'cellDataType'> | null
 }
 
 /**

@@ -87,11 +87,16 @@ export function detectColumnFilterType(
   columnId: string
 ): 'text' | 'number' | 'date' {
   try {
-    const column = gridApi.getColumn(columnId)
+    // AG Grid 28-30 has no getColumn on the grid API (it is on the column
+    // API only), so the call throws and every number and date filter became
+    // a TYPE_MISMATCH (#300). getColumnDef is on the grid API in those
+    // versions too, and a test double can lack either method.
+    const column =
+      'getColumn' in gridApi ? gridApi.getColumn(columnId) : undefined
 
-    if (!column) return 'text' // Default to text for unknown columns
+    const colDef = column?.getColDef() ?? gridApi.getColumnDef?.(columnId)
 
-    const colDef = column.getColDef()
+    if (!colDef) return 'text' // Default to text for unknown columns
 
     // 1. Explicit filter configuration takes priority
     if (colDef.filter === 'agDateColumnFilter') return 'date'

@@ -10,6 +10,7 @@ import {
 import { generateUrl } from './url-generator.js'
 import type { InternalConfig, FilterState } from './types.js'
 import { asGridApi, createGridApiSpies } from '../test-helpers.js'
+import type { FilterModel } from 'ag-grid-community'
 
 describe('Grid Integration', () => {
   let mockGridApi: ReturnType<typeof createGridApiSpies>
@@ -81,6 +82,22 @@ describe('Grid Integration', () => {
 
       const result = detectColumnFilterType(asGridApi(mockGridApi), 'nofilter')
       expect(result).toBe('text')
+    })
+
+    // On AG Grid 28-30 the grid API has no getColumn (it is on the column
+    // API), but getColumnDef is there (#300)
+    it('should read the colDef from getColumnDef when the grid API has no getColumn (#300)', () => {
+      const api = asGridApi({
+        getColumnDef: (colId: string) =>
+          colId === 'age'
+            ? { filter: 'agNumberColumnFilter' }
+            : colId === 'created'
+              ? { filter: 'agDateColumnFilter' }
+              : null
+      })
+
+      expect(detectColumnFilterType(api, 'age')).toBe('number')
+      expect(detectColumnFilterType(api, 'created')).toBe('date')
     })
   })
 
@@ -623,6 +640,43 @@ describe('Grid Integration', () => {
         }
       })
     })
+  })
+
+  // On AG Grid 28-30 the grid API has no getColumn, so detectColumnFilterType
+  // read the colDef from getColumnDef instead (#300)
+  it('applyFilterModel accepts number and date filters when the grid API has no getColumn (#300)', () => {
+    const api = asGridApi({
+      setFilterModel: vi.fn<(model: FilterModel | null) => void>(),
+      getFilterModel: vi.fn(() => ({})),
+      getColumnDef: (colId: string) =>
+        colId === 'age'
+          ? { filter: 'agNumberColumnFilter' }
+          : colId === 'created'
+            ? { filter: 'agDateColumnFilter' }
+            : null
+    })
+
+    const onParseError = vi.fn()
+
+    applyFilterModel(
+      {
+        age: { filterType: 'number', type: 'greaterThan', filter: 30 },
+        created: { filterType: 'date', type: 'eq', filter: '2024-01-15' }
+      },
+      api,
+      { onParseError }
+    )
+
+    expect(api.setFilterModel).toHaveBeenCalledWith({
+      age: { filterType: 'number', type: 'greaterThan', filter: 30 },
+      created: {
+        filterType: 'date',
+        type: 'equals',
+        dateFrom: '2024-01-15',
+        dateTo: null
+      }
+    })
+    expect(onParseError).not.toHaveBeenCalled()
   })
 
   // gridApi is an argument, not a config field (#219). The tests above use the

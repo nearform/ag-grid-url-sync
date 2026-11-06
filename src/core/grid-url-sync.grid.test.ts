@@ -54,6 +54,32 @@ describe('createGridUrlSync: apply on create', () => {
     expect(sync.getSnapshot().url).toContain('f_name_contains=jo')
   })
 
+  // A caller can forward optional props, so a key can be present with the
+  // value undefined (#258).
+  it('uses the defaults for options set to undefined', async () => {
+    window.history.replaceState(null, '', '/?f_name_contains=jo')
+    const api = createRealGrid()
+
+    const sync = createGridUrlSync({
+      api,
+      codec: undefined,
+      maxValueLength: undefined,
+      history: undefined,
+      popstate: undefined,
+      applyUrlOnCreate: undefined,
+      throwOnError: undefined,
+      onIssue: undefined,
+      views: undefined
+    })
+
+    await settle()
+
+    expect(api.getFilterModel()).toMatchObject(NAME_JO)
+    expect(sync.getSnapshot().issues).toEqual([])
+
+    sync.destroy()
+  })
+
   it('keeps the grid filters when the URL has no filter params', async () => {
     window.history.replaceState(null, '', '/?page=2')
     const api = gridWithInitialFilter()

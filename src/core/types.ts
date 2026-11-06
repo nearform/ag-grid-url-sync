@@ -1,4 +1,5 @@
 import type {
+  FilterModel,
   GridApi as AGGridApi,
   TextFilterModel,
   NumberFilterModel,
@@ -8,12 +9,8 @@ import type { GridView, ViewStore } from './view-storage.js'
 import { attachColumn } from './issue-columns.js'
 import { DATA_ISSUE_CODES } from './data-issue-codes.js'
 import {
-  OPERATORS,
   operationsFor,
-  operationsOnlyFor,
-  sharedOperations,
   isOperationFor,
-  operatorById,
   type Operator,
   type OperationsFor
 } from './operators.js'
@@ -73,10 +70,9 @@ export interface AGGridUrlSyncConfig {
    * URL, a value, or the grid model. The filter is skipped and the others are
    * kept. Each error is a `URLSyncError` with a `code` (for example
    * `VALUE_TOO_LONG`) and, when it is known, a `column`. In the core, an error
-   * from the grid API also comes here, as `GRID_ERROR` (the React hook sends it
-   * to `onError`). A URL that cannot be read is thrown as `INVALID_URL`, not
-   * sent here. The library never writes to the console, so an issue with no
-   * handler is silent (#220).
+   * from the grid API also comes here, as `GRID_ERROR`. A URL that cannot be
+   * read is thrown as `INVALID_URL`, not sent here. The library never writes
+   * to the console, so an issue with no handler is silent (#220).
    *
    * In grouped mode, an error that comes from the grouped URL value is an
    * `InvalidSerializationError`, and the original error is in `error.cause`.
@@ -108,8 +104,10 @@ export interface AGGridUrlSyncConfig {
    * `throwOnError`. `true` throws every issue, and a function throws the
    * issues for which it gives `true`. In the core, a thrown issue is not sent
    * to `onParseError`, and the first one stops the call. In the React hook,
-   * each issue is still sent to `onParseError` one time, and the picked issue
-   * is thrown during render, so an error boundary catches it. This API does
+   * each issue is still sent to `onIssue` one time, and a picked issue of
+   * `issues` is thrown during render, so an error boundary catches it. A
+   * failure, such as `GRID_ERROR`, is not in `issues` (#284), but a failed
+   * address-bar write (`HISTORY_WRITE_FAILED`) is. This API does
    * not change the address bar (only `createGridUrlSync` with `history` does),
    * so remove the bad param before the boundary resets, or the same issue is
    * thrown again.
@@ -118,6 +116,17 @@ export interface AGGridUrlSyncConfig {
    * @default false
    */
   throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
+
+  /**
+   * The filter type of each column, for the operations that every type has
+   * (`eq`, `notEqual`, `blank`, `notBlank`): the URL does not say the type
+   * of those (#224). With no type (undefined, or no lookup), the value stays
+   * text, so `?f_zip_eq=01234` keeps its leading zero. A number column reads
+   * the value as a number, and a date column as a date. `createGridUrlSync`
+   * takes the types from the grid's columns.
+   * @example `column => (column === 'age' ? 'number' : undefined)`
+   */
+  columnTypes?: ((column: string) => FilterType | undefined) | undefined
 }
 
 /**
@@ -129,41 +138,14 @@ export interface AGGridUrlSyncConfig {
  * it keeps the undefined.
  */
 export type ResolvedOptions = {
-  [K in Exclude<keyof AGGridUrlSyncConfig, 'throwOnError'>]-?: Exclude<
-    AGGridUrlSyncConfig[K],
-    undefined
-  >
+  [
+    K in Exclude<keyof AGGridUrlSyncConfig, 'throwOnError' | 'columnTypes'>
+  ]-?: Exclude<AGGridUrlSyncConfig[K], undefined>
 } & {
-  /**
-   * Optional, so that ParseConfig and InternalConfig, which extend this type,
-   * get no new required key (#229). resolveOptions always sets it.
-   */
+  /** Optional. resolveOptions always sets it. */
   throwOnError?: Exclude<AGGridUrlSyncConfig['throwOnError'], undefined>
-}
-
-/**
- * Configuration for URL parsing and serialization operations that don't require GridApi.
- *
- * @deprecated The parse and serialize functions take a partial
- * `AGGridUrlSyncConfig` and fill in the defaults, so you do not need this
- * type. Use `ResolvedOptions` for a config with every option set. This type
- * will be removed in 0.6.0.
- */
-export interface ParseConfig extends ResolvedOptions {
-  /** AG Grid API instance - not read by parsing/serialization operations */
-  gridApi?: AGGridApi | null
-}
-
-/**
- * Internal configuration with all required fields and runtime dependencies
- *
- * @deprecated Give the grid API to `getFilterModel(gridApi, options)` and
- * `applyFilterModel(filterState, gridApi, options)` as an argument. This type
- * will be removed in 0.6.0.
- */
-export interface InternalConfig extends ParseConfig {
-  /** AG Grid API instance for filter operations */
-  gridApi: AGGridApi
+  /** No lookup: a shared operation's value stays text (#224) */
+  columnTypes?: AGGridUrlSyncConfig['columnTypes']
 }
 
 // ============================================================================
@@ -172,26 +154,6 @@ export interface InternalConfig extends ParseConfig {
 
 // Every list below is derived from the operator table in `operators.ts`
 // (#217). To add an operation, add a row there.
-
-/**
- * Text-only filter operations for string-based filtering
- */
-export const TEXT_ONLY_OPERATIONS = operationsOnlyFor('text')
-
-/**
- * Number-only filter operations for numeric comparisons
- */
-export const NUMBER_ONLY_OPERATIONS = operationsOnlyFor('number')
-
-/**
- * Date-specific filter operations for temporal comparisons
- */
-export const DATE_ONLY_OPERATIONS = operationsOnlyFor('date')
-
-/**
- * Operations shared across multiple filter types
- */
-export const SHARED_OPERATIONS = sharedOperations()
 
 /**
  * All supported filter operations across text, number, and date filters
@@ -231,16 +193,6 @@ export type NumberFilterOperation = OperationsFor<'number'>
  * Date-specific filter operations
  */
 export type DateFilterOperation = OperationsFor<'date'>
-
-/**
- * Range operations that require two values (from/to)
- */
-export type RangeOperation = Extract<Operator, { arity: 2 }>['id']
-
-/**
- * Operations that don't require a filter value
- */
-export type BlankOperation = Extract<Operator, { arity: 0 }>['id']
 
 /**
  * Supported filter types
@@ -301,6 +253,8 @@ export type ColumnFilter =
 
 /**
  * Complete filter state mapping column IDs to their filters
+ *
+ * Internal: the individual codec's form of a filter (#225). Not exported.
  */
 export interface FilterState {
   [columnId: string]: ColumnFilter
@@ -337,43 +291,6 @@ export function isDateFilterOperation(
   return isOperationFor(op, 'date')
 }
 
-/**
- * Type guard to check if an operation requires a range (two values)
- */
-export function isRangeOperation(op: FilterOperation): op is RangeOperation {
-  return operatorById(op)?.arity === 2
-}
-
-/**
- * Type guard to check if an operation is a blank operation
- */
-export function isBlankOperation(op: FilterOperation): op is BlankOperation {
-  return operatorById(op)?.arity === 0
-}
-
-/**
- * Type guard to check if a filter is a text filter
- */
-export function isTextFilter(filter: ColumnFilter): filter is TextColumnFilter {
-  return filter.filterType === 'text'
-}
-
-/**
- * Type guard to check if a filter is a number filter
- */
-export function isNumberFilter(
-  filter: ColumnFilter
-): filter is NumberColumnFilter {
-  return filter.filterType === 'number'
-}
-
-/**
- * Type guard to check if a filter is a date filter
- */
-export function isDateFilter(filter: ColumnFilter): filter is DateColumnFilter {
-  return filter.filterType === 'date'
-}
-
 // ============================================================================
 // ERROR TYPES
 // ============================================================================
@@ -391,6 +308,7 @@ export type IssueCode =
   | 'INVALID_GROUPED'
   | 'TYPE_MISMATCH'
   | 'INVALID_URL'
+  | 'UNSUPPORTED_FILTER'
   // Operation failures
   | 'GRID_ERROR'
   | 'NOT_READY'
@@ -506,61 +424,16 @@ export class InvalidSerializationError extends URLSyncError {
 // ============================================================================
 
 /**
- * Parsed filter parameter information for internal processing
- */
-export interface ParsedFilterParam {
-  columnName: string
-  operation: FilterOperation
-  filterType: FilterType | 'auto' // 'auto' for operations that work across types
-  value: string | number
-  filterTo?: number | string // For range operations
-  action: 'apply' | 'remove'
-}
-
-/**
- * Re-export GridApi for convenience
- */
-export type GridApi = AGGridApi
-
-/**
  * Union type for AG Grid filters using official AG Grid types
  */
 export type AGGridFilter = TextFilterModel | NumberFilterModel | DateFilterModel
-
-/**
- * Raw AG Grid filter object structure from getFilterModel()
- * Used for type-safe destructuring of filter objects
- */
-export interface RawAGGridFilter {
-  filterType?: string
-  type?: string
-  filter?: string | number
-  filterTo?: string | number
-  dateFrom?: string
-  dateTo?: string
-}
-
-/**
- * The URL with the current filter state, and whether the grid has filters
- */
-export interface UrlState {
-  /** The URL with the current filter state and the page's own params */
-  url: string
-  /** Whether the grid has filters that the library supports */
-  hasFilters: boolean
-  /**
-   * The issues of this call (#229): filters that the grid read or the URL
-   * leaves out. The same objects also go to `onParseError`.
-   */
-  issues: readonly URLSyncError[]
-}
 
 /** The result of an apply method (#229) */
 export interface ApplyResult {
   /**
    * The issues of this call: filters that were dropped. The same objects
-   * also go to `onParseError` or `onIssue`. A failure, such as
-   * `GRID_ERROR`, goes there only, not here (#284).
+   * also go to `onIssue`. A failure, such as `GRID_ERROR`, goes there only,
+   * not here (#284).
    */
   issues: readonly URLSyncError[]
 }
@@ -580,91 +453,22 @@ export interface GroupedSerializationResult {
  */
 export interface FormatSerializer {
   /**
-   * Serialize filter state to string
+   * Serialize an AG Grid filter model to a string
    * @param config - Caller's configuration. All serializers honour
    * maxValueLength and onParseError. JSON and Base64 drop over-length text
    * values and report them through onParseError (see #213, #207).
    */
-  serialize(filterState: FilterState, config?: ResolvedOptions): string
+  serialize(model: FilterModel, config?: ResolvedOptions): string
   /**
-   * Deserialize string to filter state
+   * Deserialize a string to an AG Grid filter model
    * @param config - Caller's configuration. All serializers honour
    * maxValueLength and onParseError. JSON and Base64 drop over-length text
    * values and report them through onParseError (see #213, #207).
    */
-  deserialize(value: string, config?: ResolvedOptions): FilterState
+  deserialize(value: string, config?: ResolvedOptions): FilterModel
   /** Format identifier */
   format: SerializationFormat
 }
-
-/**
- * Detection result for grouped parameters
- */
-export interface GroupedDetectionResult {
-  /** Whether grouped serialization was detected */
-  isGrouped: boolean
-  /** The parameter name if grouped */
-  paramName?: string
-  /** The detected format if grouped */
-  format?: SerializationFormat
-  /** The raw value if grouped */
-  value?: string
-}
-
-// ============================================================================
-// OPERATION MAPPINGS
-// ============================================================================
-
-/**
- * Operation Mapping Strategy:
- *
- * We use three different naming conventions for better user experience:
- *
- * 1. URL Parameters: Short, clean names for URLs (e.g., 'eq', 'neq', 'before', 'after')
- * 2. Internal Types: Consistent naming for our FilterOperation type
- * 3. AG Grid Operations: Exact names expected by AG Grid API (e.g., 'equals', 'notEqual', 'lessThan')
- *
- * The operator table in `operators.ts` holds all three names for each
- * operation (#217). The maps below are derived from it and kept only for
- * callers that use them.
- */
-
-/**
- * Maps URL operation names to internal operation types
- * @deprecated Derived from the operator table. Will be removed in 0.6.0.
- */
-export const OPERATION_MAP: Record<string, FilterOperation> =
-  Object.fromEntries(OPERATORS.map(op => [op.url, op.id]))
-
-/**
- * Maps internal operation types to URL operation names
- * @deprecated Derived from the operator table. Will be removed in 0.6.0.
- */
-export const INTERNAL_TO_URL_OPERATION_MAP =
-  // SAFETY: FilterOperation is OPERATORS[number]['id'], and the map has one
-  // entry for each row of OPERATORS, so it has a key for each operation
-  Object.fromEntries(OPERATORS.map(op => [op.id, op.url])) as Record<
-    FilterOperation,
-    string
-  >
-
-/**
- * Maps internal operation types to AG Grid operation names
- * @deprecated Derived from the operator table. Will be removed in 0.6.0.
- */
-export const AG_GRID_OPERATION_NAMES: Record<string, string> =
-  Object.fromEntries(OPERATORS.map(op => [op.id, op.agGrid]))
-
-/**
- * Maps AG Grid operation names to internal operation types.
- *
- * AG Grid uses one name for a number and a date operation, so this map is
- * wrong for one of them: `lessThan` gives `dateBefore`. The last row in the
- * operator table wins, as before.
- * @deprecated The key needs the filter type too. Will be removed in 0.6.0.
- */
-export const REVERSE_AG_GRID_OPERATION_NAMES: Record<string, FilterOperation> =
-  Object.fromEntries(OPERATORS.map(op => [op.agGrid, op.id]))
 
 // ============================================================================
 // createGridUrlSync (#221)
@@ -730,6 +534,42 @@ export interface GridUrlSyncSnapshot {
  */
 export type HistoryMode = 'none' | 'replace' | 'push' | ((url: string) => void)
 
+/**
+ * The options of the public URL functions, `parseUrlFilters` and
+ * `generateUrl`. The names and meanings are the same as in
+ * `GridUrlSyncOptions`. One option is only here: `columnTypes`. A sync reads
+ * the column types from the grid.
+ */
+export interface UrlOptions {
+  /**
+   * How the filters are written in the URL
+   * @default individual()
+   */
+  codec?: Codec | undefined
+  /**
+   * Maximum length for a filter value
+   * @default 200
+   */
+  maxValueLength?: number | undefined
+  /**
+   * The filter type of each column, for the operations that every type has
+   * (`eq`, `notEqual`, `blank`, `notBlank`): the URL does not say the type
+   * of those. With no type, the value stays text, so `?f_zip_eq=01234` keeps
+   * its leading zero.
+   * @example `column => (column === 'age' ? 'number' : undefined)`
+   */
+  columnTypes?: ((column: string) => FilterType | undefined) | undefined
+  /**
+   * Throw an issue instead of reporting it. `true` throws every issue, and a
+   * function throws the issues for which it gives `true`. A thrown issue does
+   * not go to `onIssue`, and the first one stops the call.
+   * @default false
+   */
+  throwOnError?: boolean | ((issue: URLSyncError) => boolean) | undefined
+  /** Gets each issue one time. The `source` is always `'api'`. */
+  onIssue?: ((event: IssueEvent) => void) | undefined
+}
+
 /** The options of `createGridUrlSync` */
 export interface GridUrlSyncOptions {
   /** The AG Grid API */
@@ -769,7 +609,7 @@ export interface GridUrlSyncOptions {
   onIssue?: ((event: IssueEvent) => void) | undefined
   /**
    * The saved views. Give `createViewStore(key)` from
-   * `ag-grid-url-sync/view-storage`, or your own `ViewStore`. With no
+   * `ag-grid-url-sync/views`, or your own `ViewStore`. With no
    * store, `views` is empty and the view methods do nothing. On create, a
    * URL that holds the stored view restores it, else a URL with at least
    * one filter wins, else the stored view is restored.
@@ -786,10 +626,12 @@ export interface GridUrlSync {
   /** Applies the filters of a URL (default: the address bar) to the grid */
   applyUrl(url?: string): ApplyResult
   /**
-   * Applies filters to the grid as the app's own write. When it lands, the
-   * URL is written in the `history` mode, as for a user edit.
+   * Writes an AG Grid filter model to the grid as the app's own write. It
+   * replaces the full model, as `setFilterModel` does. A number or date
+   * filter on a column of another type is left out (`TYPE_MISMATCH`). When
+   * it lands, the URL is written in the `history` mode, as for a user edit.
    */
-  applyFilters(filters: FilterState): ApplyResult
+  applyFilters(model: FilterModel): ApplyResult
   /** The URL with the grid's filters (default base: the address bar) */
   getUrl(baseUrl?: string): string
   /**

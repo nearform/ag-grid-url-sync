@@ -3,23 +3,20 @@ import {
   validateFilterValue,
   validateNumberFilter,
   validateAndParseNumber,
-  parseExactNumber,
+  readNumber,
   validateAndParseDate,
   validateNumberRange,
   validateDateFilter,
   validateDateRange,
-  DEFAULT_CONFIG,
-  isValidColumnFilter
+  DEFAULT_CONFIG
 } from './validation.js'
 import { InvalidFilterError, InvalidDateError } from './types.js'
-import type { InternalConfig } from './types.js'
-import { asGridApi } from '../test-helpers.js'
+import type { ResolvedOptions } from './types.js'
 
 describe('Validation Functions', () => {
   describe('validateFilterValue', () => {
-    const mockConfig: InternalConfig = {
+    const mockConfig: ResolvedOptions = {
       ...DEFAULT_CONFIG,
-      gridApi: asGridApi({}),
       paramPrefix: 'f_',
       maxValueLength: 10,
       onParseError: () => {}
@@ -165,7 +162,7 @@ describe('Validation Functions', () => {
   // A number is exact when the double that parseFloat gives, written with as
   // many significant digits as the text has, gives the text's digits back.
   // The form of the text does not matter (#238).
-  describe('parseExactNumber (#238)', () => {
+  describe('readNumber (#238)', () => {
     it.each([
       ['42', 42],
       ['-3.14', -3.14],
@@ -195,7 +192,7 @@ describe('Validation Functions', () => {
       ['2194262264886248.2', 2194262264886248.25],
       ['2194262264886248.3', 2194262264886248.25]
     ])('should parse %s as %s', (value, expected) => {
-      expect(parseExactNumber(value)).toBe(expected)
+      expect(readNumber(value)).toBe(expected)
     })
 
     it.each([
@@ -226,8 +223,8 @@ describe('Validation Functions', () => {
       '1 e21',
       '1e  21',
       '1 21'
-    ])('should give null for %s', value => {
-      expect(parseExactNumber(value)).toBeNull()
+    ])('should give an error for %s', value => {
+      expect(readNumber(value)).toBeInstanceOf(InvalidFilterError)
     })
   })
 
@@ -288,103 +285,6 @@ describe('Validation Functions', () => {
       if (!result.valid) {
         expect(result.error).toContain('start date')
       }
-    })
-  })
-
-  describe('isValidColumnFilter', () => {
-    it('should validate text filters correctly', () => {
-      const validTextFilter = {
-        filterType: 'text',
-        type: 'contains',
-        filter: 'test'
-      }
-
-      expect(isValidColumnFilter(validTextFilter)).toBe(true)
-
-      const invalidTextFilter = {
-        filterType: 'text',
-        type: 'contains',
-        filter: 123 // Should be string
-      }
-
-      expect(isValidColumnFilter(invalidTextFilter)).toBe(false)
-    })
-
-    it('should validate number filters correctly', () => {
-      const validNumberFilter = {
-        filterType: 'number',
-        type: 'eq',
-        filter: 42
-      }
-
-      expect(isValidColumnFilter(validNumberFilter)).toBe(true)
-
-      const validNumberRangeFilter = {
-        filterType: 'number',
-        type: 'inRange',
-        filter: 10,
-        filterTo: 20
-      }
-
-      expect(isValidColumnFilter(validNumberRangeFilter)).toBe(true)
-
-      const invalidNumberFilter = {
-        filterType: 'number',
-        type: 'eq',
-        filter: 'not-a-number'
-      }
-
-      expect(isValidColumnFilter(invalidNumberFilter)).toBe(false)
-    })
-
-    it('should validate date filters correctly', () => {
-      const validDateFilter = {
-        filterType: 'date',
-        type: 'eq',
-        filter: '2024-01-15'
-      }
-
-      expect(isValidColumnFilter(validDateFilter)).toBe(true)
-
-      const validDateRangeFilter = {
-        filterType: 'date',
-        type: 'dateRange',
-        filter: '2024-01-15',
-        filterTo: '2024-01-20'
-      }
-
-      expect(isValidColumnFilter(validDateRangeFilter)).toBe(true)
-
-      const invalidDateFilter = {
-        filterType: 'date',
-        type: 'eq',
-        filter: 42 // Should be string
-      }
-
-      expect(isValidColumnFilter(invalidDateFilter)).toBe(false)
-    })
-
-    it('should reject invalid objects', () => {
-      expect(isValidColumnFilter(null)).toBe(false)
-      expect(isValidColumnFilter(undefined)).toBe(false)
-      expect(isValidColumnFilter('string')).toBe(false)
-      expect(isValidColumnFilter(123)).toBe(false)
-      expect(isValidColumnFilter({})).toBe(false)
-
-      const missingProperties = {
-        filterType: 'text'
-        // Missing type and filter
-      }
-
-      expect(isValidColumnFilter(missingProperties)).toBe(false)
-
-      const invalidFilterType = {
-        filterType: 'invalid',
-        type: 'eq',
-        filter: 'test'
-      }
-
-      expect(isValidColumnFilter(invalidFilterType)).toBe(false)
     })
   })
 })

@@ -2,8 +2,6 @@ import * as v from 'valibot'
 import type {
   AGGridUrlSyncConfig,
   FilterState,
-  InternalConfig,
-  ResolvedOptions,
   ColumnFilter,
   AGGridFilter
 } from './types.js'
@@ -16,10 +14,16 @@ import {
   isTextFilterOperation
 } from './types.js'
 import { operatorById, operatorFromAgGrid } from './operators.js'
-import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
-import { reportIssue, toIssue } from './issues.js'
+import {
+  AgGridFilterSchema,
+  JsonObjectSchema,
+  filterTypeOf,
+  isColumnModel
+} from './schemas.js'
+import { reportIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
+import { gridColumnType } from './column-types.js'
 import type { FilterModel, GridApi } from 'ag-grid-community'
 
 /**
@@ -77,94 +81,6 @@ function toIsoDateString(val: string | undefined): string {
   const match = val.match(/^(\d{4}-\d{2}-\d{2})/)
 
   return match?.[1] ? match[1] : val || ''
-}
-
-/**
- * Detects the expected filter type for a column based on AG Grid configuration
- */
-export function detectColumnFilterType(
-  gridApi: GridApi,
-  columnId: string
-): 'text' | 'number' | 'date' {
-  try {
-    const column = gridApi.getColumn(columnId)
-
-    if (!column) return 'text' // Default to text for unknown columns
-
-    const colDef = column.getColDef()
-
-    // 1. Explicit filter configuration takes priority
-    if (colDef.filter === 'agDateColumnFilter') return 'date'
-
-    if (colDef.filter === 'agNumberColumnFilter') return 'number'
-
-    if (colDef.filter === 'agTextColumnFilter') return 'text'
-
-    // 2. Cell data type configuration
-    if (colDef.cellDataType === 'date') return 'date'
-
-    if (colDef.cellDataType === 'number') return 'number'
-
-    if (colDef.cellDataType === 'text') return 'text'
-
-    // 3. Default to text for backward compatibility
-    return 'text'
-  } catch {
-    return 'text' // Safe fallback
-  }
-}
-
-/**
- * Gets the current filter model from AG Grid as a filter state. Filter types
- * that the library does not support are skipped, and a filter that is not
- * valid is reported through `options.onParseError`.
- *
- * @param gridApi - AG Grid API instance
- * @param options - Optional options. Only `onParseError` is read.
- */
-export function getFilterModel(
-  gridApi: GridApi,
-  options?: AGGridUrlSyncConfig
-): FilterState
-/**
- * Gets the current filter model from AG Grid
- *
- * @deprecated Give the grid API as an argument:
- * `getFilterModel(gridApi, options)`. This form will be removed in 0.6.0.
- */
-export function getFilterModel(config: InternalConfig): FilterState
-export function getFilterModel(
-  source: GridApi | InternalConfig,
-  options?: AGGridUrlSyncConfig
-): FilterState {
-  // The deprecated form has the grid in its config object. A GridApi has no
-  // `gridApi` key.
-  if ('gridApi' in source) {
-    return readGridFilters(source.gridApi, resolveOptions(source))
-  }
-
-  return readGridFilters(source, resolveOptions(options))
-}
-
-function readGridFilters(
-  gridApi: GridApi,
-  options: ResolvedOptions
-): FilterState {
-  // Only the grid call is in the try. An issue report runs outside it, so a
-  // handler that throws gets its own error back, not a GRID_ERROR (#220).
-  let model: FilterModel | null
-
-  try {
-    // AG Grid can hand back null despite the declared return type
-    model = gridApi.getFilterModel()
-  } catch (error) {
-    // The grid API threw, which is not a problem with a filter
-    reportIssue(options, toIssue(error, 'GRID_ERROR'))
-
-    return {}
-  }
-
-  return fromGridModel(model, options)
 }
 
 /**
@@ -358,7 +274,7 @@ export function fromGridModel(
 /**
  * Converts internal filter to AG Grid filter format
  */
-function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
+export function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
   if (filter.filterType === 'date') {
     // Handle date range operations
     if (filter.type === 'dateRange') {
@@ -430,65 +346,66 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
 }
 
 /**
- * Applies a filter state to AG Grid. A filter whose type does not match the
- * column is skipped with a warning. An error from the grid is reported
- * through `options.onParseError`.
- *
- * @param filterState - Filter state to apply
- * @param gridApi - AG Grid API instance
- * @param options - Optional options. Only `onParseError` is read.
+ * TYPE_MISMATCH when a number or date filter is on a column of another type.
+ * Null while AG Grid has not inferred the column type: there is nothing to
+ * check against, and AG Grid defers the model until it knows (#224). Other
+ * filter types (text, set, multi, custom) are not checked (#225).
  */
-export function applyFilterModel(
-  filterState: FilterState,
+function typeMismatch(
   gridApi: GridApi,
-  options?: AGGridUrlSyncConfig
-): void
-/**
- * Applies a filter state to AG Grid
- *
- * @deprecated Give the grid API as an argument:
- * `applyFilterModel(filterState, gridApi, options)`. This form will be
- * removed in 0.6.0.
- */
-export function applyFilterModel(
-  filterState: FilterState,
-  config: InternalConfig
-): void
-export function applyFilterModel(
-  filterState: FilterState,
-  target: GridApi | InternalConfig,
-  options?: AGGridUrlSyncConfig
-): void {
-  // The deprecated form has the grid in its config object. A GridApi has no
-  // `gridApi` key.
-  if ('gridApi' in target) {
-    writeGridFilters(filterState, target.gridApi, resolveOptions(target))
+  column: string,
+  filterType: string | undefined
+): InvalidFilterError | null {
+  if (filterType !== 'number' && filterType !== 'date') return null
 
-    return
-  }
+  const columnType = gridColumnType(gridApi, column)
 
-  writeGridFilters(filterState, target, resolveOptions(options))
-}
+  if (columnType === 'pending') return null
 
-function writeGridFilters(
-  filterState: FilterState,
-  gridApi: GridApi,
-  options: ResolvedOptions
-): void {
-  const model = toGridModel(filterState, gridApi, options)
+  const expected =
+    columnType === 'number' || columnType === 'date' ? columnType : 'text'
 
-  // Only the grid call is in the try. An issue report runs outside it, so a
-  // handler that throws gets its own error back, not a GRID_ERROR (#220).
-  try {
-    gridApi.setFilterModel(model)
-  } catch (error) {
-    // The grid API threw, which is not a problem with a filter
-    reportIssue(options, toIssue(error, 'GRID_ERROR'))
-  }
+  if (filterType === expected) return null
+
+  return new InvalidFilterError(
+    `Column '${column}' expects a ${expected} filter but received a ${filterType} filter. This may indicate a configuration mismatch in the column definition or filter application.`,
+    undefined,
+    { code: 'TYPE_MISMATCH', column }
+  )
 }
 
 /**
- * Converts URL filters to the AG Grid filter model that `applyFilterModel`
+ * An AG Grid model with each column that fails the type check left out and
+ * reported (#225). It does not call `setFilterModel`.
+ */
+export function checkColumnTypes(
+  model: FilterModel,
+  gridApi: GridApi,
+  options?: AGGridUrlSyncConfig
+): FilterModel {
+  const resolved = resolveOptions(options)
+
+  // A JavaScript caller can pass null, which clears the grid
+  if (!v.is(JsonObjectSchema, model)) return {}
+
+  const kept = Object.entries(model).filter(([column, entry]) => {
+    // A custom filter's model can be any value: it is not checked (#283
+    // review)
+    if (!isColumnModel(entry)) return true
+
+    const mismatch = typeMismatch(gridApi, column, filterTypeOf(entry))
+
+    if (mismatch) reportIssue(resolved, mismatch)
+
+    return mismatch === null
+  })
+
+  // Object.fromEntries creates own keys, so `__proto__` stays a column
+  return Object.fromEntries(kept)
+}
+
+/**
+ * Converts URL filters to the AG Grid filter model that the sync
  * would write. It does not call `setFilterModel`.
  */
 export function toGridModel(
@@ -506,31 +423,11 @@ export function toGridModel(
     // A JavaScript caller can pass anything here
     if (!v.is(JsonObjectSchema, filter)) continue
 
-    // Detect expected filter type for this column
-    const expectedType = detectColumnFilterType(gridApi, column)
+    const mismatch = typeMismatch(gridApi, column, filter.filterType)
 
-    // Validate filter type compatibility
-    if (filter.filterType === 'date' && expectedType !== 'date') {
-      reportIssue(
-        resolved,
-        new InvalidFilterError(
-          `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`,
-          undefined,
-          { code: 'TYPE_MISMATCH', column }
-        )
-      )
-      continue
-    }
+    if (mismatch) {
+      reportIssue(resolved, mismatch)
 
-    if (filter.filterType === 'number' && expectedType !== 'number') {
-      reportIssue(
-        resolved,
-        new InvalidFilterError(
-          `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`,
-          undefined,
-          { code: 'TYPE_MISMATCH', column }
-        )
-      )
       continue
     }
 

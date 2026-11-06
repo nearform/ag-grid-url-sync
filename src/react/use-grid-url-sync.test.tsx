@@ -611,7 +611,7 @@ describe('useGridUrlSync: issues across a new sync (#271 review)', () => {
   })
 
   test('a new storageKey that restores its stored view drops the apply issues (#285)', async () => {
-    createViewStore('restore-b').saveView('X', NAME_X)
+    createViewStore('restore-b').saveView('X', { filterModel: NAME_X })
     const api = createRealGrid()
     const { result, rerender } = renderSync({ api, storageKey: 'restore-a' })
     await settle()
@@ -786,7 +786,7 @@ describe('useGridUrlSync: saved views (#271)', () => {
 
   test('restores the stored view on mount', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(view.id)
     const api = createRealGrid()
 
@@ -799,7 +799,7 @@ describe('useGridUrlSync: saved views (#271)', () => {
 
   test('a URL with filters wins over the stored view', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(view.id)
     window.history.replaceState(null, '', '/?f_name_contains=x')
     const api = createRealGrid()
@@ -829,7 +829,7 @@ describe('useGridUrlSync: saved views (#271)', () => {
 
   test('a new storageKey restores its stored view, and the URL does not win again', async () => {
     const other = createViewStore('other')
-    const view = other.saveView('B', AGE_GT_5)
+    const view = other.saveView('B', { filterModel: AGE_GT_5 })
     other.persistActiveViewId(view.id)
     window.history.replaceState(null, '', '/?f_name_contains=jo')
     const api = createRealGrid()
@@ -847,7 +847,7 @@ describe('useGridUrlSync: saved views (#271)', () => {
 
   test('shows the stored views and deletes one with no grid', () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     const { result } = renderSync({ api: null, storageKey: 't' })
 
     expect(result.current.views.map(item => item.id)).toEqual([view.id])
@@ -879,7 +879,7 @@ describe.each(GRID_TIMINGS)(
   timing => {
     test('makes one live sync and adds no history entry on mount', async () => {
       const store = createViewStore('t')
-      const view = store.saveView('A', NAME_JO)
+      const view = store.saveView('A', { filterModel: NAME_JO })
       store.persistActiveViewId(view.id)
       const push = vi.spyOn(window.history, 'pushState')
       const { api, userEdit } = createTimedGrid(timing)

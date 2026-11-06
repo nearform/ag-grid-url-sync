@@ -41,8 +41,12 @@ interface Stored {
 /** A store with A = NAME_JO and Mixed = NAME_JO + STATUS_OPEN, no pointer */
 function seed(): Stored {
   const store = createViewStore('t')
-  const a = store.saveView('A', NAME_JO)
-  const mixed = store.saveView('Mixed', { ...NAME_JO, ...STATUS_OPEN })
+  const a = store.saveView('A', { filterModel: NAME_JO })
+
+  const mixed = store.saveView('Mixed', {
+    filterModel: { ...NAME_JO, ...STATUS_OPEN }
+  })
+
   store.persistActiveViewId(null)
 
   return { store, a, mixed }

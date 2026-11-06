@@ -1,27 +1,30 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
-import { generateUrl, serializeFilters } from './url-generator.js'
+import { writeUrlFilters, serializeFilters } from './url-generator.js'
 import { serializeGrouped } from './serialization/grouped.js'
-import { parseUrlFilters } from './url-parser.js'
+import { readUrlFilters } from './url-parser.js'
 import { resolveParamPrefix } from './individual-params.js'
+import { stateToModel } from './model-form.js'
 import { DEFAULT_CONFIG } from './validation.js'
 import type {
   ColumnFilter,
   FilterState,
-  ParseConfig,
+  ResolvedOptions,
   SerializationFormat
 } from './types.js'
-import {
-  TEXT_ONLY_OPERATIONS,
-  NUMBER_ONLY_OPERATIONS,
-  DATE_ONLY_OPERATIONS
-} from './types.js'
+import { operationsOnlyFor } from './operators.js'
+
+const TEXT_ONLY_OPERATIONS = operationsOnlyFor('text')
+const NUMBER_ONLY_OPERATIONS = operationsOnlyFor('number')
+const DATE_ONLY_OPERATIONS = operationsOnlyFor('date')
 
 // Property-based round-trip tests (#216).
 //
-// The main property: for any valid filter state s,
-// parseUrlFilters(generateUrl(base, s, cfg), cfg) deep-equals s, and the
-// host app's params in `base` are kept exactly.
+// The main property: for any valid filter state s, with m its AG Grid model,
+// readUrlFilters(writeUrlFilters(base, m, cfg), cfg) deep-equals m, and the
+// host app's params in `base` are kept exactly (#225: the public functions
+// take and give AG Grid's FilterModel; the arbitraries make the library's
+// own filter state, the form that the individual codec holds).
 //
 // "Valid" follows the documented limits, which are by design and not bugs:
 // text values are not empty and not over maxValueLength, dates are real
@@ -175,8 +178,9 @@ const dateFilter = fc.oneof(
 )
 
 /**
- * Filters whose type the URL keeps: the parser finds the same filter type
- * from the operation or from the value.
+ * Filters whose type the URL keeps: the operation gives the type, or the
+ * column types give it (#224). Text values that look like a number or a date
+ * are left out, so these properties do not depend on the lookup for them.
  */
 const unambiguousFilter: fc.Arbitrary<ColumnFilter> = fc.oneof(
   textFilter(unambiguousTextValue),
@@ -238,12 +242,12 @@ const baseUrl = hostParams.map(params => {
 // Configs and helpers
 // ----------------------------------------------------------------------------
 
-type Mode = { name: string; config: ParseConfig }
+type Mode = { name: string; config: ResolvedOptions }
 
 const makeConfig = (
   serialization: 'individual' | 'grouped',
   format: SerializationFormat = 'querystring'
-): ParseConfig => ({
+): ResolvedOptions => ({
   ...DEFAULT_CONFIG,
   serialization,
   format,
@@ -276,10 +280,17 @@ const TYPED_MODES = MODES.filter(
 /** Modes that write prefixed params, which have no filter type */
 const UNTYPED_MODES = MODES.filter(mode => !TYPED_MODES.includes(mode))
 
-const roundTrip = (state: FilterState, base: string, config: ParseConfig) =>
-  parseUrlFilters(generateUrl(base, state, config), config)
+/**
+ * Encode, then decode with the column types of the state, as the grid gives
+ * them (#224)
+ */
+const roundTrip = (state: FilterState, base: string, config: ResolvedOptions) =>
+  readUrlFilters(writeUrlFilters(base, stateToModel(state), config), {
+    ...config,
+    columnTypes: column => state[column]?.filterType
+  })
 
-const isFilterParam = (key: string, config: ParseConfig) =>
+const isFilterParam = (key: string, config: ResolvedOptions) =>
   key === config.groupedParam ||
   key.startsWith(resolveParamPrefix(config.paramPrefix))
 
@@ -292,7 +303,9 @@ describe('URL round-trip properties (#216)', () => {
     it('round-trips filters whose type the URL keeps', () => {
       fc.assert(
         fc.property(filterState(unambiguousFilter), baseUrl, (state, base) => {
-          expect(roundTrip(state, base.url, config)).toEqual(state)
+          expect(roundTrip(state, base.url, config)).toEqual(
+            stateToModel(state)
+          )
         })
       )
     })
@@ -318,7 +331,9 @@ describe('URL round-trip properties (#216)', () => {
               [id]: { filterType: 'number', type, filter: n }
             }
 
-            expect(roundTrip(state, base.url, config)).toEqual(state)
+            expect(roundTrip(state, base.url, config)).toEqual(
+              stateToModel(state)
+            )
           }
         )
       )
@@ -340,7 +355,9 @@ describe('URL round-trip properties (#216)', () => {
               }
             }
 
-            expect(roundTrip(state, base.url, config)).toEqual(state)
+            expect(roundTrip(state, base.url, config)).toEqual(
+              stateToModel(state)
+            )
           }
         )
       )
@@ -349,7 +366,9 @@ describe('URL round-trip properties (#216)', () => {
     it('keeps the host params exactly', () => {
       fc.assert(
         fc.property(filterState(unambiguousFilter), baseUrl, (state, base) => {
-          const url = new URL(generateUrl(base.url, state, config))
+          const url = new URL(
+            writeUrlFilters(base.url, stateToModel(state), config)
+          )
 
           const kept = [...url.searchParams].filter(
             ([key]) => !isFilterParam(key, config)
@@ -368,7 +387,41 @@ describe('URL round-trip properties (#216)', () => {
           filterState(fc.oneof(unambiguousFilter, typeLosingFilter)),
           baseUrl,
           (state, base) => {
-            expect(roundTrip(state, base.url, config)).toEqual(state)
+            expect(roundTrip(state, base.url, config)).toEqual(
+              stateToModel(state)
+            )
+          }
+        )
+      )
+    })
+  })
+
+  describe.each(TYPED_MODES)('$name', ({ config }) => {
+    // Set, multi and custom filters: any JSON model of a column (#225). The
+    // filterType is not a simple type, so no 0.5 form or length rule applies.
+    const otherModel = fc
+      .record({
+        filterType: fc.constantFrom('set', 'multi', 'custom'),
+        rest: fc.dictionary(
+          fc.string().filter(key => key !== 'filterType'),
+          // What JSON gives back: no -0
+          fc.jsonValue().map(value => JSON.parse(JSON.stringify(value))),
+          { maxKeys: 4 }
+        )
+      })
+      .map(({ filterType, rest }) => ({ ...rest, filterType }))
+
+    it('round-trips any AG Grid filter model (#225)', () => {
+      fc.assert(
+        fc.property(
+          filterState(fc.oneof(unambiguousFilter, typeLosingFilter)),
+          fc.dictionary(columnId, otherModel, { maxKeys: 3 }),
+          baseUrl,
+          (state, others, base) => {
+            const model = { ...stateToModel(state), ...others }
+            const url = writeUrlFilters(base.url, model, config)
+
+            expect(readUrlFilters(url, config)).toEqual(model)
           }
         )
       )
@@ -376,9 +429,28 @@ describe('URL round-trip properties (#216)', () => {
   })
 
   describe.each(UNTYPED_MODES)('$name', ({ config }) => {
-    // Known failure: the prefixed format does not record the filter type, so
-    // the parser guesses it from the value. Fixed by #224.
-    it.fails('round-trips every filter type, also for shared operations (#224)', () => {
+    // With no column types, a value stays text: "007" and "2024-01-15" come
+    // back as text, not as a number or a date (#224)
+    it('round-trips any text value with no column types (#224)', () => {
+      fc.assert(
+        fc.property(
+          filterState(textFilter(textValue)),
+          baseUrl,
+          (state, base) => {
+            expect(
+              readUrlFilters(
+                writeUrlFilters(base.url, stateToModel(state), config),
+                config
+              )
+            ).toEqual(stateToModel(state))
+          }
+        )
+      )
+    })
+
+    // The prefixed format does not record the filter type of a shared
+    // operation: the decoder takes it from the column (#224)
+    it('round-trips every filter type, also for shared operations (#224)', () => {
       fc.assert(
         fc.property(
           filterState(typeLosingFilter).filter(
@@ -386,7 +458,9 @@ describe('URL round-trip properties (#216)', () => {
           ),
           baseUrl,
           (state, base) => {
-            expect(roundTrip(state, base.url, config)).toEqual(state)
+            expect(roundTrip(state, base.url, config)).toEqual(
+              stateToModel(state)
+            )
           }
         )
       )
@@ -411,10 +485,11 @@ describe('encode never throws (#220)', () => {
         fc.integer({ min: 0, max: 300 }),
         (state, base, maxValueLength) => {
           const options = { ...config, maxValueLength, onParseError: () => {} }
+          const model = stateToModel(state)
 
-          expect(() => generateUrl(base.url, state, options)).not.toThrow()
-          expect(() => serializeFilters(state, options)).not.toThrow()
-          expect(() => serializeGrouped(state, options)).not.toThrow()
+          expect(() => writeUrlFilters(base.url, model, options)).not.toThrow()
+          expect(() => serializeFilters(model, options)).not.toThrow()
+          expect(() => serializeGrouped(model, options)).not.toThrow()
         }
       )
     )

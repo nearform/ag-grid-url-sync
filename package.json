@@ -1,94 +1,26 @@
 {
   "name": "ag-grid-url-sync",
   "version": "0.5.3",
-  "description": "AG Grid URL Sync - Synchronize AG Grid text filters with URL parameters",
+  "description": "Sync AG Grid filters (text, number, date) with the URL: shareable links, browser history and saved views. Framework-free core and a React hook.",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "default": "./dist/index.js"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js",
-      "require": "./dist/react/index.js"
+      "default": "./dist/react/index.js"
     },
-    "./validation": {
-      "types": "./dist/core/validation.d.ts",
-      "import": "./dist/core/validation.js",
-      "require": "./dist/core/validation.js"
-    },
-    "./url-parser": {
-      "types": "./dist/core/url-parser.d.ts",
-      "import": "./dist/core/url-parser.js",
-      "require": "./dist/core/url-parser.js"
-    },
-    "./url-generator": {
-      "types": "./dist/core/url-generator.d.ts",
-      "import": "./dist/core/url-generator.js",
-      "require": "./dist/core/url-generator.js"
-    },
-    "./grid-integration": {
-      "types": "./dist/core/grid-integration.d.ts",
-      "import": "./dist/core/grid-integration.js",
-      "require": "./dist/core/grid-integration.js"
-    },
-    "./view-storage": {
+    "./views": {
       "types": "./dist/core/view-storage.d.ts",
       "import": "./dist/core/view-storage.js",
-      "require": "./dist/core/view-storage.js"
-    },
-    "./types": {
-      "types": "./dist/core/types.d.ts",
-      "import": "./dist/core/types.js",
-      "require": "./dist/core/types.js"
-    },
-    "./serialization": {
-      "types": "./dist/core/serialization/index.d.ts",
-      "import": "./dist/core/serialization/index.js",
-      "require": "./dist/core/serialization/index.js"
-    },
-    "./serialization/formats": {
-      "types": "./dist/core/serialization/formats.d.ts",
-      "import": "./dist/core/serialization/formats.js",
-      "require": "./dist/core/serialization/formats.js"
-    }
-  },
-  "typesVersions": {
-    "*": {
-      ".": [
-        "dist/index.d.ts"
-      ],
-      "react": [
-        "dist/react/index.d.ts"
-      ],
-      "validation": [
-        "dist/core/validation.d.ts"
-      ],
-      "url-parser": [
-        "dist/core/url-parser.d.ts"
-      ],
-      "url-generator": [
-        "dist/core/url-generator.d.ts"
-      ],
-      "grid-integration": [
-        "dist/core/grid-integration.d.ts"
-      ],
-      "view-storage": [
-        "dist/core/view-storage.d.ts"
-      ],
-      "types": [
-        "dist/core/types.d.ts"
-      ],
-      "serialization": [
-        "dist/core/serialization/index.d.ts"
-      ],
-      "serialization/formats": [
-        "dist/core/serialization/formats.d.ts"
-      ]
+      "default": "./dist/core/view-storage.js"
     }
   },
   "scripts": {
@@ -106,7 +38,7 @@
     "size-check": "size-limit",
     "type-check": "tsc --noEmit --strict && tsc -p tsconfig.typecheck.json",
     "ci": "npm run build && npm run check-exports && npm run lint && npm run format:check && npm run test",
-    "check-exports": "attw --pack . --ignore-rules=cjs-resolves-to-esm",
+    "check-exports": "attw --pack . --profile esm-only && node -e \"require('ag-grid-url-sync'); require('ag-grid-url-sync/react'); require('ag-grid-url-sync/views')\"",
     "prepare": "husky"
   },
   "repository": {
@@ -121,7 +53,14 @@
     "filter",
     "share",
     "typescript",
-    "react"
+    "react",
+    "ag-grid-community",
+    "filter-model",
+    "url-state",
+    "query-string",
+    "deep-link",
+    "saved-views",
+    "react-hook"
   ],
   "author": "NearForm",
   "license": "MIT",
@@ -165,7 +104,7 @@
     "minimatch": "^11.0.4"
   },
   "peerDependencies": {
-    "ag-grid-community": ">=28.0.0",
+    "ag-grid-community": ">=31.0.0",
     "react": ">=16.8.0"
   },
   "peerDependenciesMeta": {
@@ -182,15 +121,22 @@
   },
   "size-limit": [
     {
-      "name": "dist/index.js (bundled)",
+      "name": "ag-grid-url-sync (bundled)",
       "path": "./dist/index.js",
-      "limit": "12.5 KiB",
+      "limit": "13.5 KiB",
       "gzip": true
     },
     {
-      "name": "dist/react/index.js (bundled, react external)",
+      "name": "createGridUrlSync only (tree-shaken)",
+      "path": "./dist/index.js",
+      "import": "{ createGridUrlSync }",
+      "limit": "13.4 KiB",
+      "gzip": true
+    },
+    {
+      "name": "ag-grid-url-sync/react (bundled, react external)",
       "path": "./dist/react/index.js",
-      "limit": "16.7 KiB",
+      "limit": "16.3 KiB",
       "gzip": true,
       "ignore": [
         "react"
@@ -200,75 +146,17 @@
       "name": "useGridUrlSync only (tree-shaken, react external)",
       "path": "./dist/react/index.js",
       "import": "{ useGridUrlSync }",
-      "limit": "14.6 KiB",
+      "limit": "16.1 KiB",
       "gzip": true,
       "ignore": [
         "react"
       ]
     },
     {
-      "path": "./dist/core/ag-grid-url-sync.js",
-      "limit": "4 KiB",
-      "gzip": true,
-      "disablePlugins": [
-        "@size-limit/esbuild"
-      ]
-    },
-    {
-      "path": "./dist/core/validation.js",
-      "limit": "2.5 KiB",
-      "gzip": true,
-      "disablePlugins": [
-        "@size-limit/esbuild"
-      ]
-    },
-    {
-      "path": "./dist/core/url-parser.js",
-      "limit": "3 KiB",
-      "gzip": true,
-      "disablePlugins": [
-        "@size-limit/esbuild"
-      ]
-    },
-    {
-      "path": "./dist/core/url-generator.js",
-      "limit": "2 KiB",
-      "gzip": true,
-      "disablePlugins": [
-        "@size-limit/esbuild"
-      ]
-    },
-    {
-      "path": "./dist/core/individual-params.js",
-      "limit": "3 KiB",
-      "gzip": true,
-      "disablePlugins": [
-        "@size-limit/esbuild"
-      ]
-    },
-    {
-      "path": "./dist/core/grid-integration.js",
-      "limit": "3 KiB",
-      "gzip": true,
-      "disablePlugins": [
-        "@size-limit/esbuild"
-      ]
-    },
-    {
+      "name": "ag-grid-url-sync/views (bundled)",
       "path": "./dist/core/view-storage.js",
-      "limit": "1.5 KiB",
-      "gzip": true,
-      "disablePlugins": [
-        "@size-limit/esbuild"
-      ]
-    },
-    {
-      "path": "./dist/react/use-ag-grid-url-sync.js",
-      "limit": "4.5 KiB",
-      "gzip": true,
-      "disablePlugins": [
-        "@size-limit/esbuild"
-      ]
+      "limit": "4.3 KiB",
+      "gzip": true
     }
   ],
   "dependencies": {

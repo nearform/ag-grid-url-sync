@@ -37,32 +37,6 @@ export function toIssue(
   return new URLSyncError(error.message, error, { code, column })
 }
 
-/** Options for one call, and the issues that the call reports */
-export interface IssueCollector {
-  options: ResolvedOptions
-  issues: URLSyncError[]
-}
-
-/**
- * Options that also keep each issue they report, so a method can return the
- * issues of one call (#229). The caller's onParseError still gets each one.
- */
-export function collectIssues(options: ResolvedOptions): IssueCollector {
-  const issues: URLSyncError[] = []
-
-  return {
-    issues,
-    options: {
-      ...options,
-      onParseError: error => {
-        // reportIssue only sends URLSyncError here
-        if (error instanceof URLSyncError) issues.push(error)
-        options.onParseError(error)
-      }
-    }
-  }
-}
-
 /** The issues that reportIssue threw, so a catch on the way out can let them pass */
 const thrownIssues = new WeakSet<Error>()
 

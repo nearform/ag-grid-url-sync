@@ -57,9 +57,13 @@ function setup(
   } = {}
 ): Setup {
   const seed = createViewStore('t')
-  const a = seed.saveView('A', NAME_JO)
-  const b = seed.saveView('B', AGE_30)
-  const extra = more.map(([name, model]) => seed.saveView(name, model))
+  const a = seed.saveView('A', { filterModel: NAME_JO })
+  const b = seed.saveView('B', { filterModel: AGE_30 })
+
+  const extra = more.map(([name, model]) =>
+    seed.saveView(name, { filterModel: model })
+  )
+
   seed.persistActiveViewId(null)
 
   const store = options.store ?? seed

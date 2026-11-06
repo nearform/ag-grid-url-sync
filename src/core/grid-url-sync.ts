@@ -460,6 +460,8 @@ export function createSync(
       kind,
       failed: false,
       afterKey: after ? modelKey(after) : null,
+      after,
+      afterColumnUrlKeys: after ? columnUrlKeys(after) : undefined,
       before,
       beforeKey: before ? modelKey(before) : null,
       accepted,
@@ -669,6 +671,7 @@ export function createSync(
       kind: 'url',
       failed,
       afterKey: filtersKey(state),
+      after: state,
       before,
       beforeKey: before ? filtersKey(before) : null,
       accepted,
@@ -806,9 +809,15 @@ export function createSync(
    * At an own write's landing: a view or app write goes to history as a user
    * edit does (D3), and the restore on create replaces the entry. A URL
    * write does not, because the URL holds those filters already (#273).
+   * `rest`: the end of a landing in two parts (#302). The first part wrote
+   * the entry, so this write replaces it.
    */
-  function writeLanding(kind: WriteKind, source: IssueSource): void {
-    if (kind !== 'url') writeChange(source, kind === 'restore')
+  function writeLanding(
+    kind: WriteKind,
+    source: IssueSource,
+    rest = false
+  ): void {
+    if (kind !== 'url') writeChange(source, rest || kind === 'restore')
   }
 
   /**
@@ -874,7 +883,7 @@ export function createSync(
     if (result.kind === 'change') writeChange('grid', false)
 
     if (result.kind === 'landing' && result.write !== null) {
-      writeLanding(result.write, ownSource)
+      writeLanding(result.write, ownSource, result.rest === true)
     }
 
     if (result.queued && shownWhilePending(own)) {

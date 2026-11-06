@@ -286,6 +286,14 @@ export interface TimedGridOptions {
    * (#300). Else it has getColumn and no getColumnDef.
    */
   columnDefOnly?: boolean | undefined
+  /**
+   * Columns that the grid takes after the call, as AG Grid does for a React
+   * custom filter (#302). A write with such a column lands in two parts:
+   * inside the call, the grid takes the other columns and sends no event.
+   * One tick later, it takes the full model and sends one 'api' event. The
+   * timing then applies only to the writes with no such column.
+   */
+  late?: readonly string[] | undefined
 }
 
 /**
@@ -349,6 +357,21 @@ export function createTimedGrid(
       const accepted = Object.fromEntries(
         Object.entries(next ?? {}).filter(([colId]) => TIMED_COLUMNS.has(colId))
       )
+
+      const late = options.late ?? []
+
+      if (late.some(colId => Object.hasOwn(accepted, colId))) {
+        take(
+          Object.fromEntries(
+            Object.entries(accepted).filter(([colId]) => !late.includes(colId))
+          )
+        )
+        later(() => {
+          if (take(accepted)) fire('api')
+        })
+
+        return
+      }
 
       if (timing === 'deferred') {
         later(() => {

@@ -8,6 +8,7 @@ import type { UseAGGridUrlSyncReturn } from './types.js'
 import {
   asGridApi,
   createGridListeners,
+  timedColumnDef,
   waitForEffects,
   type FilterChangedListener,
   type GridApiFake,
@@ -398,6 +399,36 @@ describe('useAGGridUrlSync', () => {
       })
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith(DATE_MODEL)
+    })
+
+    // On AG Grid 28 to 30, the grid API has getColumnDef and no getColumn
+    // (#300)
+    test('applyUrlFilters keeps number and date filters on a grid API with no getColumn (#300)', async () => {
+      mockGridApi.getColumnDef = vi.fn(timedColumnDef)
+      const onParseError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useAGGridUrlSync(asGridApi(mockGridApi), { onParseError })
+      )
+
+      await waitForEffects()
+
+      act(() => {
+        result.current.applyUrlFilters(
+          'http://test.com?f_age_gt=35&f_created_eq=2024-01-01'
+        )
+      })
+
+      expect(mockGridApi.setFilterModel).toHaveBeenLastCalledWith({
+        age: { filterType: 'number', type: 'greaterThan', filter: 35 },
+        created: {
+          filterType: 'date',
+          type: 'equals',
+          dateFrom: '2024-01-01',
+          dateTo: null
+        }
+      })
+      expect(onParseError).not.toHaveBeenCalled()
     })
   })
 

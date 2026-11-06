@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { AGGridUrlSync } from './ag-grid-url-sync.js'
 import type { AGGridUrlSyncConfig, FilterState } from './types.js'
-import { asGridApi, createGridApiSpies } from '../test-helpers.js'
+import {
+  asGridApi,
+  createGridApiSpies,
+  timedColumnDef
+} from '../test-helpers.js'
 import type { FilterModel } from 'ag-grid-community'
 
 describe('AGGridUrlSync', () => {
@@ -279,6 +283,54 @@ describe('AGGridUrlSync', () => {
       expect(() => sync.applyFromUrl('?f_age_gt=abc')).toThrow(
         expect.objectContaining({ code: 'INVALID_NUMBER' })
       )
+    })
+  })
+
+  // On AG Grid 28 to 30, the grid API has getColumnDef and no getColumn
+  // (#300)
+  describe('a grid API with no getColumn, as on AG Grid 28 to 30 (#300)', () => {
+    const AGE_AND_CREATED = {
+      age: { filterType: 'number', type: 'greaterThan', filter: 35 },
+      created: {
+        filterType: 'date',
+        type: 'equals',
+        dateFrom: '2024-01-01',
+        dateTo: null
+      }
+    }
+
+    const legacyApi = () => ({
+      getFilterModel: vi.fn(() => ({})),
+      setFilterModel: vi.fn(),
+      getColumnDef: vi.fn(timedColumnDef)
+    })
+
+    it('applyFromUrl keeps the number and date filters, with no issue', () => {
+      const api = legacyApi()
+      const onParseError = vi.fn()
+      const sync = new AGGridUrlSync(asGridApi(api), { onParseError })
+
+      const result = sync.applyFromUrl(
+        'https://example.com/?f_age_gt=35&f_created_eq=2024-01-01'
+      )
+
+      expect(api.setFilterModel).toHaveBeenCalledWith(AGE_AND_CREATED)
+      expect(result.issues).toEqual([])
+      expect(onParseError).not.toHaveBeenCalled()
+    })
+
+    it('applyFilters keeps the number and date filters, with no issue', () => {
+      const api = legacyApi()
+      const onParseError = vi.fn()
+      const sync = new AGGridUrlSync(asGridApi(api), { onParseError })
+
+      sync.applyFilters({
+        age: { filterType: 'number', type: 'greaterThan', filter: 35 },
+        created: { filterType: 'date', type: 'eq', filter: '2024-01-01' }
+      })
+
+      expect(api.setFilterModel).toHaveBeenCalledWith(AGE_AND_CREATED)
+      expect(onParseError).not.toHaveBeenCalled()
     })
   })
 })

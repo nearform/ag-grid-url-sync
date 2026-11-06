@@ -927,3 +927,105 @@ describe.each(GRID_TIMINGS)(
     })
   }
 )
+
+// On AG Grid 28 to 30, the grid API has getColumnDef and no getColumn. The
+// hook's sync must still keep number and date filters (#300).
+describe('useGridUrlSync: a grid API with no getColumn, as on AG Grid 28 to 30 (#300)', () => {
+  beforeEach(() => {
+    useRealLocation('/?f_age_gt=35&f_created_eq=2024-01-01')
+  })
+
+  test('the apply on mount keeps the number and date filters, with no issue', async () => {
+    const onIssue = vi.fn()
+    const { api } = createTimedGrid('in-call', {}, { columnDefOnly: true })
+
+    const { result } = renderSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'greaterThan', filter: 35 },
+      created: {
+        filterType: 'date',
+        type: 'equals',
+        dateFrom: '2024-01-01',
+        dateTo: null
+      }
+    })
+    expect(result.current.issues).toEqual([])
+    expect(onIssue).not.toHaveBeenCalled()
+  })
+})
+
+// A grid that lands a write in two parts (#302), as AG Grid does with a React
+// custom filter: inside the call it shows only the other columns, and one
+// tick later it shows the full model in one 'api' event
+describe('useGridUrlSync: a write that lands in two parts (#302)', () => {
+  const BOTH = { ...NAME_JO, ...AGE_GT_5 }
+
+  test.each([true, false])(
+    'a reload keeps the stored view and adds no history entry (StrictMode: %s)',
+    async strict => {
+      const store = createViewStore('t')
+      const view = store.saveView('Both', BOTH)
+      store.persistActiveViewId(view.id)
+      const push = vi.spyOn(window.history, 'pushState')
+      const { api } = createTimedGrid('in-call', {}, { late: ['age'] })
+
+      const { result } = renderSync(
+        { api, history: 'push', storageKey: 't' },
+        strict
+      )
+
+      await settle()
+      await settle()
+
+      expect(api.getFilterModel()).toEqual(BOTH)
+      expect(result.current.activeViewId).toBe(view.id)
+      expect(store.getActiveViewId()).toBe(view.id)
+      expect(params().get('f_age_gt')).toBe('5')
+      expect(push).not.toHaveBeenCalled()
+    }
+  )
+
+  test('applyFilters adds one history entry', async () => {
+    const push = vi.spyOn(window.history, 'pushState')
+    const { api } = createTimedGrid('in-call', {}, { late: ['age'] })
+    const { result } = renderSync({ api, history: 'push' }, true)
+    await settle()
+
+    act(() => {
+      result.current.applyFilters({
+        name: { filterType: 'text', type: 'contains', filter: 'jo' },
+        age: { filterType: 'number', type: 'greaterThan', filter: 5 }
+      })
+    })
+    await settle()
+    await settle()
+
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(params().get('f_name_contains')).toBe('jo')
+    expect(params().get('f_age_gt')).toBe('5')
+  })
+
+  test('loadView keeps the view active and adds one history entry', async () => {
+    const store = createViewStore('t')
+    const view = store.saveView('Both', BOTH)
+    store.persistActiveViewId(null)
+    const push = vi.spyOn(window.history, 'pushState')
+    const { api } = createTimedGrid('in-call', {}, { late: ['age'] })
+
+    const { result } = renderSync(
+      { api, history: 'push', storageKey: 't' },
+      true
+    )
+
+    await settle()
+    act(() => result.current.loadView(view.id))
+    await settle()
+    await settle()
+
+    expect(result.current.activeViewId).toBe(view.id)
+    expect(store.getActiveViewId()).toBe(view.id)
+    expect(push).toHaveBeenCalledTimes(1)
+  })
+})

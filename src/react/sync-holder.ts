@@ -1,4 +1,4 @@
-import { IDLE_SNAPSHOT } from '../core/grid-url-sync.js'
+import { IDLE_SNAPSHOT, sameIssues } from '../core/grid-url-sync.js'
 import type {
   GridUrlSync,
   GridUrlSyncSnapshot,
@@ -27,7 +27,10 @@ export interface SyncHolder {
    */
   setCarriedIssues(issues: readonly URLSyncError[]): void
   subscribe(listener: () => void): () => void
-  /** The current sync's snapshot, or the idle snapshot */
+  /**
+   * The current sync's snapshot, or the idle snapshot. A new sync with the
+   * same values gives the last snapshot object (#311).
+   */
   getSnapshot(): GridUrlSyncSnapshot
 }
 
@@ -39,6 +42,17 @@ function sameViews(a: readonly GridView[], b: readonly GridView[]): boolean {
   return a.length === b.length && JSON.stringify(a) === JSON.stringify(b)
 }
 
+/** Two snapshots with the same values, apart from the issues */
+function sameValues(a: GridUrlSyncSnapshot, b: GridUrlSyncSnapshot): boolean {
+  return (
+    a.status === b.status &&
+    a.url === b.url &&
+    a.hasFilters === b.hasFilters &&
+    a.activeViewId === b.activeViewId &&
+    sameViews(a.views, b.views)
+  )
+}
+
 export function createSyncHolder(): SyncHolder {
   const listeners = new Set<() => void>()
   let current: GridUrlSync | null = null
@@ -46,28 +60,42 @@ export function createSyncHolder(): SyncHolder {
   let idle: GridUrlSyncSnapshot = IDLE_SNAPSHOT
   let carried: readonly URLSyncError[] = []
 
-  // The last snapshot with the carried issues, and what it was made from
-  let merged: {
+  // The last snapshot that getSnapshot gave for a sync, and what it was made
+  // from. Each sync has its own snapshot object, so a new sync on the same
+  // grid gives a new object with the same values (#311).
+  let kept: {
     from: GridUrlSyncSnapshot
     carried: readonly URLSyncError[]
     snapshot: GridUrlSyncSnapshot
   } | null = null
 
-  /** The sync's snapshot with the carried issues first */
-  const withCarried = (from: GridUrlSyncSnapshot): GridUrlSyncSnapshot => {
-    if (merged?.from === from && merged.carried === carried) {
-      return merged.snapshot
-    }
+  /**
+   * The sync's snapshot with the carried issues first. The same values give
+   * the last snapshot, and the same issues keep their array (#229, #311).
+   */
+  const stable = (from: GridUrlSyncSnapshot): GridUrlSyncSnapshot => {
+    if (kept?.from === from && kept.carried === carried) return kept.snapshot
 
-    // The same issues keep the same array (#229 identity)
+    const last = kept?.snapshot
+    const list = carried.length ? [...carried, ...from.issues] : from.issues
+
     const issues =
-      merged?.from.issues === from.issues && merged.carried === carried
-        ? merged.snapshot.issues
-        : Object.freeze([...carried, ...from.issues])
+      last && sameIssues(last.issues, list)
+        ? last.issues
+        : list === from.issues
+          ? list
+          : Object.freeze(list)
 
-    merged = { from, carried, snapshot: Object.freeze({ ...from, issues }) }
+    const snapshot =
+      last?.issues === issues && sameValues(last, from)
+        ? last
+        : issues === from.issues
+          ? from
+          : Object.freeze({ ...from, issues })
 
-    return merged.snapshot
+    kept = { from, carried, snapshot }
+
+    return snapshot
   }
 
   const notify = (): void => {
@@ -110,12 +138,6 @@ export function createSyncHolder(): SyncHolder {
         listeners.delete(listener)
       }
     },
-    getSnapshot() {
-      if (!current) return idle
-
-      const snapshot = current.getSnapshot()
-
-      return carried.length ? withCarried(snapshot) : snapshot
-    }
+    getSnapshot: () => (current ? stable(current.getSnapshot()) : idle)
   }
 }

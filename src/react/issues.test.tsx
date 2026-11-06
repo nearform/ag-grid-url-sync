@@ -545,5 +545,42 @@ describe('useAGGridUrlSync issues (#229)', () => {
 
       expect(codes(result)).toEqual(['INVALID_NUMBER'])
     })
+
+    test('does not give onParseError a grid read issue again (#305)', async () => {
+      const { api } = createGridApi(longText)
+      const onParseError = vi.fn()
+
+      const { result, rerender } = renderHook(
+        ({ paramPrefix }) =>
+          useAGGridUrlSync(asGridApi(api), { paramPrefix, onParseError }),
+        { initialProps: { paramPrefix: 'f_' } }
+      )
+
+      await waitForEffects()
+      rerender({ paramPrefix: 'g_' })
+      await waitForEffects()
+
+      expect(onParseError).toHaveBeenCalledTimes(1)
+      expect(codes(result)).toEqual(['VALUE_TOO_LONG'])
+    })
+
+    test('the issues keep their identity across a new sync (#311)', async () => {
+      const { api } = createGridApi(longText)
+
+      const { result, rerender } = renderHook(
+        ({ paramPrefix }) => useAGGridUrlSync(asGridApi(api), { paramPrefix }),
+        { initialProps: { paramPrefix: 'f_' } }
+      )
+
+      await waitForEffects()
+      act(() => result.current.applyUrlFilters('?f_age_gt=abc'))
+      const before = result.current.issues
+
+      rerender({ paramPrefix: 'g_' })
+      await waitForEffects()
+
+      expect(codes(result)).toEqual(['INVALID_NUMBER', 'VALUE_TOO_LONG'])
+      expect(result.current.issues).toBe(before)
+    })
   })
 })

@@ -91,6 +91,30 @@ function hasWindow(): boolean {
   return typeof window !== 'undefined'
 }
 
+/**
+ * Writes a URL to `window.history`, and keeps the page's `history.state`
+ * (#303). A plain object state is copied with no Next.js keys (`__NA`,
+ * `_N`): Next.js skips its router update for a write with them, because it
+ * takes that write for its own, so its router keeps the old URL. Next.js
+ * adds its keys to the new entry again. A state that is not a plain object
+ * (null, a string, an array) is given as it is.
+ */
+function writeHistory(url: string, replace: boolean): void {
+  const state: unknown = window.history.state
+
+  const kept =
+    Object.getPrototypeOf(state ?? 0) === Object.prototype
+      ? Object.fromEntries(
+          // SAFETY: the prototype check above holds only for an object
+          Object.entries(state as object).filter(
+            ([key]) => key !== '__NA' && key !== '_N'
+          )
+        )
+      : state
+
+  window.history[replace ? 'replaceState' : 'pushState'](kept, '', url)
+}
+
 /** Two issue lists with the same code, column and message in each place */
 function sameIssues(
   a: readonly URLSyncError[],
@@ -766,15 +790,17 @@ export function createSync(
     )
   }
 
-  /** Writes the snapshot's URL to the address bar, or gives it to the router */
+  /**
+   * Writes the snapshot's URL to the address bar, or gives it to the router.
+   * `replace` is true for a write that must not add an entry. A router
+   * function gets it, so it can replace or push as `'push'` does (#304).
+   */
   function write(source: IssueSource, replace: boolean): void {
     try {
       if (historyMode instanceof Function) {
-        historyMode(url)
-      } else if (replace || historyMode === 'replace') {
-        window.history.replaceState(window.history.state, '', url)
+        historyMode(url, { replace })
       } else {
-        window.history.pushState(window.history.state, '', url)
+        writeHistory(url, replace || historyMode === 'replace')
       }
 
       writeIssues = NO_ISSUES

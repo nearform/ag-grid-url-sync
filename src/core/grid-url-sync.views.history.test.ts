@@ -445,3 +445,76 @@ describe('createGridUrlSync: loads in one tick on a grid that rebuilds the model
     sync.destroy()
   })
 })
+
+// A grid that lands a write in two parts (#302), as AG Grid does with a React
+// custom filter: inside the call it shows only the other columns, and one
+// tick later it shows the full model in one 'api' event. The late event ends
+// the same landing: it is not a user edit.
+describe('createGridUrlSync: a write that lands in two parts', () => {
+  const BOTH = { ...NAME_JO, ...AGE_30 }
+
+  /** A store with Both = NAME_JO + AGE_30, no pointer, on a split grid */
+  function splitSetup() {
+    const store = createViewStore('t')
+    const both = store.saveView('Both', BOTH)
+    store.persistActiveViewId(null)
+
+    const grid = createTimedGrid('in-call', {}, { late: ['age'] })
+
+    const sync = createGridUrlSync({
+      api: grid.api,
+      views: store,
+      history: 'push'
+    })
+
+    return { store, both, grid, sync }
+  }
+
+  it('applyFilters adds one history entry with the full filters', async () => {
+    const { grid, sync } = splitSetup()
+    const length = window.history.length
+
+    sync.applyFilters({
+      name: { filterType: 'text', type: 'contains', filter: 'jo' },
+      age: { filterType: 'number', type: 'eq', filter: 30 }
+    })
+    await tick()
+
+    expect(grid.api.getFilterModel()).toEqual(BOTH)
+    expect(window.history.length).toBe(length + 1)
+    expect(window.location.search).toBe('?f_name_contains=jo&f_age_eq=30')
+
+    sync.destroy()
+  })
+
+  it('loadView keeps the view active and adds one history entry', async () => {
+    const { store, both, sync } = splitSetup()
+    const length = window.history.length
+
+    sync.loadView(both.id)
+    await tick()
+
+    expect(sync.getSnapshot().activeViewId).toBe(both.id)
+    expect(store.getActiveViewId()).toBe(both.id)
+    expect(window.history.length).toBe(length + 1)
+    expect(window.location.search).toBe('?f_name_contains=jo&f_age_eq=30')
+
+    sync.destroy()
+  })
+
+  it('a user edit after the late part is a change', async () => {
+    const { store, both, grid, sync } = splitSetup()
+    sync.loadView(both.id)
+    await tick()
+    const length = window.history.length
+
+    grid.userEdit(NAME_JO)
+
+    expect(sync.getSnapshot().activeViewId).toBeNull()
+    expect(store.getActiveViewId()).toBeNull()
+    expect(window.history.length).toBe(length + 1)
+    expect(window.location.search).toBe('?f_name_contains=jo')
+
+    sync.destroy()
+  })
+})

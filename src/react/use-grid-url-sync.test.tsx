@@ -906,6 +906,34 @@ describe.each(GRID_TIMINGS)(
   }
 )
 
+// On AG Grid 28 to 30, the grid API has getColumnDef and no getColumn. The
+// hook's sync must still keep number and date filters (#300).
+describe('useGridUrlSync: a grid API with no getColumn, as on AG Grid 28 to 30 (#300)', () => {
+  beforeEach(() => {
+    useRealLocation('/?f_age_gt=35&f_created_eq=2024-01-01')
+  })
+
+  test('the apply on mount keeps the number and date filters, with no issue', async () => {
+    const onIssue = vi.fn()
+    const { api } = createTimedGrid('in-call', {}, { columnDefOnly: true })
+
+    const { result } = renderSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'greaterThan', filter: 35 },
+      created: {
+        filterType: 'date',
+        type: 'equals',
+        dateFrom: '2024-01-01',
+        dateTo: null
+      }
+    })
+    expect(result.current.issues).toEqual([])
+    expect(onIssue).not.toHaveBeenCalled()
+  })
+})
+
 // A grid that lands a write in two parts (#302), as AG Grid does with a React
 // custom filter: inside the call it shows only the other columns, and one
 // tick later it shows the full model in one 'api' event

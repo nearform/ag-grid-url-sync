@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createGridUrlSync, createSync, handOver } from './grid-url-sync.js'
 import {
+  createLateRowsGrid,
   createTimedGrid,
   GRID_TIMINGS,
   useRealLocation
@@ -163,6 +164,216 @@ describe.each(GRID_TIMINGS)(
       grid.userEdit(NAME_X)
 
       expect(window.location.search).toBe('?f_name_contains=x')
+
+      sync.destroy()
+    })
+  }
+)
+
+// AG Grid 31 holds the initialState filters until its first rows. A URL with
+// no filter params keeps them, and with history the sync writes them with
+// replace, as it does when the grid shows them on create (#306).
+describe('createGridUrlSync: filters that the grid holds until its first rows', () => {
+  beforeEach(() => {
+    useRealLocation('/?tab=1')
+  })
+
+  it('writes them with replace when the grid applies them at the first rows', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    expect(window.location.search).toBe('?tab=1')
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?f_name_contains=jo&tab=1')
+    expect(sync.getSnapshot().hasFilters).toBe(true)
+    expect(window.history.length).toBe(length)
+
+    sync.destroy()
+  })
+
+  it('a user edit after the first rows writes history', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    grid.rowsArrive()
+    const length = window.history.length
+
+    grid.userEdit(NAME_X)
+
+    expect(window.location.search).toBe('?f_name_contains=x&tab=1')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+
+  it('a user edit before the first rows writes history', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    grid.userEdit(NAME_X)
+
+    expect(window.location.search).toBe('?f_name_contains=x&tab=1')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+
+  it('a quick filter change before the first rows does not stop the replace', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    grid.quickFilter()
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?f_name_contains=jo&tab=1')
+    expect(window.history.length).toBe(length)
+
+    sync.destroy()
+  })
+
+  it('writes nothing with history none', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api })
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?tab=1')
+    expect(sync.getSnapshot().url).toContain('f_name_contains=jo')
+
+    sync.destroy()
+  })
+
+  it('reports an issue of the held filters one time, with source grid', () => {
+    const onIssue = vi.fn()
+
+    const grid = createLateRowsGrid({
+      ...NAME_JO,
+      age: { filterType: 'number', type: 'greaterThan', filter: 5 }
+    })
+
+    const sync = createGridUrlSync({
+      api: grid.api,
+      history: 'push',
+      maxValueLength: 1,
+      onIssue
+    })
+
+    const length = window.history.length
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?f_age_gt=5&tab=1')
+    expect(window.history.length).toBe(length)
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue).toHaveBeenCalledWith({
+      issue: expect.objectContaining({
+        code: 'VALUE_TOO_LONG',
+        column: 'name'
+      }),
+      source: 'grid'
+    })
+
+    sync.destroy()
+  })
+})
+
+// On AG Grid 28 to 30, the grid API has getColumnDef and no getColumn. The
+// sync must still find each column's filter type and each column that the
+// grid has (#300).
+describe.each(GRID_TIMINGS)(
+  'createGridUrlSync: a grid API with no getColumn, as on AG Grid 28 to 30 (%s timing) (#300)',
+  timing => {
+    const NUMBER_AND_DATE = '/?f_age_gt=35&f_created_eq=2024-01-01'
+
+    const AGE_AND_CREATED = {
+      age: { filterType: 'number', type: 'greaterThan', filter: 35 },
+      created: {
+        filterType: 'date',
+        type: 'equals',
+        dateFrom: '2024-01-01',
+        dateTo: null
+      }
+    } as const
+
+    const legacyGrid = () =>
+      createTimedGrid(timing, {}, { columnDefOnly: true })
+
+    it('applyUrl keeps the number and date filters, with no issue', async () => {
+      const grid = legacyGrid()
+      const onIssue = vi.fn()
+      const sync = createGridUrlSync({ api: grid.api, onIssue })
+
+      sync.applyUrl(href(NUMBER_AND_DATE))
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual(AGE_AND_CREATED)
+      expect(sync.getSnapshot().issues).toEqual([])
+      expect(onIssue).not.toHaveBeenCalled()
+
+      sync.destroy()
+    })
+
+    it('the apply on create keeps the number and date filters, and writes no history', async () => {
+      useRealLocation(NUMBER_AND_DATE)
+      const length = window.history.length
+      const grid = legacyGrid()
+      const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual(AGE_AND_CREATED)
+      expect(window.location.search).toBe(NUMBER_AND_DATE.slice(1))
+      expect(window.history.length).toBe(length)
+
+      sync.destroy()
+    })
+
+    it('the back button gives the grid the number filter again', async () => {
+      const grid = legacyGrid()
+      const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+
+      grid.userEdit(AGE_30)
+      await tick()
+      grid.userEdit(NAME_X)
+      await tick()
+
+      expect(window.location.search).toBe('?f_name_contains=x')
+
+      const popped = new Promise(resolve => {
+        window.addEventListener('popstate', resolve, { once: true })
+      })
+
+      window.history.back()
+      await popped
+      await tick()
+
+      expect(window.location.search).toBe('?f_age_eq=30')
+      expect(grid.api.getFilterModel()).toEqual(AGE_30)
+
+      sync.destroy()
+    })
+
+    it('a popstate apply writes no history, when the grid takes only part of the URL', async () => {
+      const grid = legacyGrid()
+      const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+      window.history.pushState(
+        null,
+        '',
+        '/?f_name_contains=jo&f_missing_contains=x'
+      )
+      const length = window.history.length
+
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+      expect(window.location.search).toBe(
+        '?f_name_contains=jo&f_missing_contains=x'
+      )
+      expect(window.history.length).toBe(length)
 
       sync.destroy()
     })

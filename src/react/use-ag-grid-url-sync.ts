@@ -266,10 +266,10 @@ export function useAGGridUrlSync(
     (): AddressBarOptions => ({
       history:
         historyKind === 'function'
-          ? url => {
-              const write = callbacksRef.current.history
+          ? (url, write) => {
+              const latest = callbacksRef.current.history
 
-              if (write instanceof Function) write(url)
+              if (latest instanceof Function) latest(url, write)
             }
           : historyKind,
       popstate: followsPopstate

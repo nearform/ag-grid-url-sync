@@ -7,9 +7,15 @@ import {
   fromGridModel
 } from './grid-integration.js'
 
+import type { FilterModel } from 'ag-grid-community'
 import { generateUrl } from './url-generator.js'
+import { parseUrlFilters } from './url-parser.js'
 import type { InternalConfig, FilterState } from './types.js'
-import { asGridApi, createGridApiSpies } from '../test-helpers.js'
+import {
+  asGridApi,
+  createGridApiSpies,
+  type ColDefFake
+} from '../test-helpers.js'
 
 describe('Grid Integration', () => {
   let mockGridApi: ReturnType<typeof createGridApiSpies>
@@ -694,6 +700,82 @@ describe('Grid Integration', () => {
       expect(() =>
         applyFilterModel(filterState, asGridApi(mockGridApi))
       ).not.toThrow()
+    })
+  })
+
+  // On AG Grid 28 to 30, getColumn is on the column API only. The grid API
+  // has getColumnDef, which gives the same column definition (#300).
+  describe('a grid API with no getColumn, as on AG Grid 28 to 30 (#300)', () => {
+    const COLUMN_DEFS = new Map<string, ColDefFake>([
+      ['age', { filter: 'agNumberColumnFilter' }],
+      ['created', { filter: 'agDateColumnFilter' }],
+      ['name', { filter: 'agTextColumnFilter' }],
+      ['score', { cellDataType: 'number' }],
+      ['updated', { cellDataType: 'date' }]
+    ])
+
+    const legacyApi = () => ({
+      getFilterModel: vi.fn<() => FilterModel | null>(),
+      setFilterModel: vi.fn<(model: FilterModel | null) => void>(),
+      getColumnDef: vi.fn(
+        (colId: string): ColDefFake | null => COLUMN_DEFS.get(colId) ?? null
+      )
+    })
+
+    it.each([
+      ['age', 'number'],
+      ['created', 'date'],
+      ['name', 'text'],
+      ['score', 'number'],
+      ['updated', 'date'],
+      ['missing', 'text']
+    ])(
+      'detectColumnFilterType reads getColumnDef for %s',
+      (colId, expected) => {
+        const api = legacyApi()
+
+        expect(detectColumnFilterType(asGridApi(api), colId)).toBe(expected)
+        expect(api.getColumnDef).toHaveBeenCalledWith(colId)
+      }
+    )
+
+    it('applyFilterModel keeps the number and date filters of the URL', () => {
+      const api = legacyApi()
+      const onParseError = vi.fn()
+
+      applyFilterModel(
+        parseUrlFilters('?f_age_gt=30&f_created_eq=2024-01-15', {
+          onParseError
+        }),
+        asGridApi(api),
+        { onParseError }
+      )
+
+      expect(onParseError).not.toHaveBeenCalled()
+      expect(api.setFilterModel).toHaveBeenCalledWith({
+        age: { filterType: 'number', type: 'greaterThan', filter: 30 },
+        created: {
+          filterType: 'date',
+          type: 'equals',
+          dateFrom: '2024-01-15',
+          dateTo: null
+        }
+      })
+    })
+
+    it('toGridModel still reports TYPE_MISMATCH for a number filter on a text column', () => {
+      const onParseError = vi.fn()
+
+      expect(
+        toGridModel(
+          { name: { filterType: 'number', type: 'eq', filter: 1 } },
+          asGridApi(legacyApi()),
+          { onParseError }
+        )
+      ).toEqual({})
+      expect(onParseError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'TYPE_MISMATCH', column: 'name' })
+      )
     })
   })
 

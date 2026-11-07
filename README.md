@@ -217,7 +217,7 @@ import { createGridUrlSync, individual, grouped } from 'ag-grid-url-sync'
 const sync = createGridUrlSync({
   api: gridApi,
   codec: individual({ prefix: 'f_' }), // or grouped({ param: 'gf', format: 'json' })
-  history: 'replace', // 'none' (default) | 'replace' | 'push' | (url) => router.replace(url)
+  history: 'replace', // 'none' (default) | 'replace' | 'push' | (url, { replace }) => ...
   onIssue: ({ issue, source }) => {
     if (issue.severity === 'warning') showToast(issue.message)
   }
@@ -240,19 +240,44 @@ sync.destroy()
 
 `applyFilters` writes an AG Grid filter model to the grid as the app's own write. It replaces the full model, as `setFilterModel` does. When it lands, the sync writes the URL in the `history` mode, as it does for a user edit. `applyUrl` writes no history, because the URL already holds those filters.
 
-| Option             | Default                   | Meaning                                                                                                                                                                                                                                                                        |
-| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `api`              | (required)                | The AG Grid API                                                                                                                                                                                                                                                                |
-| `codec`            | `individual()`            | How the filters are written in the URL. `individual({ prefix })` writes one param for each filter; `grouped({ param, format })` writes all filters in one param                                                                                                                |
-| `maxValueLength`   | `200`                     | The longest text value that is kept                                                                                                                                                                                                                                            |
-| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL, for a router. The page's other params, the `#hash` and `history.state` stay                                                                               |
-| `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                                                                                                       |
-| `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace                                                                                 |
-| `views`            | none                      | The saved views. Give `createViewStore(key)` from `ag-grid-url-sync/views`. See [Saved Views](#saved-views)                                                                                                                                                                    |
-| `throwOnError`     | `false`                   | Throw an issue instead of reporting it, in the methods that the app calls (`applyUrl`, `getUrl`, `applyFilters`, `saveView`, `loadView`, `deleteView`). `createGridUrlSync` and its listeners never throw, and an `applyUrl` that waits for the row data does not throw either |
-| `onIssue`          | none                      | Gets each issue one time, as `{ issue, source }`. `source` is `'url'` (the sync read the address bar), `'grid'` (it read the grid) or `'api'` (a method that the app called)                                                                                                   |
+A URL write keeps the text and the order of the page's other params, and puts the filter params after them. With no filters, the URL has no filter param.
+
+| Option             | Default                   | Meaning                                                                                                                                                                                                                                                                                               |
+| ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`              | (required)                | The AG Grid API                                                                                                                                                                                                                                                                                       |
+| `codec`            | `individual()`            | How the filters are written in the URL. `individual({ prefix })` writes one param for each filter; `grouped({ param, format })` writes all filters in one param                                                                                                                                       |
+| `maxValueLength`   | `200`                     | The longest text value that is kept                                                                                                                                                                                                                                                                   |
+| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL and `{ replace }`, for a router. The page's other params, the `#hash` and `history.state` stay                                                                                    |
+| `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                                                                                                                              |
+| `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace. AG Grid 31 applies `initialState` filters when the first rows come: the sync writes them at that time |
+| `views`            | none                      | The saved views. Give `createViewStore(key)` from `ag-grid-url-sync/views`. See [Saved Views](#saved-views)                                                                                                                                                                                           |
+| `throwOnError`     | `false`                   | Throw an issue instead of reporting it, in the methods that the app calls (`applyUrl`, `getUrl`, `applyFilters`, `saveView`, `loadView`, `deleteView`). `createGridUrlSync` and its listeners never throw, and an `applyUrl` that waits for the row data does not throw either                        |
+| `onIssue`          | none                      | Gets each issue one time, as `{ issue, source }`. `source` is `'url'` (the sync read the address bar), `'grid'` (it read the grid) or `'api'` (a method that the app called)                                                                                                                          |
 
 The snapshot `status` is `'active'` from create, and `'destroyed'` after `destroy()` or after the grid is destroyed. A grid that cannot take the sync's listeners also gives `'destroyed'`: `createGridUrlSync` does not throw, and sends a `GRID_ERROR` to `onIssue`. After that, `applyUrl`, `applyFilters`, `saveView` and `loadView` report `NOT_READY` to `onIssue`. `deleteView` needs only storage, so it still works. `IDLE_SNAPSHOT` (`status: 'idle'`) is the snapshot for a time when there is no sync yet. `getSnapshot()` returns the same object until something changes, so it works with React's `useSyncExternalStore`. The sync writes no history for an `applyUrl` apply, because the URL holds those filters already. `applyFilters` and `loadView` write the URL as a user edit does. Nothing reads `window` when the module loads, and a sync made with no `window` does nothing to the address bar.
+
+An issue has the source of the work that found it. A method that the app calls gives `'api'` to each issue of its work: also the grid read after its write, a later landing of that write, and the write of the stored view pointer. A back-button apply and the restore on create give `'url'`. A filter change in the grid, and the read of the grid's own filters on create, give `'grid'`.
+
+#### History with a router
+
+A `history` function gets two arguments: the URL and `{ replace }`. `replace` tells the function what to do with the history entry:
+
+- `true`: replace the entry. This is for a write that must not add a back-button step: the create-time write of the grid's own filters, and the restore of a stored view (on create, or for a new `storageKey`).
+- `false`: add an entry. This is for a user edit, `applyFilters` and `loadView`.
+
+For a router that can push, use the two arguments. Then the history is the same as with `'push'`:
+
+```typescript
+createGridUrlSync({
+  api: gridApi,
+  history: (url, { replace }) =>
+    replace ? router.replace(url) : router.push(url)
+})
+```
+
+A function with one argument also works. It does not use `replace`, so it does the same for each write. `url => router.replace(url)` is correct. Do not use `url => router.push(url)`: it adds a back-button step on page load.
+
+`'replace'` and `'push'` keep `history.state`, but they remove the Next.js keys `__NA` and `_N` from it. Next.js skips its router update for a write with these keys. With them removed, the Next.js router (`useSearchParams`) gets the new URL. A state that is not a plain object stays as it is.
 
 ### URL Functions With No Grid
 
@@ -293,7 +318,7 @@ function createShareableUrl(model: FilterModel, baseUrl: string): string {
 
 `InvalidURLError` is thrown for rule 1, and for any input that the `URL` constructor rejects under rules 2 and 3 (for example `http://` or `//[`). A param that is not valid is skipped and sent to `onIssue`.
 
-`generateUrl` needs an absolute `baseUrl`. It keeps the page's own params, and replaces the filter params of both codecs: each param that starts with the codec's prefix, and the codec's grouped param. So a URL never holds filters of both kinds.
+`generateUrl` needs an absolute `baseUrl`. It keeps the page's own params with their text and order (`?debug` stays `?debug`, `%20` stays `%20`), puts the filter params after them, and replaces the filter params of both codecs: each param that starts with the codec's prefix, and the codec's grouped param. So a URL never holds filters of both kinds.
 
 Rules for both functions:
 
@@ -344,6 +369,8 @@ const sync = createGridUrlSync({
 ```
 
 When the library reads a URL, it reads the codec's grouped param first, and decodes it with the codec's format. It does not guess the format. If that param is present and not empty, the library does not read the prefixed params. Else it reads the prefixed params. `individual()` reads the grouped param `grid_filters` in the `querystring` format, and `grouped()` reads the prefix `f_`. So an app that changes from `individual()` to `grouped()`, both with their defaults, still opens its old links.
+
+With no filters, the URL has no grouped param, in each format. A link with an empty value, such as `?grid_filters=%7B%7D` (json) or `?grid_filters=e30%3D` (base64), still opens with no filters and no issue.
 
 > **Note:** A URL written with a different `param` or `format` does not decode. If you change either setting, links that were shared before the change stop working.
 
@@ -642,12 +669,17 @@ The hook takes the `history` and `popstate` options of [`createGridUrlSync`](#va
 useGridUrlSync({ api, history: 'push' })
 
 // Or give the URL to a router. A new function on each render is fine.
-useGridUrlSync({ api, history: url => router.replace(url) })
+// `replace` is true for a write that must not add an entry (see History with a router).
+useGridUrlSync({
+  api,
+  history: (url, { replace }) =>
+    replace ? router.replace(url) : router.push(url)
+})
 ```
 
 - A user edit, `applyFilters` and `loadView` write the URL. `'push'` adds one entry for each of them.
 - A URL apply writes nothing, because the URL holds those filters already: the apply on mount, `applyUrl` and the back button.
-- A new sync for an option change, or a `StrictMode` remount, adds no entry.
+- The restore of a stored view on mount replaces the entry. A new sync for an option change, or a `StrictMode` remount, adds no entry.
 - `popstate` is `true` by default with `'push'`. On back or forward, the hook applies the new URL. The view is then no longer active, and the issues of that apply are in `issues`. A failed address-bar write is `HISTORY_WRITE_FAILED`.
 
 ### Saved Views

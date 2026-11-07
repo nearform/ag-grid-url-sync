@@ -495,6 +495,9 @@ export type SyncStatus = 'idle' | 'active' | 'destroyed'
  * Where the work that found an issue started. `'url'`: the sync read the
  * address bar itself (on create, or on `popstate`). `'grid'`: the sync read
  * the grid after a filter change. `'api'`: a method that the app called.
+ * The work that a call starts has the source of the call: the grid read
+ * after its write, a later landing of that write, and a stored pointer
+ * write (#313).
  */
 export type IssueSource = 'url' | 'grid' | 'api'
 
@@ -527,12 +530,32 @@ export interface GridUrlSyncSnapshot {
 }
 
 /**
+ * What a history function gets with the URL (#304). `replace` is true for a
+ * write that must not add a history entry: the create-time write of the
+ * grid's own filters, and the restore of a stored view. It is false for a
+ * user edit, a view load and `applyFilters`. So
+ * `replace ? router.replace(url) : router.push(url)` gives the history that
+ * `'push'` gives.
+ */
+export interface HistoryWrite {
+  /** True when the write must replace the history entry */
+  readonly replace: boolean
+}
+
+/**
  * How the sync writes a filter change to the address bar: a user edit, a
  * view load or `applyFilters`. A URL apply writes nothing. `'none'` never
  * writes. `'replace'` and `'push'` use `window.history`. A function gets the
- * URL, for example `url => router.replace(url)`.
+ * URL and a `HistoryWrite`, for example
+ * `(url, { replace }) => (replace ? router.replace(url) : router.push(url))`.
+ * A function with one parameter also works, for example
+ * `url => router.replace(url)`.
  */
-export type HistoryMode = 'none' | 'replace' | 'push' | ((url: string) => void)
+export type HistoryMode =
+  | 'none'
+  | 'replace'
+  | 'push'
+  | ((url: string, write: HistoryWrite) => void)
 
 /**
  * The options of the public URL functions, `parseUrlFilters` and
@@ -593,7 +616,9 @@ export interface GridUrlSyncOptions {
   popstate?: boolean | undefined
   /**
    * Apply the address bar's filters when the sync is made. A URL with no
-   * filters keeps the grid's filters.
+   * filters keeps the grid's filters, and with `history` they are written
+   * to the URL with replace. AG Grid 31 applies `initialState` filters when
+   * the first rows come: the sync writes them at that time.
    * @default true
    */
   applyUrlOnCreate?: boolean | undefined

@@ -25,6 +25,7 @@ export type {
   UrlOptions,
   Codec,
   HistoryMode,
+  HistoryWrite,
   SyncStatus,
   ApplyResult,
   IssueCode,

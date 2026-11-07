@@ -7,7 +7,7 @@ import { URLSyncError } from '../core/types.js'
 // The holder gives React one stable subscribe and getSnapshot pair, and
 // forwards them to the sync that the hook has now (#222)
 
-function createFakeSync() {
+function createFakeSync(values: Partial<GridUrlSyncSnapshot> = {}) {
   const listeners = new Set<() => void>()
 
   const snapshot: GridUrlSyncSnapshot = Object.freeze({
@@ -16,7 +16,8 @@ function createFakeSync() {
     hasFilters: true,
     issues: [],
     views: [],
-    activeViewId: null
+    activeViewId: null,
+    ...values
   })
 
   const sync: GridUrlSync = {
@@ -123,6 +124,52 @@ describe('createSyncHolder', () => {
 
     expect(holder.subscribe).toBe(subscribe)
     expect(holder.getSnapshot).toBe(getSnapshot)
+  })
+
+  // Each sync has its own snapshot object (#311)
+  describe('a new sync with the same values', () => {
+    const issue = () =>
+      new URLSyncError('bad', undefined, {
+        code: 'INVALID_NUMBER',
+        column: 'a'
+      })
+
+    it('gives the last snapshot object', () => {
+      const holder = createSyncHolder()
+      const first = createFakeSync({ issues: [issue()] })
+      holder.set(first.sync)
+      const before = holder.getSnapshot()
+
+      holder.set(null)
+      holder.getSnapshot()
+      holder.set(createFakeSync({ issues: [issue()] }).sync)
+
+      expect(before).toBe(first.snapshot)
+      expect(holder.getSnapshot()).toBe(before)
+    })
+
+    it('keeps the issues array when only the URL changed', () => {
+      const holder = createSyncHolder()
+      holder.set(createFakeSync({ issues: [issue()] }).sync)
+      const before = holder.getSnapshot()
+      const next = createFakeSync({ issues: [issue()], url: 'https://x.test/' })
+
+      holder.set(next.sync)
+
+      expect(holder.getSnapshot()).toEqual(next.snapshot)
+      expect(holder.getSnapshot().issues).toBe(before.issues)
+      expect(holder.getSnapshot()).toBe(holder.getSnapshot())
+    })
+
+    it('gives the new snapshot when a value changed', () => {
+      const holder = createSyncHolder()
+      holder.set(createFakeSync({ issues: [issue()] }).sync)
+      const next = createFakeSync({ issues: [] })
+
+      holder.set(next.sync)
+
+      expect(holder.getSnapshot()).toBe(next.snapshot)
+    })
   })
 
   // With no sync, the hook still shows the stored views (#223)

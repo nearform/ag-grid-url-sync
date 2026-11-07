@@ -88,8 +88,35 @@ function hasWindow(): boolean {
   return typeof window !== 'undefined'
 }
 
-/** Two issue lists with the same code, column and message in each place */
-function sameIssues(
+/**
+ * Writes a URL to `window.history`, and keeps the page's `history.state`
+ * (#303). A plain object state is copied with no Next.js keys (`__NA`,
+ * `_N`): Next.js skips its router update for a write with them, because it
+ * takes that write for its own, so its router keeps the old URL. Next.js
+ * adds its keys to the new entry again. A state that is not a plain object
+ * (null, a string, an array) is given as it is.
+ */
+function writeHistory(url: string, replace: boolean): void {
+  const state: unknown = window.history.state
+
+  const kept =
+    Object.getPrototypeOf(state ?? 0) === Object.prototype
+      ? Object.fromEntries(
+          // SAFETY: the prototype check above holds only for an object
+          Object.entries(state as object).filter(
+            ([key]) => key !== '__NA' && key !== '_N'
+          )
+        )
+      : state
+
+  window.history[replace ? 'replaceState' : 'pushState'](kept, '', url)
+}
+
+/**
+ * Two issue lists with the same code, column and message in each place. Not
+ * public: the React hook's holder uses it too (#311).
+ */
+export function sameIssues(
   a: readonly URLSyncError[],
   b: readonly URLSyncError[]
 ): boolean {
@@ -135,6 +162,11 @@ export interface Handover {
    * setFilterModel for it, so the grid does not hold it: the next sync must.
    */
   readonly parked: ParkedApply | null
+  /**
+   * The issues of the latest grid read, which onIssue got (#305). The next
+   * sync does not report the same ones again. It reports a new one.
+   */
+  readonly readIssues: readonly URLSyncError[]
   /**
    * The key of the GRID_ERROR that onIssue got when the grid could not take
    * the old sync's listeners, or null (#286). The next sync does not report
@@ -217,6 +249,10 @@ export function createSync(
   const listensToPopstate = options.popstate ?? historyMode === 'push'
   // The tracked saved view. `model` is its landed model, null while pending.
   let active: ActiveView | null = null
+  // The URL form key of the filters that the grid held on create and shows
+  // later, or null (#306). AG Grid 31 holds initialState's filters until its
+  // first rows. When the grid shows them, the create's write runs.
+  let held: string | null = null
   let viewList: readonly GridView[] = NO_VIEWS
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
   // The column types of the grid, for a shared operation in a URL (#224)
@@ -349,11 +385,20 @@ export function createSync(
   }
 
   /**
-   * Reads the grid's filters and the URL for them. Only the issues that the
-   * last read did not have go to onIssue, so a read after an apply and the
-   * late filterChanged do not report the same issue twice.
+   * Reads the grid's filters and the URL for them, and sends the new issues
+   * to onIssue with the source of the work that the read is part of: the
+   * call that wrote to the grid, or 'grid' for the grid's own filters (#313)
    */
-  function readGrid(): void {
+  function readGrid(source: IssueSource = 'grid'): void {
+    for (const issue of readGridIssues()) emit(issue, source)
+  }
+
+  /**
+   * Reads the grid's filters and the URL for them. Gives only the issues
+   * that the last read did not have, so a read after an apply and the late
+   * filterChanged do not report the same issue twice.
+   */
+  function readGridIssues(): URLSyncError[] {
     const call = startCall('grid', 'collect')
     let model: FilterModel | null = null
 
@@ -373,11 +418,9 @@ export function createSync(
 
     const known = new Set(readIssues.map(issueKey))
 
-    for (const issue of call.issues) {
-      if (!known.has(issueKey(issue))) emit(issue, 'grid')
-    }
-
     readIssues = call.issues.length ? call.issues : NO_ISSUES
+
+    return call.issues.filter(issue => !known.has(issueKey(issue)))
   }
 
   /**
@@ -439,10 +482,12 @@ export function createSync(
     }
 
     applyIssues = call.issues.length ? call.issues : NO_ISSUES
-    readGrid()
+    // A read after the apply's write is part of the apply (#313). With no
+    // write, the read finds the grid's own filters.
+    readGrid(applies ? source : 'grid')
 
     if (filters && applies && settleUrlWrite(filters, before, failed)) {
-      followActiveView('url')
+      followActiveView('url', source)
     }
 
     publish()
@@ -524,6 +569,8 @@ export function createSync(
     // Before the call, so an event inside it is known as ours (#273). A
     // pending write stays known: a deferred grid lands it first.
     own = startWrite(own, kind)
+    // The grid no longer shows only its own filters
+    held = null
     ownSource = call.source
 
     // Only the grid call is in the try. An issue report runs outside it, so
@@ -561,6 +608,8 @@ export function createSync(
       kind,
       failed: false,
       afterKey: after ? modelKey(after) : null,
+      after,
+      afterColumnUrlKeys: after ? columnUrlKeys(after) : undefined,
       before,
       beforeKey: before ? modelKey(before) : null,
       accepted,
@@ -570,10 +619,10 @@ export function createSync(
     })
 
     own = settled.own
-    readGrid()
+    readGrid(call.source)
 
     if (settled.landed) {
-      followActiveView(kind)
+      followActiveView(kind, call.source)
       writeLanding(kind, call.source)
     }
 
@@ -697,10 +746,12 @@ export function createSync(
    * later own write can have taken the place of the view's record. Any other
    * grid model clears the active view and its stored pointer, except in an
    * echo while the view is pending, and in a queued echo, where the grid
-   * passes through an earlier write.
+   * passes through an earlier write. A failed pointer clear is an issue of
+   * the work that started the rule: `source` (#313).
    */
   function followActiveView(
     landing: WriteKind | null,
+    source: IssueSource,
     seen: Seen = 'call',
     api = true
   ): void {
@@ -728,7 +779,7 @@ export function createSync(
 
     const { id } = active
     active = null
-    clearPointer(id, startCall('grid', 'report'))
+    clearPointer(id, startCall(source, 'report'))
   }
 
   /**
@@ -768,6 +819,7 @@ export function createSync(
       kind: 'url',
       failed,
       afterKey: filtersKey(state),
+      after: state,
       before,
       beforeKey: before ? filtersKey(before) : null,
       accepted,
@@ -865,15 +917,17 @@ export function createSync(
     return writeUrlFilters('http://key.invalid/', sorted, options)
   }
 
-  /** Writes the snapshot's URL to the address bar, or gives it to the router */
+  /**
+   * Writes the snapshot's URL to the address bar, or gives it to the router.
+   * `replace` is true for a write that must not add an entry. A router
+   * function gets it, so it can replace or push as `'push'` does (#304).
+   */
   function write(source: IssueSource, replace: boolean): void {
     try {
       if (historyMode instanceof Function) {
-        historyMode(url)
-      } else if (replace || historyMode === 'replace') {
-        window.history.replaceState(window.history.state, '', url)
+        historyMode(url, { replace })
       } else {
-        window.history.pushState(window.history.state, '', url)
+        writeHistory(url, replace || historyMode === 'replace')
       }
 
       writeIssues = NO_ISSUES
@@ -904,9 +958,15 @@ export function createSync(
    * At an own write's landing: a view or app write goes to history as a user
    * edit does (D3), and the restore on create replaces the entry. A URL
    * write does not, because the URL holds those filters already (#273).
+   * `rest`: the end of a landing in two parts (#302). The first part wrote
+   * the entry, so this write replaces it.
    */
-  function writeLanding(kind: WriteKind, source: IssueSource): void {
-    if (kind !== 'url') writeChange(source, kind === 'restore')
+  function writeLanding(
+    kind: WriteKind,
+    source: IssueSource,
+    rest = false
+  ): void {
+    if (kind !== 'url') writeChange(source, rest || kind === 'restore')
   }
 
   /**
@@ -957,14 +1017,33 @@ export function createSync(
       return
     }
 
-    readGrid()
+    const found = readGridIssues()
+
+    if (showsHeld()) {
+      // The grid's own filters from create: the create's write, with no
+      // new history entry. Not a user edit (#306), so its issues are the
+      // grid's (#313).
+      for (const issue of found) emit(issue, 'grid')
+
+      writeChange('grid', true)
+      publish()
+
+      return
+    }
 
     const result = classify(event?.source)
+
+    // An echo or a late landing of the sync's own write is part of the call
+    // that made the write (#313). Only a change is the grid's.
+    const source = result.kind === 'change' ? 'grid' : ownSource
+
+    for (const issue of found) emit(issue, source)
 
     // On each event, echoes too: a pending view can land in an echo of a
     // later own write. The rule is the same for the same grid model.
     followActiveView(
       result.kind === 'landing' ? result.write : null,
+      source,
       result.kind !== 'echo' ? 'change' : result.queued ? 'queued' : 'echo',
       event?.source === 'api'
     )
@@ -976,7 +1055,7 @@ export function createSync(
     }
 
     if (result.kind === 'landing' && result.write !== null) {
-      writeLanding(result.write, ownSource)
+      writeLanding(result.write, ownSource, result.rest === true)
     }
 
     if (result.queued && shownWhilePending(own)) {
@@ -986,6 +1065,34 @@ export function createSync(
     }
 
     publish()
+  }
+
+  /**
+   * Whether this filterChanged shows the filters that the grid held on
+   * create. Only the first one that shows filters can: after it, the grid's
+   * filters are the user's. An event that shows none (a quick filter) waits.
+   */
+  function showsHeld(): boolean {
+    if (held === null || Object.keys(state).length === 0) return false
+
+    const shown = filtersKey(state) === held
+    held = null
+
+    return shown
+  }
+
+  /**
+   * The URL form key of the filters that the grid holds but does not show
+   * yet, or null. AG Grid 31 holds initialState's filters until its first
+   * rows, and getState gives them.
+   */
+  function heldKey(): string | null {
+    try {
+      return urlKey(acceptedPart(api.getState().filter?.filterModel ?? {}))
+    } catch {
+      // AG Grid before v31 has no getState
+      return null
+    }
   }
 
   /**
@@ -1281,12 +1388,16 @@ export function createSync(
 
   if (handed && start.keepApplyIssues) applyIssues = handed.applyIssues
 
+  // onIssue got these from the earlier sync. The first read replaces them.
+  if (handed) readIssues = handed.readIssues
+
   handovers.set(sync, () => ({
     own: own?.phase === 'writing' ? null : own,
     source: ownSource,
     keys,
     applyIssues,
     parked: parked ?? passedPark,
+    readIssues,
     listenerFailure
   }))
 
@@ -1354,14 +1465,14 @@ export function createSync(
     // The URL has no filter params, so the grid's own filters stay: show them
     // in the address bar too, with no new history entry. A URL with only bad
     // filter params is left as it is until the user changes a filter.
-    if (
-      !stored &&
-      !hasParams &&
-      historyMode !== 'none' &&
-      Object.keys(state).length > 0
-    ) {
-      write('url', true)
-      publish()
+    if (!stored && !hasParams && historyMode !== 'none') {
+      if (Object.keys(state).length > 0) {
+        write('url', true)
+        publish()
+      } else if (own === null) {
+        // The grid can show its filters later (#306)
+        held = heldKey()
+      }
     }
   } else {
     const keptViewId = start.keptViewId ?? null

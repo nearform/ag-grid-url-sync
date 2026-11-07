@@ -24,6 +24,9 @@ export type Columns = Readonly<FilterModel>
  *   the URL form of `accepted`, because the grid can rebuild a model.
  * - `landed`: the grid shows the write with this key. An event with the same
  *   key is the write's echo: one write can cause more than one event.
+ *   `fullKey`: the grid showed only part of the write when it landed (#302).
+ *   AG Grid can take a React custom filter's model after the call. Its own
+ *   'api' event with this key is then the end of the same landing.
  *
  * `waits`: the URL forms of earlier writes that were still pending when this
  * write started, oldest first. A deferred grid lands them first and in
@@ -47,7 +50,12 @@ export type OwnWrite =
       readonly acceptedColumnUrlKeys?: ColumnUrlKeys | undefined
       readonly waits?: readonly string[] | undefined
     }
-  | { readonly phase: 'landed'; readonly kind: WriteKind; readonly key: string }
+  | {
+      readonly phase: 'landed'
+      readonly kind: WriteKind
+      readonly key: string
+      readonly fullKey?: string | undefined
+    }
 
 type Pending = Extract<OwnWrite, { phase: 'pending' }>
 
@@ -69,6 +77,10 @@ export interface AfterCall {
   readonly failed: boolean
   /** The key of the grid after the call. Null: the grid could not be read. */
   readonly afterKey: string | null
+  /** The grid's columns after the call, in the form of `accepted` */
+  readonly after?: Columns | null | undefined
+  /** A model write: the URL form of each column of `after` */
+  readonly afterColumnUrlKeys?: ColumnUrlKeys | undefined
   readonly before: Columns | null
   readonly beforeKey: string | null
   readonly accepted: Columns
@@ -93,6 +105,11 @@ export interface Classified {
    * passes through the state of that write
    */
   readonly queued?: boolean | undefined
+  /**
+   * A landing that ends a landing in two parts (#302): the URL has the
+   * first part already, so the URL write replaces that entry
+   */
+  readonly rest?: boolean | undefined
 }
 
 /**
@@ -123,10 +140,7 @@ export function settleWrite(own: OwnWrite | null, call: AfterCall): Settled {
 
   // An event inside the call landed it
   if (own?.phase === 'landed') {
-    return {
-      own: { phase: 'landed', kind: call.kind, key: call.afterKey ?? own.key },
-      landed: true
-    }
+    return { own: landedRecord(call, call.afterKey ?? own.key), landed: true }
   }
 
   const waits = own?.phase === 'writing' ? own.waits : undefined
@@ -141,10 +155,7 @@ export function settleWrite(own: OwnWrite | null, call: AfterCall): Settled {
     ((waits === undefined && call.afterKey === call.acceptedKey) ||
       (call.beforeKey !== null && call.afterKey !== call.beforeKey))
   ) {
-    return {
-      own: { phase: 'landed', kind: call.kind, key: call.afterKey },
-      landed: true
-    }
+    return { own: landedRecord(call, call.afterKey), landed: true }
   }
 
   return {
@@ -161,6 +172,35 @@ export function settleWrite(own: OwnWrite | null, call: AfterCall): Settled {
     },
     landed: false
   }
+}
+
+/**
+ * The record of a write that landed in the call with this key. When the grid
+ * shows only part of the write, the record keeps the key of the full write:
+ * the grid can take the rest after the call, in its own 'api' event (#302).
+ */
+function landedRecord(call: AfterCall, key: string): OwnWrite {
+  const record = { phase: 'landed', kind: call.kind, key } as const
+
+  const part =
+    key !== call.acceptedKey &&
+    call.after &&
+    partLanding(
+      call.after,
+      call.accepted,
+      call.before,
+      urlForms(call.afterColumnUrlKeys, call.acceptedColumnUrlKeys)
+    )
+
+  return part ? { ...record, fullKey: call.acceptedKey } : record
+}
+
+/** The URL form of each column of the grid and of the write, when both are known */
+function urlForms(
+  live: ColumnUrlKeys | undefined,
+  written: ColumnUrlKeys | undefined
+): ColumnUrlForms | undefined {
+  return live && written ? { live, written } : undefined
 }
 
 /**
@@ -190,6 +230,23 @@ export function classifyEvent(
     return { own, kind: 'echo', write: own.kind }
   }
 
+  // The grid showed only part of the write at the landing. Its own event
+  // with the full write ends the same landing. A user's edit has another
+  // source, so it is a change.
+  if (
+    own?.phase === 'landed' &&
+    own.fullKey !== undefined &&
+    event.source === 'api' &&
+    event.key === own.fullKey
+  ) {
+    return {
+      own: { phase: 'landed', kind: own.kind, key: event.key },
+      kind: 'landing',
+      write: own.kind,
+      rest: true
+    }
+  }
+
   if (own?.phase === 'pending') {
     // An earlier write lands first. The grid's own landing has the source
     // 'api'.
@@ -214,10 +271,7 @@ export function classifyEvent(
     // model write is a model that the grid rebuilt (its own key order, a
     // number for a string). A user's edit in the grid's UI has another
     // source, so it is a change.
-    const forms =
-      own.acceptedColumnUrlKeys && event.columnUrlKeys
-        ? { live: event.columnUrlKeys, written: own.acceptedColumnUrlKeys }
-        : undefined
+    const forms = urlForms(event.columnUrlKeys, own.acceptedColumnUrlKeys)
 
     if (
       event.source === 'api' &&
@@ -341,16 +395,8 @@ export function couldBeLanding(
 ): boolean {
   const columns = Object.keys(live)
 
-  const sameUrlForm = (colId: string): boolean => {
-    const written = forms?.written.get(colId)
-
-    return written !== undefined && forms?.live.get(colId) === written
-  }
-
   const fromWrite = (colId: string): boolean =>
-    Object.hasOwn(accepted, colId) &&
-    (stableJson(live[colId]) === stableJson(accepted[colId]) ||
-      sameUrlForm(colId))
+    showsWrite(live, accepted, colId, forms)
 
   const fromBefore = (colId: string): boolean =>
     before !== null &&
@@ -361,4 +407,44 @@ export function couldBeLanding(
     columns.some(fromWrite) &&
     columns.every(colId => fromWrite(colId) || fromBefore(colId))
   )
+}
+
+/**
+ * Whether the grid shows only part of a write: it could be the write's
+ * landing, but a column of the write does not show the write's value yet
+ * (#302)
+ */
+export function partLanding(
+  live: Columns,
+  accepted: Columns,
+  before: Columns | null,
+  forms?: ColumnUrlForms
+): boolean {
+  return (
+    couldBeLanding(live, accepted, before, forms) &&
+    Object.keys(accepted).some(
+      colId => !showsWrite(live, accepted, colId, forms)
+    )
+  )
+}
+
+/**
+ * Whether a column of the grid has the write's value. With `forms`, a column
+ * that the grid rebuilt is the write's too when its URL form is the URL form
+ * of the write's column (#223).
+ */
+function showsWrite(
+  live: Columns,
+  accepted: Columns,
+  colId: string,
+  forms?: ColumnUrlForms
+): boolean {
+  if (!Object.hasOwn(accepted, colId)) return false
+
+  // A column that the grid does not have gives no JSON, so it is not equal
+  if (stableJson(live[colId]) === stableJson(accepted[colId])) return true
+
+  const written = forms?.written.get(colId)
+
+  return written !== undefined && forms?.live.get(colId) === written
 }

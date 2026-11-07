@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createGridUrlSync, createSync, handOver } from './grid-url-sync.js'
 import {
+  createLateRowsGrid,
   createTimedGrid,
   GRID_TIMINGS,
   useRealLocation
@@ -168,6 +169,117 @@ describe.each(GRID_TIMINGS)(
     })
   }
 )
+
+// AG Grid 31 holds the initialState filters until its first rows. A URL with
+// no filter params keeps them, and with history the sync writes them with
+// replace, as it does when the grid shows them on create (#306).
+describe('createGridUrlSync: filters that the grid holds until its first rows', () => {
+  beforeEach(() => {
+    useRealLocation('/?tab=1')
+  })
+
+  it('writes them with replace when the grid applies them at the first rows', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    expect(window.location.search).toBe('?tab=1')
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?tab=1&f_name_contains=jo')
+    expect(sync.getSnapshot().hasFilters).toBe(true)
+    expect(window.history.length).toBe(length)
+
+    sync.destroy()
+  })
+
+  it('a user edit after the first rows writes history', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    grid.rowsArrive()
+    const length = window.history.length
+
+    grid.userEdit(NAME_X)
+
+    expect(window.location.search).toBe('?tab=1&f_name_contains=x')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+
+  it('a user edit before the first rows writes history', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    grid.userEdit(NAME_X)
+
+    expect(window.location.search).toBe('?tab=1&f_name_contains=x')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+
+  it('a quick filter change before the first rows does not stop the replace', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    grid.quickFilter()
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?tab=1&f_name_contains=jo')
+    expect(window.history.length).toBe(length)
+
+    sync.destroy()
+  })
+
+  it('writes nothing with history none', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api })
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?tab=1')
+    expect(sync.getSnapshot().url).toContain('f_name_contains=jo')
+
+    sync.destroy()
+  })
+
+  it('reports an issue of the held filters one time, with source grid', () => {
+    const onIssue = vi.fn()
+
+    const grid = createLateRowsGrid({
+      ...NAME_JO,
+      age: { filterType: 'number', type: 'greaterThan', filter: 5 }
+    })
+
+    const sync = createGridUrlSync({
+      api: grid.api,
+      history: 'push',
+      maxValueLength: 1,
+      onIssue
+    })
+
+    const length = window.history.length
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?tab=1&f_age_gt=5')
+    expect(window.history.length).toBe(length)
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue).toHaveBeenCalledWith({
+      issue: expect.objectContaining({
+        code: 'VALUE_TOO_LONG',
+        column: 'name'
+      }),
+      source: 'grid'
+    })
+
+    sync.destroy()
+  })
+})
 
 // While a deferred write is pending, an 'api' event is the landing only when
 // the grid shows the write's filters (#274 review)

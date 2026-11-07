@@ -29,6 +29,11 @@ const AGE_GT_5 = {
   age: { filterType: 'number', type: 'greaterThan', filter: 5 }
 } as const
 
+/** A grid filter that the URL cannot hold: a read issue, INVALID_NUMBER */
+const AGE_BAD = {
+  age: { filterType: 'number', type: 'greaterThan', filter: 'abc' }
+} as const
+
 /** AG Grid sends filterChanged one tick after setFilterModel */
 const settle = (): Promise<void> =>
   act(() => new Promise<void>(resolve => setTimeout(resolve)))
@@ -221,6 +226,62 @@ describe('useGridUrlSync: a stable result (#271)', () => {
     expect(result.current.loadView).toBe(first.loadView)
     expect(result.current.deleteView).toBe(first.deleteView)
   })
+
+  test('an option change with the same values keeps the result and its issues (#311)', async () => {
+    const api = createRealGrid()
+    const { result, rerender } = renderSync({ api })
+    await settle()
+
+    act(() => {
+      result.current.applyUrl('https://x.test/?f_age_unknownOperation=1')
+    })
+
+    const first = result.current
+
+    expect(first.issues).toHaveLength(1)
+
+    rerender({ api, maxValueLength: 50 })
+    await settle()
+    // The page URL has no params, so a new prefix gives the same URL
+    rerender({ api, maxValueLength: 50, codec: individual({ prefix: 'g_' }) })
+    await settle()
+
+    expect(result.current).toBe(first)
+    expect(result.current.issues).toBe(first.issues)
+  })
+
+  test('a history change on a grid with a read issue keeps the result (#311)', async () => {
+    const api = createRealGrid({
+      initialState: { filter: { filterModel: AGE_BAD } }
+    })
+
+    const { result, rerender } = renderSync({ api }, true)
+    await settle()
+    const first = result.current
+
+    rerender({ api, history: 'replace' })
+    await settle()
+
+    expect(first.issues).toHaveLength(1)
+    expect(result.current).toBe(first)
+    expect(result.current.issues).toBe(first.issues)
+  })
+
+  test('a new codec keeps the issues array when only the URL changes (#311)', async () => {
+    const api = createRealGrid({
+      initialState: { filter: { filterModel: { ...NAME_JO, ...AGE_BAD } } }
+    })
+
+    const { result, rerender } = renderSync({ api })
+    await settle()
+    const first = result.current
+
+    rerender({ api, codec: individual({ prefix: 'g_' }) })
+    await settle()
+
+    expect(result.current).not.toBe(first)
+    expect(result.current.issues).toBe(first.issues)
+  })
 })
 
 describe('useGridUrlSync: options after mount (#271)', () => {
@@ -296,6 +357,28 @@ describe('useGridUrlSync: options after mount (#271)', () => {
     expect(second).toHaveBeenCalledTimes(1)
   })
 
+  test('a history function gets the URL and the replace flag (#304)', async () => {
+    const other = createViewStore('other')
+    const view = other.saveView('B', { filterModel: AGE_GT_5 })
+    other.persistActiveViewId(view.id)
+    const api = createRealGrid()
+    const history = vi.fn()
+    const { rerender } = renderSync({ api, history, storageKey: 't' })
+    await settle()
+
+    // A user edit adds an entry
+    await edit(api, NAME_JO)
+
+    // The restore of the view of a new storageKey replaces the entry
+    rerender({ api, history, storageKey: 'other' })
+    await settle()
+
+    expect(history.mock.calls).toEqual([
+      [expect.stringContaining('f_name_contains=jo'), { replace: false }],
+      [expect.stringContaining('f_age_gt=5'), { replace: true }]
+    ])
+  })
+
   test('a history change after mount takes effect', async () => {
     const api = createRealGrid()
     const { rerender } = renderSync({ api })
@@ -342,7 +425,7 @@ describe('useGridUrlSync: methods (#271)', () => {
     await edit(api, NAME_JO)
 
     expect(result.current.getUrl('https://x.test/list?tab=1')).toBe(
-      'https://x.test/list?f_name_contains=jo&tab=1'
+      'https://x.test/list?tab=1&f_name_contains=jo'
     )
   })
 
@@ -570,6 +653,66 @@ describe('useGridUrlSync: issues across a new sync (#271 review)', () => {
     expect(syncs()).toBe(2)
     expect(result.current.issues).toHaveLength(1)
     expect(onIssue).toHaveBeenCalledTimes(1)
+  })
+
+  test('StrictMode on a grid that has a read issue reports it one time (#305)', async () => {
+    const api = createRealGrid({
+      initialState: { filter: { filterModel: AGE_BAD } }
+    })
+
+    const syncs = countSyncs(api)
+    const onIssue = vi.fn()
+
+    const { result } = renderSync({ api, onIssue }, true)
+    await settle()
+
+    expect(syncs()).toBe(2)
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+      issue: { code: 'INVALID_NUMBER', column: 'age' },
+      source: 'grid'
+    })
+    expect(result.current.issues).toHaveLength(1)
+  })
+
+  test('an option change does not report the read issues again (#305)', async () => {
+    const api = createRealGrid()
+    const syncs = countSyncs(api)
+    const onIssue = vi.fn()
+    const { result, rerender } = renderSync({ api, onIssue })
+    await settle()
+    await edit(api, AGE_BAD)
+
+    expect(onIssue).toHaveBeenCalledTimes(1)
+
+    rerender({ api, onIssue, maxValueLength: 50 })
+    await settle()
+    rerender({ api, onIssue, maxValueLength: 50, codec: grouped() })
+    await settle()
+
+    expect(syncs()).toBe(3)
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(result.current.issues).toMatchObject([
+      { code: 'INVALID_NUMBER', column: 'age' }
+    ])
+  })
+
+  test('a new sync reports a read issue that the last one did not have (#305)', async () => {
+    const api = createRealGrid()
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const { result, rerender } = renderSync({ api, onIssue })
+    await settle()
+    await edit(api, { ...NAME_JO, ...AGE_BAD })
+
+    // 'jo' is longer than 1 character
+    rerender({ api, onIssue, maxValueLength: 1 })
+    await settle()
+
+    expect(onIssue.mock.calls.map(([event]) => event.issue.code)).toEqual([
+      'INVALID_NUMBER',
+      'VALUE_TOO_LONG'
+    ])
+    expect(result.current.issues).toHaveLength(2)
   })
 
   test('StrictMode throws the issue of the URL apply with throwOnError', async () => {
@@ -905,3 +1048,77 @@ describe.each(GRID_TIMINGS)(
     })
   }
 )
+
+// A grid that lands a write in two parts (#302), as AG Grid does with a React
+// custom filter: inside the call it shows only the other columns, and one
+// tick later it shows the full model in one 'api' event
+describe('useGridUrlSync: a write that lands in two parts (#302)', () => {
+  const BOTH = { ...NAME_JO, ...AGE_GT_5 }
+
+  test.each([true, false])(
+    'a reload keeps the stored view and adds no history entry (StrictMode: %s)',
+    async strict => {
+      const store = createViewStore('t')
+      const view = store.saveView('Both', { filterModel: BOTH })
+      store.persistActiveViewId(view.id)
+      const push = vi.spyOn(window.history, 'pushState')
+      const { api } = createTimedGrid('in-call', {}, { late: ['age'] })
+
+      const { result } = renderSync(
+        { api, history: 'push', storageKey: 't' },
+        strict
+      )
+
+      await settle()
+      await settle()
+
+      expect(api.getFilterModel()).toEqual(BOTH)
+      expect(result.current.activeViewId).toBe(view.id)
+      expect(store.getActiveViewId()).toBe(view.id)
+      expect(params().get('f_age_gt')).toBe('5')
+      expect(push).not.toHaveBeenCalled()
+    }
+  )
+
+  test('applyFilters adds one history entry', async () => {
+    const push = vi.spyOn(window.history, 'pushState')
+    const { api } = createTimedGrid('in-call', {}, { late: ['age'] })
+    const { result } = renderSync({ api, history: 'push' }, true)
+    await settle()
+
+    act(() => {
+      result.current.applyFilters({
+        name: { filterType: 'text', type: 'contains', filter: 'jo' },
+        age: { filterType: 'number', type: 'greaterThan', filter: 5 }
+      })
+    })
+    await settle()
+    await settle()
+
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(params().get('f_name_contains')).toBe('jo')
+    expect(params().get('f_age_gt')).toBe('5')
+  })
+
+  test('loadView keeps the view active and adds one history entry', async () => {
+    const store = createViewStore('t')
+    const view = store.saveView('Both', { filterModel: BOTH })
+    store.persistActiveViewId(null)
+    const push = vi.spyOn(window.history, 'pushState')
+    const { api } = createTimedGrid('in-call', {}, { late: ['age'] })
+
+    const { result } = renderSync(
+      { api, history: 'push', storageKey: 't' },
+      true
+    )
+
+    await settle()
+    act(() => result.current.loadView(view.id))
+    await settle()
+    await settle()
+
+    expect(result.current.activeViewId).toBe(view.id)
+    expect(store.getActiveViewId()).toBe(view.id)
+    expect(push).toHaveBeenCalledTimes(1)
+  })
+})

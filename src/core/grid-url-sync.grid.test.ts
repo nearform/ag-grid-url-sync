@@ -362,6 +362,62 @@ describe('createGridUrlSync: onIssue', () => {
       )
     ).toEqual(['grid:age', 'grid:price'])
   })
+
+  describe('a new sync on the same grid (#305)', () => {
+    const AGE_BAD = {
+      age: { filterType: 'number', type: 'greaterThan', filter: 'abc' }
+    } as const
+
+    const PRICE_BAD = {
+      price: { filterType: 'number', type: 'greaterThan', filter: 'xyz' }
+    } as const
+
+    const gridWithPrice = () =>
+      createRealGrid({
+        columnDefs: [
+          { field: 'age', filter: 'agNumberColumnFilter' },
+          { field: 'price', filter: 'agNumberColumnFilter' }
+        ]
+      })
+
+    it('does not report the read issues of the last sync again', async () => {
+      const api = gridWithPrice()
+      const onIssue = vi.fn<(event: IssueEvent) => void>()
+      const first = createSync({ api, onIssue })
+      api.setFilterModel(AGE_BAD)
+      await settle()
+      const handover = handOver(first)
+      first.destroy()
+
+      const next = createSync(
+        { api, onIssue, maxValueLength: 50, applyUrlOnCreate: false },
+        { handover }
+      )
+
+      expect(onIssue).toHaveBeenCalledOnce()
+      expect(next.getSnapshot().issues).toMatchObject([
+        { code: 'INVALID_NUMBER', column: 'age' }
+      ])
+    })
+
+    it('reports a read issue that the last sync did not have', async () => {
+      const api = gridWithPrice()
+      const first = createSync({ api, onIssue: () => {} })
+      api.setFilterModel(AGE_BAD)
+      await settle()
+      const handover = handOver(first)
+      first.destroy()
+      api.setFilterModel({ ...AGE_BAD, ...PRICE_BAD })
+      await settle()
+      const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+      createSync({ api, onIssue }, { handover })
+
+      expect(onIssue.mock.calls.map(([event]) => event.issue.column)).toEqual([
+        'price'
+      ])
+    })
+  })
 })
 
 describe('createGridUrlSync: failures are not issues (#284)', () => {

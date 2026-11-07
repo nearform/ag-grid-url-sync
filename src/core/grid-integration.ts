@@ -20,7 +20,14 @@ import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
 import { reportIssue, toIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
-import type { FilterModel, GridApi } from 'ag-grid-community'
+import type { ColDef, GridApi } from 'ag-grid-community'
+
+/**
+ * The grid's filter model, as `api.getFilterModel()` gives it. This is AG
+ * Grid's `FilterModel`, which AG Grid 28 to 30 do not export (#300). The
+ * package does not export this type.
+ */
+export type FilterModel = ReturnType<GridApi['getFilterModel']>
 
 /**
  * The AG Grid name of an internal operation. Null (no operation, in AG Grid's
@@ -80,6 +87,27 @@ function toIsoDateString(val: string | undefined): string {
 }
 
 /**
+ * The grid API methods that give a column's definition. AG Grid 28 to 30
+ * have getColumn on the column API only, and getColumnDef on the grid API
+ * (#300).
+ */
+type ColumnDefSource = Pick<GridApi, 'getColumnDef'> &
+  Partial<Pick<GridApi, 'getColumn'>>
+
+/**
+ * The definition of a column, or null for a column that the grid does not
+ * have. getColumnDef gives the same definition as getColumn's getColDef.
+ */
+function findColumnDef(
+  gridApi: ColumnDefSource,
+  columnId: string
+): ColDef | null {
+  if (gridApi.getColumn === undefined) return gridApi.getColumnDef(columnId)
+
+  return gridApi.getColumn(columnId)?.getColDef() ?? null
+}
+
+/**
  * Detects the expected filter type for a column based on AG Grid configuration
  */
 export function detectColumnFilterType(
@@ -87,11 +115,9 @@ export function detectColumnFilterType(
   columnId: string
 ): 'text' | 'number' | 'date' {
   try {
-    const column = gridApi.getColumn(columnId)
+    const colDef = findColumnDef(gridApi, columnId)
 
-    if (!column) return 'text' // Default to text for unknown columns
-
-    const colDef = column.getColDef()
+    if (!colDef) return 'text' // Default to text for unknown columns
 
     // 1. Explicit filter configuration takes priority
     if (colDef.filter === 'agDateColumnFilter') return 'date'

@@ -21,5 +21,6 @@ export type {
   FilterOperation,
   AGGridUrlSyncConfig,
   GridApi,
-  HistoryMode
+  HistoryMode,
+  HistoryWrite
 } from '../core/types.js'

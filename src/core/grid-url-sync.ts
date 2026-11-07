@@ -1,4 +1,4 @@
-import type { FilterModel, GridApi } from 'ag-grid-community'
+import type { GridApi } from 'ag-grid-community'
 import type {
   ApplyResult,
   FilterState,
@@ -21,7 +21,8 @@ import { resolveParamPrefix } from './individual-params.js'
 import {
   fromGridModel,
   getFilterModel,
-  toGridModel
+  toGridModel,
+  type FilterModel
 } from './grid-integration.js'
 import type { GridView } from './view-storage.js'
 import type {
@@ -89,6 +90,30 @@ interface Call {
 
 function hasWindow(): boolean {
   return typeof window !== 'undefined'
+}
+
+/**
+ * Writes a URL to `window.history`, and keeps the page's `history.state`
+ * (#303). A plain object state is copied with no Next.js keys (`__NA`,
+ * `_N`): Next.js skips its router update for a write with them, because it
+ * takes that write for its own, so its router keeps the old URL. Next.js
+ * adds its keys to the new entry again. A state that is not a plain object
+ * (null, a string, an array) is given as it is.
+ */
+function writeHistory(url: string, replace: boolean): void {
+  const state: unknown = window.history.state
+
+  const kept =
+    Object.getPrototypeOf(state ?? 0) === Object.prototype
+      ? Object.fromEntries(
+          // SAFETY: the prototype check above holds only for an object
+          Object.entries(state as object).filter(
+            ([key]) => key !== '__NA' && key !== '_N'
+          )
+        )
+      : state
+
+  window.history[replace ? 'replaceState' : 'pushState'](kept, '', url)
 }
 
 /**
@@ -467,6 +492,8 @@ export function createSync(
       kind,
       failed: false,
       afterKey: after ? modelKey(after) : null,
+      after,
+      afterColumnUrlKeys: after ? columnUrlKeys(after) : undefined,
       before,
       beforeKey: before ? modelKey(before) : null,
       accepted,
@@ -676,6 +703,7 @@ export function createSync(
       kind: 'url',
       failed,
       afterKey: filtersKey(state),
+      after: state,
       before,
       beforeKey: before ? filtersKey(before) : null,
       accepted,
@@ -774,15 +802,17 @@ export function createSync(
     )
   }
 
-  /** Writes the snapshot's URL to the address bar, or gives it to the router */
+  /**
+   * Writes the snapshot's URL to the address bar, or gives it to the router.
+   * `replace` is true for a write that must not add an entry. A router
+   * function gets it, so it can replace or push as `'push'` does (#304).
+   */
   function write(source: IssueSource, replace: boolean): void {
     try {
       if (historyMode instanceof Function) {
-        historyMode(url)
-      } else if (replace || historyMode === 'replace') {
-        window.history.replaceState(window.history.state, '', url)
+        historyMode(url, { replace })
       } else {
-        window.history.pushState(window.history.state, '', url)
+        writeHistory(url, replace || historyMode === 'replace')
       }
 
       writeIssues = NO_ISSUES
@@ -813,9 +843,15 @@ export function createSync(
    * At an own write's landing: a view or app write goes to history as a user
    * edit does (D3), and the restore on create replaces the entry. A URL
    * write does not, because the URL holds those filters already (#273).
+   * `rest`: the end of a landing in two parts (#302). The first part wrote
+   * the entry, so this write replaces it.
    */
-  function writeLanding(kind: WriteKind, source: IssueSource): void {
-    if (kind !== 'url') writeChange(source, kind === 'restore')
+  function writeLanding(
+    kind: WriteKind,
+    source: IssueSource,
+    rest = false
+  ): void {
+    if (kind !== 'url') writeChange(source, rest || kind === 'restore')
   }
 
   /**
@@ -881,7 +917,7 @@ export function createSync(
     if (result.kind === 'change') writeChange('grid', false)
 
     if (result.kind === 'landing' && result.write !== null) {
-      writeLanding(result.write, ownSource)
+      writeLanding(result.write, ownSource, result.rest === true)
     }
 
     if (result.queued && shownWhilePending(own)) {

@@ -723,12 +723,32 @@ export interface GridUrlSyncSnapshot {
 }
 
 /**
+ * What a history function gets with the URL (#304). `replace` is true for a
+ * write that must not add a history entry: the create-time write of the
+ * grid's own filters, and the restore of a stored view. It is false for a
+ * user edit, a view load and `applyFilters`. So
+ * `replace ? router.replace(url) : router.push(url)` gives the history that
+ * `'push'` gives.
+ */
+export interface HistoryWrite {
+  /** True when the write must replace the history entry */
+  readonly replace: boolean
+}
+
+/**
  * How the sync writes a filter change to the address bar: a user edit, a
  * view load or `applyFilters`. A URL apply writes nothing. `'none'` never
  * writes. `'replace'` and `'push'` use `window.history`. A function gets the
- * URL, for example `url => router.replace(url)`.
+ * URL and a `HistoryWrite`, for example
+ * `(url, { replace }) => (replace ? router.replace(url) : router.push(url))`.
+ * A function with one parameter also works, for example
+ * `url => router.replace(url)`.
  */
-export type HistoryMode = 'none' | 'replace' | 'push' | ((url: string) => void)
+export type HistoryMode =
+  | 'none'
+  | 'replace'
+  | 'push'
+  | ((url: string, write: HistoryWrite) => void)
 
 /** The options of `createGridUrlSync` */
 export interface GridUrlSyncOptions {

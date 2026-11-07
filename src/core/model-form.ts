@@ -37,7 +37,7 @@ export function stateToModel(state: FilterState): FilterModel {
  * Whether the individual codec can hold this kind of column model: a text,
  * number or date filter with one condition
  */
-function isSimpleKind(model: ColumnModel): boolean {
+export function isSimpleKind(model: ColumnModel): boolean {
   const filterType = filterTypeOf(model)
 
   if (

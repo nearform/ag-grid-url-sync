@@ -345,6 +345,28 @@ function parseDateValue(value: string, operation: DateFilterOperation): string {
 }
 
 /**
+ * Checks the values of a filter with the rules of a URL param: the filter is
+ * written as the value of its param, and the value is read back. Throws the
+ * issue that the URL would give, with no column: for example INVALID_NUMBER
+ * for a range in the wrong order, or INVALID_DATE for a date that does not
+ * exist. The json and base64 formats use it, so they check the values as
+ * this codec does (#308). The length of a text value is not checked here.
+ */
+export function checkFilterValues(column: string, filter: ColumnFilter): void {
+  const urlOperation = operatorById(filter.type)?.url
+
+  const param = serializeColumnFilter(
+    column,
+    filter,
+    DEFAULT_CONFIG.paramPrefix
+  )
+
+  if (urlOperation && param) {
+    parseFilterOperation(urlOperation, param[1], () => filter.filterType)
+  }
+}
+
+/**
  * Parses prefixed filter parameters into a filter state object.
  * Parameters without the configured prefix are skipped. A parameter that fails
  * to parse is reported through `config.onParseError` and skipped.

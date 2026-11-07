@@ -120,10 +120,10 @@ export function useGridUrlSync(
   const syncHistory = useMemo(
     (): HistoryMode =>
       historyKind === 'function'
-        ? url => {
-            const write = latestRef.current.history
+        ? (url, write) => {
+            const latest = latestRef.current.history
 
-            if (write instanceof Function) write(url)
+            if (latest instanceof Function) latest(url, write)
           }
         : historyKind,
     [historyKind]

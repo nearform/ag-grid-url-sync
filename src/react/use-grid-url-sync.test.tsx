@@ -296,6 +296,28 @@ describe('useGridUrlSync: options after mount (#271)', () => {
     expect(second).toHaveBeenCalledTimes(1)
   })
 
+  test('a history function gets the URL and the replace flag (#304)', async () => {
+    const other = createViewStore('other')
+    const view = other.saveView('B', AGE_GT_5)
+    other.persistActiveViewId(view.id)
+    const api = createRealGrid()
+    const history = vi.fn()
+    const { rerender } = renderSync({ api, history, storageKey: 't' })
+    await settle()
+
+    // A user edit adds an entry
+    await edit(api, NAME_JO)
+
+    // The restore of the view of a new storageKey replaces the entry
+    rerender({ api, history, storageKey: 'other' })
+    await settle()
+
+    expect(history.mock.calls).toEqual([
+      [expect.stringContaining('f_name_contains=jo'), { replace: false }],
+      [expect.stringContaining('f_age_gt=5'), { replace: true }]
+    ])
+  })
+
   test('a history change after mount takes effect', async () => {
     const api = createRealGrid()
     const { rerender } = renderSync({ api })

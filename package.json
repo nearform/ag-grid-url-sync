@@ -190,7 +190,7 @@
     {
       "name": "dist/react/index.js (bundled, react external)",
       "path": "./dist/react/index.js",
-      "limit": "16.9 KiB",
+      "limit": "17.0 KiB",
       "gzip": true,
       "ignore": [
         "react"

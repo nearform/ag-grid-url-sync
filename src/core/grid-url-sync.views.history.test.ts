@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createGridUrlSync } from './grid-url-sync.js'
 import { createViewStore } from './view-storage.js'
 import type { GridView } from './view-storage.js'
-import type { HistoryMode } from './types.js'
+import type { HistoryMode, HistoryWrite } from './types.js'
 import type { GridTiming } from '../test-helpers.js'
 import {
   createTimedGrid,
@@ -106,7 +106,7 @@ describe.each(GRID_TIMINGS)(
     })
 
     it("with a history function, a view load calls it with the view's URL", async () => {
-      const history = vi.fn<(url: string) => void>()
+      const history = vi.fn<(url: string, write: HistoryWrite) => void>()
       const { a, sync } = setup(timing, history)
 
       sync.loadView(a.id)
@@ -114,7 +114,8 @@ describe.each(GRID_TIMINGS)(
 
       expect(history).toHaveBeenCalledTimes(1)
       expect(history).toHaveBeenCalledWith(
-        expect.stringContaining('?f_name_contains=jo')
+        expect.stringContaining('?f_name_contains=jo'),
+        { replace: false }
       )
 
       sync.destroy()

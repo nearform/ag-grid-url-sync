@@ -62,9 +62,9 @@ export interface UseAGGridUrlSyncOptions extends AGGridUrlSyncConfig {
    * (#270). A user edit, a view load, `applyFilters` and `clearFilters`
    * write the URL. A URL apply (auto-apply, `applyUrlFilters`, the back
    * button) writes nothing, because the URL holds those filters already.
-   * `'replace'` and `'push'` use `window.history`. A function gets the URL,
-   * for a router: a new function on a later render is used, and makes no
-   * new sync.
+   * `'replace'` and `'push'` use `window.history`. A function gets the URL
+   * and a `HistoryWrite` (`{ replace }`), for a router: a new function on a
+   * later render is used, and makes no new sync.
    *
    * Default: 'none'
    */

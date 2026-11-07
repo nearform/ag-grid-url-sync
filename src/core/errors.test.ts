@@ -132,6 +132,15 @@ describe('error severity', () => {
     expect(new InvalidURLError('m').severity).toBe('warning')
   })
 
+  it.each(['TYPE_MISMATCH', 'UNKNOWN_COLUMN'] as const)(
+    'is a warning for %s',
+    code => {
+      expect(new URLSyncError('m', undefined, { code }).severity).toBe(
+        'warning'
+      )
+    }
+  )
+
   it.each(['GRID_ERROR', 'HISTORY_WRITE_FAILED', 'UNKNOWN'] as const)(
     'is an error for %s',
     code => {

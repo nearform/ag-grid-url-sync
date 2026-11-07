@@ -1,8 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import type { GridOptions } from 'ag-grid-community'
+import type {
+  FilterModel,
+  GridOptions,
+  TextFilterModel
+} from 'ag-grid-community'
 import { createGridUrlSync, createSync, handOver } from './grid-url-sync.js'
 import type { IssueEvent } from './types.js'
-import { createRealGrid, useRealLocation } from '../test-helpers.js'
+import {
+  asGridApi,
+  createGridListeners,
+  createRealGrid,
+  useRealLocation
+} from '../test-helpers.js'
 
 // createGridUrlSync takes the type of a shared operation from the grid's
 // column (#224). Before the first row data, AG Grid does not know an
@@ -406,5 +415,308 @@ describe('createGridUrlSync: before the first row data', () => {
     await settle()
 
     expect(api.getFilterModel()).toEqual({})
+  })
+})
+
+/** A custom filter component: the sync does not know its model type */
+class AnyFilter {
+  model: TextFilterModel | null = null
+  readonly gui = document.createElement('div')
+
+  init(): void {}
+
+  getGui(): HTMLElement {
+    return this.gui
+  }
+
+  isFilterActive(): boolean {
+    return this.model !== null
+  }
+
+  doesFilterPass(): boolean {
+    return true
+  }
+
+  getModel(): TextFilterModel | null {
+    return this.model
+  }
+
+  setModel(model: TextFilterModel | null): void {
+    this.model = model
+  }
+}
+
+/** The grid of #307: a number column and a date column, with three rows */
+function typedGrid() {
+  return createRealGrid({
+    columnDefs: [
+      { field: 'age', filter: 'agNumberColumnFilter' },
+      {
+        field: 'created',
+        filter: 'agDateColumnFilter',
+        cellDataType: 'dateString'
+      }
+    ],
+    rowData: [
+      { age: 23, created: '2024-01-05' },
+      { age: 31, created: '2024-03-10' },
+      { age: 43, created: '2023-11-20' }
+    ]
+  })
+}
+
+describe('createGridUrlSync: a text filter on a number or date column (#307)', () => {
+  it('reports TYPE_MISMATCH for a built-in number or date filter', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/?f_age_contains=3&f_created_startsWith=2024'
+    )
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = typedGrid()
+    const sync = createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({})
+    expect(api.getDisplayedRowCount()).toBe(3)
+    expect(onIssue.mock.calls.map(([event]) => event)).toMatchObject([
+      { issue: { code: 'TYPE_MISMATCH', column: 'age' }, source: 'url' },
+      { issue: { code: 'TYPE_MISMATCH', column: 'created' }, source: 'url' }
+    ])
+    expect(sync.getSnapshot().issues).toHaveLength(2)
+  })
+
+  it('reports TYPE_MISMATCH for the default filter on an inferred type', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/?f_age_contains=3&f_dob_startsWith=2020&f_zip_contains=1'
+    )
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = inferredGrid()
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({
+      zip: { filterType: 'text', type: 'contains', filter: '1' }
+    })
+    expect(onIssue.mock.calls.map(([event]) => event.issue)).toMatchObject([
+      { code: 'TYPE_MISMATCH', column: 'age' },
+      { code: 'TYPE_MISMATCH', column: 'dob' }
+    ])
+  })
+
+  it('checks a text filter when the row data arrives', async () => {
+    window.history.replaceState(null, '', '/?f_age_contains=3')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = inferredGrid({ rowData: null })
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(onIssue).not.toHaveBeenCalled()
+
+    api.setGridOption('rowData', ROWS)
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({})
+    expect(api.getDisplayedRowCount()).toBe(2)
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+      issue: { code: 'TYPE_MISMATCH', column: 'age' },
+      source: 'url'
+    })
+  })
+
+  it('reports TYPE_MISMATCH for applyFilters too', () => {
+    const api = typedGrid()
+    const sync = createGridUrlSync({ api, applyUrlOnCreate: false })
+
+    const { issues } = sync.applyFilters({
+      age: { filterType: 'text', type: 'contains', filter: '3' }
+    })
+
+    expect(issues).toMatchObject([{ code: 'TYPE_MISMATCH', column: 'age' }])
+    expect(api.getFilterModel()).toEqual({})
+  })
+
+  it('does not check a text filter on a custom filter component', async () => {
+    window.history.replaceState(null, '', '/?f_age_contains=3')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const api = createRealGrid({
+      columnDefs: [{ field: 'age', cellDataType: 'number', filter: AnyFilter }],
+      rowData: ROWS
+    })
+
+    const setFilterModel = vi.spyOn(api, 'setFilterModel')
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(setFilterModel).toHaveBeenCalledWith({
+      age: { filterType: 'text', type: 'contains', filter: '3' }
+    })
+    expect(onIssue).not.toHaveBeenCalled()
+  })
+
+  it('does not check a text filter on a text filter of a number column', async () => {
+    window.history.replaceState(null, '', '/?f_age_contains=3')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const api = createRealGrid({
+      columnDefs: [
+        { field: 'age', cellDataType: 'number', filter: 'agTextColumnFilter' }
+      ],
+      rowData: ROWS
+    })
+
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'text', type: 'contains', filter: '3' }
+    })
+    expect(onIssue).not.toHaveBeenCalled()
+  })
+
+  it('reports a text equals: AG Grid compares the number with a string', () => {
+    // parseUrlFilters with no columnTypes gives a text filter for `eq`
+    const api = typedGrid()
+    const sync = createGridUrlSync({ api, applyUrlOnCreate: false })
+
+    const { issues } = sync.applyFilters({
+      age: { filterType: 'text', type: 'equals', filter: '31' }
+    })
+
+    expect(issues).toMatchObject([{ code: 'TYPE_MISMATCH', column: 'age' }])
+    expect(api.getDisplayedRowCount()).toBe(3)
+  })
+
+  it('does not check a text blank or notBlank, which AG Grid reads (#260)', () => {
+    const api = typedGrid()
+    const sync = createGridUrlSync({ api, applyUrlOnCreate: false })
+
+    const { issues } = sync.applyFilters({
+      age: { filterType: 'text', type: 'notBlank' },
+      created: { filterType: 'text', type: 'blank' }
+    })
+
+    expect(issues).toEqual([])
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'notBlank' },
+      created: { filterType: 'date', type: 'blank' }
+    })
+  })
+})
+
+describe('createGridUrlSync: a filter on a column that the grid does not have (#312)', () => {
+  it('leaves the column out and reports UNKNOWN_COLUMN', async () => {
+    window.history.replaceState(null, '', '/?f_gone_eq=1&f_name_contains=a')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = createRealGrid()
+    const setFilterModel = vi.spyOn(api, 'setFilterModel')
+    const sync = createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(setFilterModel).toHaveBeenCalledWith({
+      name: { filterType: 'text', type: 'contains', filter: 'a' }
+    })
+    expect(api.getFilterModel()).toEqual({
+      name: { filterType: 'text', type: 'contains', filter: 'a' }
+    })
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+      issue: { code: 'UNKNOWN_COLUMN', column: 'gone' },
+      source: 'url'
+    })
+    expect(onIssue.mock.calls[0]?.[0].issue.severity).toBe('warning')
+    expect(sync.getSnapshot().issues).toMatchObject([
+      { code: 'UNKNOWN_COLUMN', column: 'gone' }
+    ])
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('reports UNKNOWN_COLUMN, not TYPE_MISMATCH, for a number or date filter', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/?f_gone_gt=1&f_when_before=2024-01-01'
+    )
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = createRealGrid()
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(onIssue.mock.calls.map(([event]) => event.issue)).toMatchObject([
+      { code: 'UNKNOWN_COLUMN', column: 'gone' },
+      { code: 'UNKNOWN_COLUMN', column: 'when' }
+    ])
+  })
+
+  it('reports UNKNOWN_COLUMN when a waiting URL applies', async () => {
+    window.history.replaceState(null, '', '/?f_age_eq=30&f_gone_eq=1')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = inferredGrid({ rowData: null })
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(onIssue).not.toHaveBeenCalled()
+
+    api.setGridOption('rowData', ROWS)
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'equals', filter: 30 }
+    })
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+      issue: { code: 'UNKNOWN_COLUMN', column: 'gone' },
+      source: 'url'
+    })
+  })
+
+  it('reports UNKNOWN_COLUMN for applyFilters too', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api, applyUrlOnCreate: false })
+
+    const { issues } = sync.applyFilters({
+      gone: { filterType: 'text', type: 'contains', filter: 'x' },
+      name: { filterType: 'text', type: 'contains', filter: 'a' }
+    })
+
+    expect(issues).toMatchObject([{ code: 'UNKNOWN_COLUMN', column: 'gone' }])
+    expect(api.getFilterModel()).toEqual({
+      name: { filterType: 'text', type: 'contains', filter: 'a' }
+    })
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('keeps a column that the grid makes, which getColumn does not give', () => {
+    // AG Grid 31 to 33: getColumn gives only the columns of the column
+    // definitions, and setFilterModel also takes the auto group column
+    const setFilterModel = vi.fn<(model: FilterModel | null) => void>()
+    const listeners = createGridListeners()
+
+    const sync = createGridUrlSync({
+      api: asGridApi({
+        getFilterModel: () => ({}),
+        setFilterModel,
+        getColumn: () => null,
+        getAllGridColumns: () => [{ getColId: () => 'ag-Grid-AutoColumn' }],
+        addEventListener: listeners.addEventListener,
+        removeEventListener: listeners.removeEventListener
+      }),
+      applyUrlOnCreate: false
+    })
+
+    const model = {
+      'ag-Grid-AutoColumn': { filterType: 'text', type: 'equals', filter: 'x' }
+    }
+
+    const { issues } = sync.applyFilters(model)
+
+    expect(issues).toEqual([])
+    expect(setFilterModel).toHaveBeenCalledWith(model)
   })
 })

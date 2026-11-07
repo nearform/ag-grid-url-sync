@@ -122,6 +122,16 @@ parseUrlFilters('?f_age_eq=30', {
 
 > **Breaking change in 0.6.0:** before 0.6.0, the library guessed the type from the value. See [part 6 of the migration guide](#6-the-filter-type-comes-from-the-column-224).
 
+### Filters That Do Not Fit the Grid's Columns
+
+Before the sync writes a model to the grid (a URL apply or `applyFilters`), it compares each filter with the grid's columns. It leaves out these filters and reports them. The grid keeps the other filters.
+
+- **A column that the grid does not have** is an `UNKNOWN_COLUMN` issue. For example, a link from an older app version can have a filter on a column that you removed or renamed. AG Grid drops such a filter too, and writes a warning to the console. The sync does not give it to AG Grid, so the console stays clean.
+- **A number or date filter** on a column of another type is a `TYPE_MISMATCH` issue.
+- **A text filter** (for example `f_age_contains=3`) on a number or date column is a `TYPE_MISMATCH` issue. AG Grid changes such a filter (`contains 3` becomes `equals 3`) or drops it. This check is only for a column with `agNumberColumnFilter` or `agDateColumnFilter`, or with AG Grid's default filter (`filter: true`) and a number or date data type.
+
+The sync does not check a text `blank` or `notBlank`: it has no value, and AG Grid's number and date filters read it. It does not check a filter on a column with a custom filter component, because the component can take any model.
+
 ### Filter Models
 
 The library uses AG Grid's own `FilterModel` (the value of `gridApi.getFilterModel()`), in the sync, the React hook, saved views and the URL functions. The URL formats hold different parts of it:
@@ -534,7 +544,8 @@ The library never writes to the console. Each issue goes to `onIssue` one time, 
 | `INVALID_DATE`                                                | `warning` | A date that does not exist, or a date range in the wrong order                                  |
 | `VALUE_TOO_LONG`                                              | `warning` | A text value over `maxValueLength`                                                              |
 | `INVALID_GROUPED`                                             | `warning` | A grouped value that does not decode (bad JSON or base64)                                       |
-| `TYPE_MISMATCH`                                               | `warning` | A number or date filter on a column of another type                                             |
+| `TYPE_MISMATCH`                                               | `warning` | A filter of another type than the column                                                        |
+| `UNKNOWN_COLUMN`                                              | `warning` | A filter on a column that the grid does not have                                                |
 | `INVALID_URL`                                                 | `warning` | A URL that the parser cannot read. The sync and the hook report it. `parseUrlFilters` throws it |
 | `UNSUPPORTED_FILTER`                                          | `warning` | A filter that the URL format cannot hold (set, multi, custom, combined conditions)              |
 | `GRID_ERROR`                                                  | `error`   | The AG Grid API threw                                                                           |
@@ -1324,6 +1335,8 @@ One callback, `onIssue({ issue, source })`, replaces `onParseError(error)` and t
 | `error instanceof URLSyncError` check                     | Not necessary: `issue` is always a `URLSyncError`                                                       |
 | (none)                                                    | `issue.severity`: `'warning'` for a data issue, `'error'` for an operation that failed                  |
 | (none)                                                    | The code `UNSUPPORTED_FILTER` (see part 5)                                                              |
+| (none)                                                    | The code `UNKNOWN_COLUMN`: a filter on a column that the grid does not have                             |
+| (none)                                                    | `TYPE_MISMATCH` also for a text filter on a number or date column                                       |
 
 `createGridUrlSync` and `useGridUrlSync` send every issue to `onIssue` one time. See [Error Handling](#error-handling).
 

@@ -60,6 +60,50 @@ export function gridColumnType(
   }
 }
 
+/**
+ * The type of a number or date column whose filter takes only that type
+ * (#307): a built-in number or date filter, or AG Grid's default filter
+ * (`filter: true`) on a number or date data type. undefined for a text
+ * column, a custom filter component, another filter name, and a type that
+ * AG Grid has not inferred yet.
+ */
+export function sureColumnType(
+  api: GridApi,
+  column: string
+): 'number' | 'date' | undefined {
+  const type = gridColumnType(api, column)
+
+  if (type !== 'number' && type !== 'date') return undefined
+
+  try {
+    const filter = api.getColumn(column)?.getColDef().filter
+
+    return filter === true || BUILT_IN_FILTERS.has(filter) ? type : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Whether the grid has no column with this id (#312). False when the grid
+ * cannot tell: a test double or an old AG Grid version with no getColumn, or
+ * a grid that throws. AG Grid 31 to 33 give only the columns of the column
+ * definitions to getColumn, so a column that the grid makes (the auto group
+ * column, a pivot result column) is looked up in the grid's columns too.
+ */
+export function isUnknownColumn(api: GridApi, column: string): boolean {
+  try {
+    if (!('getColumn' in api) || api.getColumn(column) !== null) return false
+
+    const gridColumns =
+      'getAllGridColumns' in api ? api.getAllGridColumns() : []
+
+    return !gridColumns.some(col => col.getColId() === column)
+  } catch {
+    return false
+  }
+}
+
 /** The filter type of a data type name, built-in or from the grid options */
 function dataType(api: GridApi, name: string): FilterType {
   const custom = api.getGridOption('dataTypeDefinitions')?.[name]

@@ -3,7 +3,8 @@ import type {
   AGGridUrlSyncConfig,
   FilterState,
   ColumnFilter,
-  AGGridFilter
+  AGGridFilter,
+  FilterType
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
 import {
@@ -23,7 +24,11 @@ import {
 import { reportIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
-import { gridColumnType } from './column-types.js'
+import {
+  gridColumnType,
+  isUnknownColumn,
+  sureColumnType
+} from './column-types.js'
 import type { FilterModel, GridApi } from 'ag-grid-community'
 
 /**
@@ -346,26 +351,71 @@ export function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
 }
 
 /**
- * TYPE_MISMATCH when a number or date filter is on a column of another type.
+ * Whether the operation of a text filter takes no value: `blank` and
+ * `notBlank`, which are the AG Grid names and the internal ids
+ */
+function takesNoValue(operation: string | undefined): boolean {
+  return operatorFromAgGrid('text', operation)?.arity === 0
+}
+
+/**
+ * The filter type that a column takes, or null when the filter is not
+ * checked. A number or date filter is checked on each column.
+ *
+ * A text filter is checked only on a column whose filter takes only numbers
+ * or dates (#307). AG Grid changes the text model there: `contains 3` becomes
+ * `equals 3` or is dropped, and `equals '31'` compares a string. A custom
+ * filter component can take a text model, so it is not checked. A text
+ * `blank` or `notBlank` is not checked: it has no value, and AG Grid's number
+ * and date filters read it (#260).
+ *
  * Null while AG Grid has not inferred the column type: there is nothing to
  * check against, and AG Grid defers the model until it knows (#224). Other
- * filter types (text, set, multi, custom) are not checked (#225).
+ * filter types (set, multi, custom) are not checked (#225).
  */
-function typeMismatch(
+function expectedType(
   gridApi: GridApi,
   column: string,
-  filterType: string | undefined
-): InvalidFilterError | null {
+  filterType: string | undefined,
+  operation: string | undefined
+): FilterType | null {
+  if (filterType === 'text') {
+    if (takesNoValue(operation)) return null
+
+    return sureColumnType(gridApi, column) ?? null
+  }
+
   if (filterType !== 'number' && filterType !== 'date') return null
 
   const columnType = gridColumnType(gridApi, column)
 
   if (columnType === 'pending') return null
 
-  const expected =
-    columnType === 'number' || columnType === 'date' ? columnType : 'text'
+  return columnType === 'number' || columnType === 'date' ? columnType : 'text'
+}
 
-  if (filterType === expected) return null
+/** UNKNOWN_COLUMN: the grid has no column with this id (#312) */
+function unknownColumn(column: string): InvalidFilterError {
+  return new InvalidFilterError(
+    `The grid has no column '${column}'`,
+    undefined,
+    { code: 'UNKNOWN_COLUMN', column }
+  )
+}
+
+/**
+ * TYPE_MISMATCH when a filter is on a column of another type. The operation
+ * is the filter's `type`: an AG Grid name or an internal id.
+ */
+function typeMismatch(
+  gridApi: GridApi,
+  column: string,
+  filterType: string | undefined,
+  operation: string | undefined
+): InvalidFilterError | null {
+  const expected = expectedType(gridApi, column, filterType, operation)
+
+  if (expected === null || filterType === expected) return null
 
   return new InvalidFilterError(
     `Column '${column}' expects a ${expected} filter but received a ${filterType} filter. This may indicate a configuration mismatch in the column definition or filter application.`,
@@ -375,8 +425,9 @@ function typeMismatch(
 }
 
 /**
- * An AG Grid model with each column that fails the type check left out and
- * reported (#225). It does not call `setFilterModel`.
+ * An AG Grid model with each column that the grid does not have (#312), and
+ * each column that fails the type check (#225), left out and reported. It
+ * does not call `setFilterModel`.
  */
 export function checkColumnTypes(
   model: FilterModel,
@@ -389,11 +440,30 @@ export function checkColumnTypes(
   if (!v.is(JsonObjectSchema, model)) return {}
 
   const kept = Object.entries(model).filter(([column, entry]) => {
+    // AG Grid drops such a column too, with a console warning
+    if (isUnknownColumn(gridApi, column)) {
+      // A null entry is no filter, so no filter is lost
+      if (entry !== null && entry !== undefined) {
+        reportIssue(resolved, unknownColumn(column))
+      }
+
+      return false
+    }
+
     // A custom filter's model can be any value: it is not checked (#283
     // review)
     if (!isColumnModel(entry)) return true
 
-    const mismatch = typeMismatch(gridApi, column, filterTypeOf(entry))
+    const operation = v.is(v.string(), entry['type'])
+      ? entry['type']
+      : undefined
+
+    const mismatch = typeMismatch(
+      gridApi,
+      column,
+      filterTypeOf(entry),
+      operation
+    )
 
     if (mismatch) reportIssue(resolved, mismatch)
 
@@ -423,7 +493,12 @@ export function toGridModel(
     // A JavaScript caller can pass anything here
     if (!v.is(JsonObjectSchema, filter)) continue
 
-    const mismatch = typeMismatch(gridApi, column, filter.filterType)
+    const mismatch = typeMismatch(
+      gridApi,
+      column,
+      filter.filterType,
+      filter.type
+    )
 
     if (mismatch) {
       reportIssue(resolved, mismatch)

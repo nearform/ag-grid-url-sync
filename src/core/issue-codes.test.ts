@@ -240,6 +240,42 @@ const CASES: [
     URLSyncError,
     'GRID_ERROR',
     undefined
+  ],
+  [
+    'a text filter on a number column',
+    o => {
+      const sync = syncOn(
+        api =>
+          api.getColumn.mockReturnValue({
+            getColDef: () => ({ filter: 'agNumberColumnFilter' })
+          }),
+        o
+      )
+
+      sync.applyFilters({
+        age: { filterType: 'text', type: 'contains', filter: '3' }
+      })
+
+      sync.destroy()
+    },
+    InvalidFilterError,
+    'TYPE_MISMATCH',
+    'age'
+  ],
+  [
+    'a filter on a column that the grid does not have',
+    o => {
+      const sync = syncOn(api => api.getColumn.mockReturnValue(null), o)
+
+      sync.applyFilters({
+        gone: { filterType: 'number', type: 'equals', filter: 1 }
+      })
+
+      sync.destroy()
+    },
+    InvalidFilterError,
+    'UNKNOWN_COLUMN',
+    'gone'
   ]
 ]
 

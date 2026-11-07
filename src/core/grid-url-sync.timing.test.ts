@@ -246,6 +246,39 @@ describe('createGridUrlSync: filters that the grid holds until its first rows', 
 
     sync.destroy()
   })
+
+  it('reports an issue of the held filters one time, with source grid', () => {
+    const onIssue = vi.fn()
+
+    const grid = createLateRowsGrid({
+      ...NAME_JO,
+      age: { filterType: 'number', type: 'greaterThan', filter: 5 }
+    })
+
+    const sync = createGridUrlSync({
+      api: grid.api,
+      history: 'push',
+      maxValueLength: 1,
+      onIssue
+    })
+
+    const length = window.history.length
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?f_age_gt=5&tab=1')
+    expect(window.history.length).toBe(length)
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue).toHaveBeenCalledWith({
+      issue: expect.objectContaining({
+        code: 'VALUE_TOO_LONG',
+        column: 'name'
+      }),
+      source: 'grid'
+    })
+
+    sync.destroy()
+  })
 })
 
 // On AG Grid 28 to 30, the grid API has getColumnDef and no getColumn. The

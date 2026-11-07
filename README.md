@@ -293,6 +293,8 @@ sync.destroy()
 
 The snapshot `status` is `'active'` from create, and `'destroyed'` after `destroy()` or after the grid is destroyed. A grid that cannot take the sync's listeners also gives `'destroyed'`: `createGridUrlSync` does not throw, and sends a `GRID_ERROR` to `onIssue`. After that, `applyUrl`, `applyFilters`, `saveView` and `loadView` report `NOT_READY` to `onIssue`. `deleteView` needs only storage, so it still works. `IDLE_SNAPSHOT` (`status: 'idle'`) is the snapshot for a time when there is no sync yet. `getSnapshot()` returns the same object until something changes, so it works with React's `useSyncExternalStore`. The sync writes no history for an `applyUrl` apply, because the URL holds those filters already. `applyFilters` and `loadView` write the URL as a user edit does. Nothing reads `window` when the module loads, and a sync made with no `window` does nothing to the address bar.
 
+An issue has the source of the work that found it. A method that the app calls gives `'api'` to each issue of its work: also the grid read after its write, a later landing of that write, and the write of the stored view pointer. A back-button apply and the restore on create give `'url'`. A filter change in the grid, and the read of the grid's own filters on create, give `'grid'`.
+
 #### History with a router
 
 A `history` function gets two arguments: the URL and `{ replace }`. `replace` tells the function what to do with the history entry:

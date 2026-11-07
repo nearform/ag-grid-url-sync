@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { FilterModel } from 'ag-grid-community'
 import { createGridUrlSync } from './grid-url-sync.js'
 import { createViewStore } from './view-storage.js'
@@ -602,3 +602,218 @@ describe('createGridUrlSync: loadView while the write is pending', () => {
     expect(sync.getSnapshot()).toBe(snapshot)
   })
 })
+
+const LONG_NAME = {
+  name: { filterType: 'text', type: 'contains', filter: 'abcdefg' }
+} as const
+
+// The source of an issue is where its work started (#313): a method that the
+// app called ('api'), the address bar ('url'), or a filter change in the grid
+// ('grid'). The work that a call starts, with a later landing of its grid
+// write, reports with the source of the call.
+describe.each(GRID_TIMINGS)(
+  'createGridUrlSync: the source of an issue (%s timing)',
+  timing => {
+    /** A sync with the active view A (NAME_JO) and a stored pointer to it */
+    async function activeView(history: 'none' | 'push' = 'none') {
+      const store = createViewStore('t')
+      const a = store.saveView('A', NAME_JO)
+      store.persistActiveViewId(null)
+
+      const grid = createTimedGrid(timing)
+      const onIssue = vi.fn()
+
+      const sync = createGridUrlSync({
+        api: grid.api,
+        views: store,
+        history,
+        onIssue
+      })
+
+      sync.loadView(a.id)
+      await tick()
+
+      expect(store.getActiveViewId()).toBe(a.id)
+
+      return { grid, onIssue, sync }
+    }
+
+    /** A sync where a value of 6 or more characters is too long */
+    function shortValues(store?: ViewStore) {
+      const grid = createTimedGrid(timing)
+      const onIssue = vi.fn()
+
+      const sync = createGridUrlSync({
+        api: grid.api,
+        views: store,
+        maxValueLength: 5,
+        onIssue
+      })
+
+      return { grid, onIssue, sync }
+    }
+
+    /** From here on, each localStorage write fails */
+    function blockStorage(): void {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError')
+      })
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('applyFilters reports a failed pointer clear with source api', async () => {
+      const { onIssue, sync } = await activeView()
+
+      blockStorage()
+      sync.applyFilters(NAME_X)
+      await tick()
+
+      expect(sync.getSnapshot().activeViewId).toBeNull()
+      expect(issuesOf(onIssue)).toEqual([['STORAGE_WRITE_FAILED', 'api']])
+
+      sync.destroy()
+    })
+
+    it('applyUrl reports a failed pointer clear with source api', async () => {
+      const { onIssue, sync } = await activeView()
+
+      blockStorage()
+      sync.applyUrl(href('/?f_name_contains=x'))
+      await tick()
+
+      expect(sync.getSnapshot().activeViewId).toBeNull()
+      expect(issuesOf(onIssue)).toEqual([['STORAGE_WRITE_FAILED', 'api']])
+
+      sync.destroy()
+    })
+
+    it('a back-button apply reports a failed pointer clear with source url', async () => {
+      const { onIssue, sync } = await activeView('push')
+
+      blockStorage()
+      window.history.pushState(null, '', '/?f_name_contains=x')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      await tick()
+
+      expect(sync.getSnapshot().activeViewId).toBeNull()
+      expect(issuesOf(onIssue)).toEqual([['STORAGE_WRITE_FAILED', 'url']])
+
+      sync.destroy()
+    })
+
+    it('a user edit reports a failed pointer clear with source grid', async () => {
+      const { grid, onIssue, sync } = await activeView()
+
+      blockStorage()
+      grid.userEdit(NAME_X)
+      await tick()
+
+      expect(sync.getSnapshot().activeViewId).toBeNull()
+      expect(issuesOf(onIssue)).toEqual([['STORAGE_WRITE_FAILED', 'grid']])
+
+      sync.destroy()
+    })
+
+    it('saveView, loadView and deleteView report a failed storage write with source api', async () => {
+      const { onIssue, sync } = await activeView()
+
+      blockStorage()
+      const saved = sync.saveView('B')
+      sync.loadView(null)
+      await tick()
+      sync.deleteView(sync.getSnapshot().views[0]?.id ?? '')
+      await tick()
+
+      expect(saved).toBeNull()
+      expect(issuesOf(onIssue)).toEqual([
+        ['STORAGE_WRITE_FAILED', 'api'],
+        ['STORAGE_WRITE_FAILED', 'api'],
+        ['STORAGE_WRITE_FAILED', 'api']
+      ])
+
+      sync.destroy()
+    })
+
+    it('getUrl reports a value that is too long with source api', async () => {
+      const grid = createTimedGrid(timing, LONG_NAME)
+      const onIssue = vi.fn()
+
+      const sync = createGridUrlSync({
+        api: grid.api,
+        maxValueLength: 5,
+        onIssue
+      })
+
+      // The create read the grid's own filters
+      expect(issuesOf(onIssue)).toEqual([['VALUE_TOO_LONG', 'grid']])
+      onIssue.mockClear()
+
+      sync.getUrl()
+
+      expect(issuesOf(onIssue)).toEqual([['VALUE_TOO_LONG', 'api']])
+
+      sync.destroy()
+    })
+
+    it('the restore on create reports a value that is too long with source url', async () => {
+      const store = createViewStore('t')
+      store.saveView('L', LONG_NAME)
+      const { onIssue, sync } = shortValues(store)
+      await tick()
+
+      expect(issuesOf(onIssue)).toEqual([['VALUE_TOO_LONG', 'url']])
+
+      sync.destroy()
+    })
+
+    it('applyFilters reports a value that is too long with source api', async () => {
+      const { onIssue, sync } = shortValues()
+
+      sync.applyFilters(LONG_NAME)
+      await tick()
+
+      expect(issuesOf(onIssue)).toEqual([['VALUE_TOO_LONG', 'api']])
+
+      sync.destroy()
+    })
+
+    it('applyUrl reports a value that is too long with source api', async () => {
+      const { onIssue, sync } = shortValues()
+
+      sync.applyUrl(href('/?f_name_contains=abcdefg'))
+      await tick()
+
+      expect(issuesOf(onIssue)).toEqual([['VALUE_TOO_LONG', 'api']])
+
+      sync.destroy()
+    })
+
+    it('loadView reports a value that is too long with source api', async () => {
+      const store = createViewStore('t')
+      const long = store.saveView('L', LONG_NAME)
+      store.persistActiveViewId(null)
+      const { onIssue, sync } = shortValues(store)
+
+      sync.loadView(long.id)
+      await tick()
+
+      expect(issuesOf(onIssue)).toEqual([['VALUE_TOO_LONG', 'api']])
+
+      sync.destroy()
+    })
+
+    it('a user edit reports a value that is too long with source grid', async () => {
+      const { grid, onIssue, sync } = shortValues()
+
+      grid.userEdit(LONG_NAME)
+      await tick()
+
+      expect(issuesOf(onIssue)).toEqual([['VALUE_TOO_LONG', 'grid']])
+
+      sync.destroy()
+    })
+  }
+)

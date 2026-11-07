@@ -172,8 +172,10 @@ export function useGridUrlSync(
     (current: LiveSync): void => {
       sessionRef.current.keptViewId = current.sync.getSnapshot().activeViewId
       sessionRef.current.handover = handOver(current.sync)
-      current.sync.destroy()
+      // Out of the holder first: the holder keeps the last snapshot that it
+      // gave, not the destroyed one, for a new sync with the same values (#311)
       holder.set(null)
+      current.sync.destroy()
       liveRef.current = null
     },
     [holder]

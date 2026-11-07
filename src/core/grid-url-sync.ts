@@ -116,8 +116,11 @@ function writeHistory(url: string, replace: boolean): void {
   window.history[replace ? 'replaceState' : 'pushState'](kept, '', url)
 }
 
-/** Two issue lists with the same code, column and message in each place */
-function sameIssues(
+/**
+ * Two issue lists with the same code, column and message in each place. Not
+ * public: the React hook's holder uses it too (#311).
+ */
+export function sameIssues(
   a: readonly URLSyncError[],
   b: readonly URLSyncError[]
 ): boolean {
@@ -158,6 +161,11 @@ export interface Handover {
   readonly keys: string
   /** The issues of the latest apply (#271 review) */
   readonly applyIssues: readonly URLSyncError[]
+  /**
+   * The issues of the latest grid read, which onIssue got (#305). The next
+   * sync does not report the same ones again. It reports a new one.
+   */
+  readonly readIssues: readonly URLSyncError[]
   /**
    * The key of the GRID_ERROR that onIssue got when the grid could not take
    * the old sync's listeners, or null (#286). The next sync does not report
@@ -1212,11 +1220,15 @@ export function createSync(
 
   if (handed && start.keepApplyIssues) applyIssues = handed.applyIssues
 
+  // onIssue got these from the earlier sync. The first read replaces them.
+  if (handed) readIssues = handed.readIssues
+
   handovers.set(sync, () => ({
     own: own?.phase === 'writing' ? null : own,
     source: ownSource,
     keys,
     applyIssues,
+    readIssues,
     listenerFailure
   }))
 

@@ -29,6 +29,11 @@ const AGE_GT_5 = {
   age: { filterType: 'number', type: 'greaterThan', filter: 5 }
 } as const
 
+/** A grid filter that the URL cannot hold: a read issue, INVALID_NUMBER */
+const AGE_BAD = {
+  age: { filterType: 'number', type: 'greaterThan', filter: 'abc' }
+} as const
+
 /** AG Grid sends filterChanged one tick after setFilterModel */
 const settle = (): Promise<void> =>
   act(() => new Promise<void>(resolve => setTimeout(resolve)))
@@ -220,6 +225,62 @@ describe('useGridUrlSync: a stable result (#271)', () => {
     expect(result.current.saveView).toBe(first.saveView)
     expect(result.current.loadView).toBe(first.loadView)
     expect(result.current.deleteView).toBe(first.deleteView)
+  })
+
+  test('an option change with the same values keeps the result and its issues (#311)', async () => {
+    const api = createRealGrid()
+    const { result, rerender } = renderSync({ api })
+    await settle()
+
+    act(() => {
+      result.current.applyUrl('https://x.test/?f_age_unknownOperation=1')
+    })
+
+    const first = result.current
+
+    expect(first.issues).toHaveLength(1)
+
+    rerender({ api, maxValueLength: 50 })
+    await settle()
+    // The page URL has no params, so a new prefix gives the same URL
+    rerender({ api, maxValueLength: 50, codec: individual({ prefix: 'g_' }) })
+    await settle()
+
+    expect(result.current).toBe(first)
+    expect(result.current.issues).toBe(first.issues)
+  })
+
+  test('a history change on a grid with a read issue keeps the result (#311)', async () => {
+    const api = createRealGrid({
+      initialState: { filter: { filterModel: AGE_BAD } }
+    })
+
+    const { result, rerender } = renderSync({ api }, true)
+    await settle()
+    const first = result.current
+
+    rerender({ api, history: 'replace' })
+    await settle()
+
+    expect(first.issues).toHaveLength(1)
+    expect(result.current).toBe(first)
+    expect(result.current.issues).toBe(first.issues)
+  })
+
+  test('a new codec keeps the issues array when only the URL changes (#311)', async () => {
+    const api = createRealGrid({
+      initialState: { filter: { filterModel: { ...NAME_JO, ...AGE_BAD } } }
+    })
+
+    const { result, rerender } = renderSync({ api })
+    await settle()
+    const first = result.current
+
+    rerender({ api, codec: individual({ prefix: 'g_' }) })
+    await settle()
+
+    expect(result.current).not.toBe(first)
+    expect(result.current.issues).toBe(first.issues)
   })
 })
 
@@ -592,6 +653,66 @@ describe('useGridUrlSync: issues across a new sync (#271 review)', () => {
     expect(syncs()).toBe(2)
     expect(result.current.issues).toHaveLength(1)
     expect(onIssue).toHaveBeenCalledTimes(1)
+  })
+
+  test('StrictMode on a grid that has a read issue reports it one time (#305)', async () => {
+    const api = createRealGrid({
+      initialState: { filter: { filterModel: AGE_BAD } }
+    })
+
+    const syncs = countSyncs(api)
+    const onIssue = vi.fn()
+
+    const { result } = renderSync({ api, onIssue }, true)
+    await settle()
+
+    expect(syncs()).toBe(2)
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+      issue: { code: 'INVALID_NUMBER', column: 'age' },
+      source: 'grid'
+    })
+    expect(result.current.issues).toHaveLength(1)
+  })
+
+  test('an option change does not report the read issues again (#305)', async () => {
+    const api = createRealGrid()
+    const syncs = countSyncs(api)
+    const onIssue = vi.fn()
+    const { result, rerender } = renderSync({ api, onIssue })
+    await settle()
+    await edit(api, AGE_BAD)
+
+    expect(onIssue).toHaveBeenCalledTimes(1)
+
+    rerender({ api, onIssue, maxValueLength: 50 })
+    await settle()
+    rerender({ api, onIssue, maxValueLength: 50, codec: grouped() })
+    await settle()
+
+    expect(syncs()).toBe(3)
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(result.current.issues).toMatchObject([
+      { code: 'INVALID_NUMBER', column: 'age' }
+    ])
+  })
+
+  test('a new sync reports a read issue that the last one did not have (#305)', async () => {
+    const api = createRealGrid()
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const { result, rerender } = renderSync({ api, onIssue })
+    await settle()
+    await edit(api, { ...NAME_JO, ...AGE_BAD })
+
+    // 'jo' is longer than 1 character
+    rerender({ api, onIssue, maxValueLength: 1 })
+    await settle()
+
+    expect(onIssue.mock.calls.map(([event]) => event.issue.code)).toEqual([
+      'INVALID_NUMBER',
+      'VALUE_TOO_LONG'
+    ])
+    expect(result.current.issues).toHaveLength(2)
   })
 
   test('StrictMode throws the issue of the URL apply with throwOnError', async () => {

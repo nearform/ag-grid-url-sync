@@ -1,4 +1,4 @@
-import type { FilterModel } from 'ag-grid-community'
+import type { FilterModel } from './grid-integration.js'
 import * as v from 'valibot'
 import { GridViewSchema, StoredViewsSchema } from './schemas.js'
 import { URLSyncError } from './types.js'

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyEvent,
   couldBeLanding,
+  partLanding,
   modelKey,
   takeOver,
   settleWrite,
@@ -620,6 +621,169 @@ describe('classifyEvent with the URL form of each column (#223)', () => {
     })
 
     expect(result.kind).toBe('change')
+  })
+})
+
+// AG Grid can take a React custom filter's model after the call (#302). The
+// grid then shows only part of the write when the call returns.
+describe('a write that lands in two parts (#302)', () => {
+  const both = { name: 'jo', level: 3 }
+
+  const call: AfterCall = {
+    kind: 'view',
+    failed: false,
+    afterKey: 'kname',
+    after: { name: 'jo' },
+    before: {},
+    beforeKey: 'kempty',
+    accepted: both,
+    acceptedKey: 'kboth'
+  }
+
+  const part: OwnWrite = {
+    phase: 'landed',
+    kind: 'view',
+    key: 'kname',
+    fullKey: 'kboth'
+  }
+
+  describe('settleWrite', () => {
+    it('lands, and keeps the key of the full write', () => {
+      const result = settleWrite({ phase: 'writing', kind: 'view' }, call)
+
+      expect(result).toEqual({ own: part, landed: true })
+    })
+
+    it('keeps the key of the full write after an event inside the call', () => {
+      const result = settleWrite(
+        { phase: 'landed', kind: 'view', key: 'kname' },
+        call
+      )
+
+      expect(result).toEqual({ own: part, landed: true })
+    })
+
+    it('keeps no key of the full write when the grid shows all of it', () => {
+      const result = settleWrite(
+        { phase: 'writing', kind: 'view' },
+        { ...call, afterKey: 'kboth', after: both }
+      )
+
+      expect(result.own).toEqual({
+        phase: 'landed',
+        kind: 'view',
+        key: 'kboth'
+      })
+    })
+
+    it('keeps no key of the full write for a column that the grid rebuilt', () => {
+      const result = settleWrite(
+        { phase: 'writing', kind: 'view' },
+        {
+          ...call,
+          afterKey: 'krebuilt',
+          after: { name: 'jo', level: '3' },
+          acceptedColumnUrlKeys: new Map([
+            ['name', 'u-name'],
+            ['level', 'u-level']
+          ]),
+          afterColumnUrlKeys: new Map([
+            ['name', 'u-name'],
+            ['level', 'u-level']
+          ])
+        }
+      )
+
+      expect(result.own).toEqual({
+        phase: 'landed',
+        kind: 'view',
+        key: 'krebuilt'
+      })
+    })
+
+    it('keeps no key of the full write for another value', () => {
+      const result = settleWrite(
+        { phase: 'writing', kind: 'view' },
+        { ...call, afterKey: 'kother', after: { name: 'x' } }
+      )
+
+      expect(result.own).toEqual({
+        phase: 'landed',
+        kind: 'view',
+        key: 'kother'
+      })
+    })
+  })
+
+  describe('classifyEvent', () => {
+    it("calls the grid's event with the full write the rest of the landing", () => {
+      const result = classifyEvent(part, {
+        key: 'kboth',
+        live: both,
+        source: 'api'
+      })
+
+      expect(result).toEqual({
+        own: { phase: 'landed', kind: 'view', key: 'kboth' },
+        kind: 'landing',
+        write: 'view',
+        rest: true
+      })
+    })
+
+    it('calls the part an echo', () => {
+      const result = classifyEvent(part, {
+        key: 'kname',
+        live: { name: 'jo' },
+        source: 'api'
+      })
+
+      expect(result).toEqual({ own: part, kind: 'echo', write: 'view' })
+    })
+
+    it('calls a UI edit with the full write a change', () => {
+      const result = classifyEvent(part, {
+        key: 'kboth',
+        live: both,
+        source: 'columnFilter'
+      })
+
+      expect(result.kind).toBe('change')
+    })
+
+    it('calls another model from the API a change', () => {
+      const result = classifyEvent(part, {
+        key: 'kother',
+        live: { name: 'x' },
+        source: 'api'
+      })
+
+      expect(result.kind).toBe('change')
+    })
+  })
+
+  describe('partLanding', () => {
+    it('is true when a column of the write is missing', () => {
+      expect(partLanding({ name: 'jo' }, both, {})).toBe(true)
+    })
+
+    it('is true when a column of the write still has the value from before', () => {
+      expect(partLanding({ name: 'jo', level: 1 }, both, { level: 1 })).toBe(
+        true
+      )
+    })
+
+    it('is false when the grid shows all of the write', () => {
+      expect(partLanding(both, both, {})).toBe(false)
+    })
+
+    it('is false for a clear-all', () => {
+      expect(partLanding({}, both, { name: 'x' })).toBe(false)
+    })
+
+    it('is false for another value', () => {
+      expect(partLanding({ name: 'x' }, both, {})).toBe(false)
+    })
   })
 })
 

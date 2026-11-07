@@ -266,10 +266,10 @@ export function useAGGridUrlSync(
     (): AddressBarOptions => ({
       history:
         historyKind === 'function'
-          ? url => {
-              const write = callbacksRef.current.history
+          ? (url, write) => {
+              const latest = callbacksRef.current.history
 
-              if (write instanceof Function) write(url)
+              if (latest instanceof Function) latest(url, write)
             }
           : historyKind,
       popstate: followsPopstate
@@ -531,7 +531,9 @@ export function useAGGridUrlSync(
           landsOnCreate,
           addressBar
         ),
-        { keptViewId: keptView, handover }
+        // onIssue above gives the 0.5.1 contexts by the 'grid' source of
+        // each grid read and pointer clear (#313)
+        { keptViewId: keptView, handover, gridSourceForGridWork: true }
       )
     } catch (error) {
       stopPopstate()

@@ -155,6 +155,28 @@ describe('history option (#270)', () => {
     expect(adds).not.toHaveBeenCalled()
   })
 
+  test('a function gets the replace flag (#304)', async () => {
+    const store = createViewStore('t')
+    const view = store.saveView('A', NAME_X)
+    store.persistActiveViewId(view.id)
+    const api = createRealGrid()
+    const history = vi.fn()
+    renderSync({
+      api,
+      options: { history, storageKey: 't', autoApplyOnMount: true }
+    })
+    await settle()
+
+    // The restore of the stored view on mount replaces the entry, and a
+    // user edit adds one
+    await edit(api, NAME_JO)
+
+    expect(history.mock.calls).toEqual([
+      [expect.stringContaining('f_name_contains=x'), { replace: true }],
+      [expect.stringContaining('f_name_contains=jo'), { replace: false }]
+    ])
+  })
+
   test('a history change after mount takes effect', async () => {
     const api = createRealGrid()
     const { rerender } = renderSync({ api, options: {} })

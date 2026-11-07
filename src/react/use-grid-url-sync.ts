@@ -120,10 +120,10 @@ export function useGridUrlSync(
   const syncHistory = useMemo(
     (): HistoryMode =>
       historyKind === 'function'
-        ? url => {
-            const write = latestRef.current.history
+        ? (url, write) => {
+            const latest = latestRef.current.history
 
-            if (write instanceof Function) write(url)
+            if (latest instanceof Function) latest(url, write)
           }
         : historyKind,
     [historyKind]
@@ -172,8 +172,10 @@ export function useGridUrlSync(
     (current: LiveSync): void => {
       sessionRef.current.keptViewId = current.sync.getSnapshot().activeViewId
       sessionRef.current.handover = handOver(current.sync)
-      current.sync.destroy()
+      // Out of the holder first: the holder keeps the last snapshot that it
+      // gave, not the destroyed one, for a new sync with the same values (#311)
       holder.set(null)
+      current.sync.destroy()
       liveRef.current = null
     },
     [holder]

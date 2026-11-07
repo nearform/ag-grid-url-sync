@@ -95,7 +95,7 @@ describe('AGGridUrlSync', () => {
     it('should give the URL and hasFilters true when the grid has filters', () => {
       const urlSync = new AGGridUrlSync(mockGridApi)
       expect(urlSync.getUrlState('https://example.com/?tab=1')).toEqual({
-        url: 'https://example.com/?f_name_contains=john&tab=1',
+        url: 'https://example.com/?tab=1&f_name_contains=john',
         hasFilters: true,
         issues: []
       })

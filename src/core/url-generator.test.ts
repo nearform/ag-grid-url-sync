@@ -276,7 +276,7 @@ describe('URL Generator', () => {
         const config = { ...mockConfig, paramPrefix: prefix }
         const url = generateUrl('https://example.com/?page=2', state, config)
 
-        expect([...new URL(url).searchParams.keys()]).toEqual([key, 'page'])
+        expect([...new URL(url).searchParams.keys()]).toEqual(['page', key])
         expect(parseUrlFilters(url, config)).toEqual(state)
         expect(mockConfig.onParseError).not.toHaveBeenCalled()
       })
@@ -290,7 +290,7 @@ describe('URL Generator', () => {
           config
         )
 
-        expect(url).toBe('https://example.com/?f_name_contains=john&page=2')
+        expect(url).toBe('https://example.com/?page=2&f_name_contains=john')
       })
     })
 
@@ -346,6 +346,160 @@ describe('URL Generator', () => {
         expect(params.has('f_a_contains')).toBe(false)
         expect(params.get('page')).toBe('1')
         expect(parseUrlFilters(url, config)).toEqual(newState)
+      })
+    })
+
+    // #309: with no filters, each codec writes no filter param
+    describe('no filters in grouped mode', () => {
+      it.each(['querystring', 'json', 'base64'] as const)(
+        'should write no grouped param and remove the old one in %s format',
+        format => {
+          const config = {
+            ...mockConfig,
+            serialization: 'grouped' as const,
+            format
+          }
+
+          expect(
+            generateUrl('https://app.com/data?x=1&grid_filters=old', {}, config)
+          ).toBe('https://app.com/data?x=1')
+        }
+      )
+
+      it.each(['querystring', 'json', 'base64'] as const)(
+        'should write no grouped param when each filter is dropped in %s format',
+        format => {
+          const config = {
+            ...mockConfig,
+            serialization: 'grouped' as const,
+            format
+          }
+
+          const tooLong: FilterState = {
+            name: {
+              filterType: 'text',
+              type: 'contains',
+              filter: 'x'.repeat(201)
+            }
+          }
+
+          expect(generateUrl('https://app.com/data', tooLong, config)).toBe(
+            'https://app.com/data'
+          )
+          expect(mockConfig.onParseError).toHaveBeenCalledOnce()
+        }
+      )
+
+      it.each([
+        ['json', '%7B%7D'],
+        ['base64', 'e30%3D']
+      ] as const)(
+        'should still read an empty %s value as no filters with no issue',
+        (format, value) => {
+          const config = {
+            ...mockConfig,
+            serialization: 'grouped' as const,
+            format
+          }
+
+          expect(
+            parseUrlFilters(
+              `https://app.com/data?grid_filters=${value}`,
+              config
+            )
+          ).toEqual({})
+          expect(mockConfig.onParseError).not.toHaveBeenCalled()
+        }
+      )
+    })
+
+    // #314: the page's own params keep their text and order, and the filter
+    // params go after them, in both modes
+    describe('page params text and order', () => {
+      const state: FilterState = {
+        name: { filterType: 'text', type: 'contains', filter: 'a' }
+      }
+
+      const grouped = { ...mockConfig, serialization: 'grouped' as const }
+      const json = { ...grouped, format: 'json' as const }
+      const jsonValue = encodeURIComponent(JSON.stringify(state))
+
+      it.each([
+        ['individual', mockConfig, 'f_name_contains=a'],
+        ['grouped querystring', grouped, 'grid_filters=f_name_contains%3Da'],
+        ['grouped json', json, `grid_filters=${jsonValue}`]
+      ])(
+        'should keep a param with no value and an encoded space in %s mode',
+        (_label, config, filterPart) => {
+          expect(
+            generateUrl('https://app.com/?debug&q=two%20words', state, config)
+          ).toBe(`https://app.com/?debug&q=two%20words&${filterPart}`)
+        }
+      )
+
+      it.each([
+        ['individual', mockConfig],
+        ['grouped', grouped]
+      ])(
+        'should keep the page params as they were with no filters in %s mode',
+        (_label, config) => {
+          expect(
+            generateUrl(
+              'https://app.com/?debug&f_a_contains=old&q=a+b&grid_filters=x',
+              {},
+              config
+            )
+          ).toBe('https://app.com/?debug&q=a+b')
+        }
+      )
+
+      it.each([
+        ['individual', mockConfig, 'f_name_contains=a'],
+        ['grouped', grouped, 'grid_filters=f_name_contains%3Da']
+      ])(
+        'should remove a filter param between page params in %s mode',
+        (_label, config, filterPart) => {
+          expect(
+            generateUrl(
+              'https://app.com/?a=1&f_old_contains=x&b=2&grid_filters=y&c',
+              state,
+              config
+            )
+          ).toBe(`https://app.com/?a=1&b=2&c&${filterPart}`)
+        }
+      )
+
+      it('should keep repeated page params in their order', () => {
+        expect(
+          generateUrl('https://app.com/?tag=a&page=1&tag=b', state, mockConfig)
+        ).toBe('https://app.com/?tag=a&page=1&tag=b&f_name_contains=a')
+      })
+
+      it('should remove a filter param with an encoded name', () => {
+        expect(
+          generateUrl(
+            'https://app.com/?f%5Fold_contains=x&grid%5Ffilters=y&a=1',
+            state,
+            mockConfig
+          )
+        ).toBe('https://app.com/?a=1&f_name_contains=a')
+      })
+
+      it.each([
+        ['https://app.com/?', 'https://app.com/?f_name_contains=a'],
+        ['https://app.com/?&a=1', 'https://app.com/?a=1&f_name_contains=a'],
+        [
+          'https://app.com/?a=1&&b=2',
+          'https://app.com/?a=1&b=2&f_name_contains=a'
+        ]
+      ])('should drop the empty parts of %s', (input, expected) => {
+        expect(generateUrl(input, state, mockConfig)).toBe(expected)
+      })
+
+      it('should keep the hash after the params', () => {
+        expect(
+          generateUrl('https://app.com/list?debug#top', state, mockConfig)
+        ).toBe('https://app.com/list?debug&f_name_contains=a#top')
       })
     })
   })

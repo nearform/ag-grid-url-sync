@@ -425,7 +425,7 @@ describe('useGridUrlSync: methods (#271)', () => {
     await edit(api, NAME_JO)
 
     expect(result.current.getUrl('https://x.test/list?tab=1')).toBe(
-      'https://x.test/list?f_name_contains=jo&tab=1'
+      'https://x.test/list?tab=1&f_name_contains=jo'
     )
   })
 

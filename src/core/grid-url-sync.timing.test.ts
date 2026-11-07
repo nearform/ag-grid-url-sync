@@ -187,7 +187,7 @@ describe('createGridUrlSync: filters that the grid holds until its first rows', 
 
     grid.rowsArrive()
 
-    expect(window.location.search).toBe('?f_name_contains=jo&tab=1')
+    expect(window.location.search).toBe('?tab=1&f_name_contains=jo')
     expect(sync.getSnapshot().hasFilters).toBe(true)
     expect(window.history.length).toBe(length)
 
@@ -202,7 +202,7 @@ describe('createGridUrlSync: filters that the grid holds until its first rows', 
 
     grid.userEdit(NAME_X)
 
-    expect(window.location.search).toBe('?f_name_contains=x&tab=1')
+    expect(window.location.search).toBe('?tab=1&f_name_contains=x')
     expect(window.history.length).toBe(length + 1)
 
     sync.destroy()
@@ -215,7 +215,7 @@ describe('createGridUrlSync: filters that the grid holds until its first rows', 
 
     grid.userEdit(NAME_X)
 
-    expect(window.location.search).toBe('?f_name_contains=x&tab=1')
+    expect(window.location.search).toBe('?tab=1&f_name_contains=x')
     expect(window.history.length).toBe(length + 1)
 
     sync.destroy()
@@ -229,7 +229,7 @@ describe('createGridUrlSync: filters that the grid holds until its first rows', 
     grid.quickFilter()
     grid.rowsArrive()
 
-    expect(window.location.search).toBe('?f_name_contains=jo&tab=1')
+    expect(window.location.search).toBe('?tab=1&f_name_contains=jo')
     expect(window.history.length).toBe(length)
 
     sync.destroy()
@@ -266,7 +266,7 @@ describe('createGridUrlSync: filters that the grid holds until its first rows', 
 
     grid.rowsArrive()
 
-    expect(window.location.search).toBe('?f_age_gt=5&tab=1')
+    expect(window.location.search).toBe('?tab=1&f_age_gt=5')
     expect(window.history.length).toBe(length)
     expect(onIssue).toHaveBeenCalledTimes(1)
     expect(onIssue).toHaveBeenCalledWith({

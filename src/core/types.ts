@@ -515,7 +515,11 @@ export interface GridUrlSyncSnapshot {
   readonly status: SyncStatus
   /** The URL with the grid's filters and the page's own params */
   readonly url: string
-  /** Whether the grid has filters that the library supports */
+  /**
+   * Whether the grid has a filter: `api.getFilterModel()` is not empty. Also
+   * true for a filter that the URL does not hold, such as a combined (AND/OR)
+   * filter, a set filter, a custom filter or a value that is too long (#315).
+   */
   readonly hasFilters: boolean
   /**
    * The data issues of the latest apply and of the latest grid read, and a

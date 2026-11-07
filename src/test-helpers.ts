@@ -123,6 +123,8 @@ export interface GridApiFake {
   addEventListener?(event: string, listener: FilterChangedListener): void
   removeEventListener?(event: string, listener: FilterChangedListener): void
   getColumn?(colId: string): ColumnFake | null
+  /** AG Grid 31 and later: the grid's state, with the filters that it holds */
+  getState?(): { filter?: { filterModel?: FilterModel } }
   /** AG Grid 28 to 30 have this method, and no getColumn, on the grid API */
   getColumnDef?(colId: string): ColDefFake | null
 }
@@ -401,6 +403,70 @@ export function createTimedGrid(
     },
     apiEdit(model) {
       if (take({ ...model })) fire('api')
+    }
+  }
+}
+
+// ============================================================================
+// Filters that the grid holds until its first rows (#306)
+// ============================================================================
+
+export interface LateRowsGrid {
+  api: GridApi
+  /**
+   * The first rows come. As AG Grid 31.3.4 does: rowDataUpdated, then the
+   * grid applies the held filters and sends filterChanged with the source
+   * 'columnFilter'.
+   */
+  rowsArrive(): void
+  /** The user changes the filters in the grid's UI */
+  userEdit(model: FilterModel): void
+  /** A filterChanged that changes no column filter, as a quick filter does */
+  quickFilter(): void
+}
+
+/**
+ * A grid fake as AG Grid 31 with `initialState` filters and no row data yet.
+ * The grid holds the filters until the first rows (to infer the column
+ * types). Until then, getFilterModel gives `{}`, and getState gives the
+ * held filters.
+ */
+export function createLateRowsGrid(held: FilterModel): LateRowsGrid {
+  const listeners = createGridListeners()
+  let current: FilterModel = {}
+  let stateModel: FilterModel = { ...held }
+
+  const show = (model: FilterModel, source: string): void => {
+    current = { ...model }
+    stateModel = { ...model }
+    listeners.fire('filterChanged', { source })
+  }
+
+  const api = asGridApi({
+    getFilterModel: () => ({ ...current }),
+    getState: () => ({ filter: { filterModel: { ...stateModel } } }),
+    getColumn(colId) {
+      const filter = TIMED_COLUMNS.get(colId)
+
+      return filter
+        ? { isFilterAllowed: () => true, getColDef: () => ({ filter }) }
+        : null
+    },
+    addEventListener: listeners.addEventListener,
+    removeEventListener: listeners.removeEventListener
+  })
+
+  return {
+    api,
+    rowsArrive() {
+      listeners.fire('rowDataUpdated')
+      show(held, 'columnFilter')
+    },
+    userEdit(model) {
+      show(model, 'columnFilter')
+    },
+    quickFilter() {
+      listeners.fire('filterChanged', { source: 'quickFilter' })
     }
   }
 }

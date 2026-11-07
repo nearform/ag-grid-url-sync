@@ -773,7 +773,9 @@ export interface GridUrlSyncOptions {
   popstate?: boolean | undefined
   /**
    * Apply the address bar's filters when the sync is made. A URL with no
-   * filters keeps the grid's filters.
+   * filters keeps the grid's filters, and with `history` they are written
+   * to the URL with replace. AG Grid 31 applies `initialState` filters when
+   * the first rows come: the sync writes them at that time.
    * @default true
    */
   applyUrlOnCreate?: boolean | undefined

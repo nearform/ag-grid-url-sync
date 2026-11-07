@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createGridUrlSync, createSync, handOver } from './grid-url-sync.js'
 import {
+  createLateRowsGrid,
   createTimedGrid,
   GRID_TIMINGS,
   useRealLocation
@@ -168,6 +169,84 @@ describe.each(GRID_TIMINGS)(
     })
   }
 )
+
+// AG Grid 31 holds the initialState filters until its first rows. A URL with
+// no filter params keeps them, and with history the sync writes them with
+// replace, as it does when the grid shows them on create (#306).
+describe('createGridUrlSync: filters that the grid holds until its first rows', () => {
+  beforeEach(() => {
+    useRealLocation('/?tab=1')
+  })
+
+  it('writes them with replace when the grid applies them at the first rows', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    expect(window.location.search).toBe('?tab=1')
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?f_name_contains=jo&tab=1')
+    expect(sync.getSnapshot().hasFilters).toBe(true)
+    expect(window.history.length).toBe(length)
+
+    sync.destroy()
+  })
+
+  it('a user edit after the first rows writes history', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    grid.rowsArrive()
+    const length = window.history.length
+
+    grid.userEdit(NAME_X)
+
+    expect(window.location.search).toBe('?f_name_contains=x&tab=1')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+
+  it('a user edit before the first rows writes history', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    grid.userEdit(NAME_X)
+
+    expect(window.location.search).toBe('?f_name_contains=x&tab=1')
+    expect(window.history.length).toBe(length + 1)
+
+    sync.destroy()
+  })
+
+  it('a quick filter change before the first rows does not stop the replace', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, history: 'push' })
+    const length = window.history.length
+
+    grid.quickFilter()
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?f_name_contains=jo&tab=1')
+    expect(window.history.length).toBe(length)
+
+    sync.destroy()
+  })
+
+  it('writes nothing with history none', () => {
+    const grid = createLateRowsGrid(NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api })
+
+    grid.rowsArrive()
+
+    expect(window.location.search).toBe('?tab=1')
+    expect(sync.getSnapshot().url).toContain('f_name_contains=jo')
+
+    sync.destroy()
+  })
+})
 
 // On AG Grid 28 to 30, the grid API has getColumnDef and no getColumn. The
 // sync must still find each column's filter type and each column that the

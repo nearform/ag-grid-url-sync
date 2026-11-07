@@ -250,6 +250,10 @@ export function createSync(
   const listensToPopstate = options.popstate ?? historyMode === 'push'
   // The tracked saved view. `model` is its landed model, null while pending.
   let active: ActiveView | null = null
+  // The URL form key of the filters that the grid held on create and shows
+  // later, or null (#306). AG Grid 31 holds initialState's filters until its
+  // first rows. When the grid shows them, the create's write runs.
+  let held: string | null = null
   let viewList: readonly GridView[] = NO_VIEWS
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
 
@@ -455,6 +459,8 @@ export function createSync(
     // Before the call, so an event inside it is known as ours (#273). A
     // pending write stays known: a deferred grid lands it first.
     own = startWrite(own, kind)
+    // The grid no longer shows only its own filters
+    held = null
     ownSource = call.source
 
     // Only the grid call is in the try. An issue report runs outside it, so
@@ -904,6 +910,15 @@ export function createSync(
 
     readGrid()
 
+    if (showsHeld()) {
+      // The grid's own filters from create: the create's write, with no
+      // new history entry. Not a user edit (#306).
+      writeChange('grid', true)
+      publish()
+
+      return
+    }
+
     const result = classify(event?.source)
 
     // On each event, echoes too: a pending view can land in an echo of a
@@ -927,6 +942,34 @@ export function createSync(
     }
 
     publish()
+  }
+
+  /**
+   * Whether this filterChanged shows the filters that the grid held on
+   * create. Only the first one that shows filters can: after it, the grid's
+   * filters are the user's. An event that shows none (a quick filter) waits.
+   */
+  function showsHeld(): boolean {
+    if (held === null || Object.keys(state).length === 0) return false
+
+    const shown = filtersKey(state) === held
+    held = null
+
+    return shown
+  }
+
+  /**
+   * The URL form key of the filters that the grid holds but does not show
+   * yet, or null. AG Grid 31 holds initialState's filters until its first
+   * rows, and getState gives them.
+   */
+  function heldKey(): string | null {
+    try {
+      return urlKey(acceptedPart(api.getState().filter?.filterModel ?? {}))
+    } catch {
+      // AG Grid before v31 has no getState
+      return null
+    }
   }
 
   /**
@@ -1295,14 +1338,14 @@ export function createSync(
     // The URL has no filter params, so the grid's own filters stay: show them
     // in the address bar too, with no new history entry. A URL with only bad
     // filter params is left as it is until the user changes a filter.
-    if (
-      !stored &&
-      !hasParams &&
-      historyMode !== 'none' &&
-      Object.keys(state).length > 0
-    ) {
-      write('url', true)
-      publish()
+    if (!stored && !hasParams && historyMode !== 'none') {
+      if (Object.keys(state).length > 0) {
+        write('url', true)
+        publish()
+      } else if (own === null) {
+        // The grid can show its filters later (#306)
+        held = heldKey()
+      }
     }
   } else {
     const keptViewId = start.keptViewId ?? null

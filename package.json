@@ -184,13 +184,13 @@
     {
       "name": "dist/index.js (bundled)",
       "path": "./dist/index.js",
-      "limit": "12.7 KiB",
+      "limit": "12.8 KiB",
       "gzip": true
     },
     {
       "name": "dist/react/index.js (bundled, react external)",
       "path": "./dist/react/index.js",
-      "limit": "17.0 KiB",
+      "limit": "17.1 KiB",
       "gzip": true,
       "ignore": [
         "react"
@@ -200,7 +200,7 @@
       "name": "useGridUrlSync only (tree-shaken, react external)",
       "path": "./dist/react/index.js",
       "import": "{ useGridUrlSync }",
-      "limit": "14.9 KiB",
+      "limit": "15.0 KiB",
       "gzip": true,
       "ignore": [
         "react"

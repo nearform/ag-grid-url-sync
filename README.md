@@ -64,9 +64,30 @@ Supports **all AG Grid text, number, and date filter operations** (26 total) wit
 | **Date**    | Before or Equal | `f_column_beforeEq=YYYY-MM-DD` | `f_archived_beforeEq=2024-12-31`           | Date is before or equal to value          |
 | **Date**    | After           | `f_column_after=YYYY-MM-DD`    | `f_created_after=2024-01-01`               | Date is after value                       |
 | **Date**    | After or Equal  | `f_column_afterEq=YYYY-MM-DD`  | `f_updated_afterEq=2024-06-01`             | Date is after or equal to value           |
-| **Date**    | In Range        | `f_column_daterange=start,end` | `f_period_daterange=2024-01-01,2024-12-31` | Date is between start and end (inclusive) |
+| **Date**    | In Range        | `f_column_daterange=start,end` | `f_period_daterange=2024-01-01,2024-12-31` | Date is between start and end (see below) |
 | **Date**    | Blank           | `f_column_blank=true`          | `f_deadline_blank=true`                    | Date field is empty/null                  |
 | **Date**    | Not Blank       | `f_column_notBlank=true`       | `f_created_notBlank=true`                  | Date field has any value                  |
+
+Two date operations depend on the settings of the AG Grid column:
+
+- **`daterange`:** AG Grid's `inRange` leaves out the start and end dates. To keep them, set `filterParams: { inRangeInclusive: true }` on the column.
+- **`beforeEq` and `afterEq`:** they need the AG Grid filter options `lessThanOrEqual` and `greaterThanOrEqual`. AG Grid's default date filter does not have these options, so it uses `equals` in their place. The grid then shows other rows, and the sync reports no issue. Add the options to the column:
+
+```ts
+filterParams: {
+  filterOptions: [
+    'equals',
+    'notEqual',
+    'lessThan',
+    'lessThanOrEqual',
+    'greaterThan',
+    'greaterThanOrEqual',
+    'inRange',
+    'blank',
+    'notBlank'
+  ]
+}
+```
 
 > **🗓️ Date Format Note**: Date filters require strict ISO format (`YYYY-MM-DD`). All date values are validated for real calendar dates, including leap years and month boundaries. Invalid or non-ISO dates will be rejected.
 
@@ -242,12 +263,14 @@ sync.destroy()
 
 A URL write keeps the text and the order of the page's other params, and puts the filter params after them. With no filters, the URL has no filter param.
 
+Two grids on one page must use different URL params. A URL write removes every param with the codec's prefix and the codec's grouped param. `grouped()` has no prefix, so it always removes the `f_` params too. Give each grid its own prefix, for example `individual({ prefix: 'a' })` and `individual({ prefix: 'b' })`.
+
 | Option             | Default                   | Meaning                                                                                                                                                                                                                                                                                               |
 | ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `api`              | (required)                | The AG Grid API                                                                                                                                                                                                                                                                                       |
 | `codec`            | `individual()`            | How the filters are written in the URL. `individual({ prefix })` writes one param for each filter; `grouped({ param, format })` writes all filters in one param                                                                                                                                       |
 | `maxValueLength`   | `200`                     | The longest text value that is kept                                                                                                                                                                                                                                                                   |
-| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the URL and `{ replace }`, for a router. The page's other params, the `#hash` and `history.state` stay                                                                                    |
+| `history`          | `'none'`                  | How a filter change goes to the address bar. `'replace'` and `'push'` use `window.history`; a function gets the absolute URL and `{ replace }`, for a router. The page's other params, the `#hash` and `history.state` stay                                                                           |
 | `popstate`         | `true` only with `'push'` | Apply the URL when the back or forward button changes it                                                                                                                                                                                                                                              |
 | `applyUrlOnCreate` | `true`                    | Apply the address bar's filters on create. A URL with no filter params keeps the grid's filters (for example from `initialState`), and with `history` they are written to the URL with replace. AG Grid 31 applies `initialState` filters when the first rows come: the sync writes them at that time |
 | `views`            | none                      | The saved views. Give `createViewStore(key)` from `ag-grid-url-sync/views`. See [Saved Views](#saved-views)                                                                                                                                                                                           |
@@ -260,7 +283,7 @@ An issue has the source of the work that found it. A method that the app calls g
 
 #### History with a router
 
-A `history` function gets two arguments: the URL and `{ replace }`. `replace` tells the function what to do with the history entry:
+A `history` function gets two arguments: the absolute URL (`https://host/path?...`) and `{ replace }`. `replace` tells the function what to do with the history entry:
 
 - `true`: replace the entry. This is for a write that must not add a back-button step: the create-time write of the grid's own filters, and the restore of a stored view (on create, or for a new `storageKey`).
 - `false`: add an entry. This is for a user edit, `applyFilters` and `loadView`.
@@ -276,6 +299,33 @@ createGridUrlSync({
 ```
 
 A function with one argument also works. It does not use `replace`, so it does the same for each write. `url => router.replace(url)` is correct. Do not use `url => router.push(url)`: it adds a back-button step on page load.
+
+The Next.js router takes the absolute URL. React Router's `navigate` takes a path: it reads an absolute URL as a relative path, so the route does not match. Give it the path, the search and the hash:
+
+```typescript
+createGridUrlSync({
+  api: gridApi,
+  history: (url, { replace }) => {
+    const { pathname, search, hash } = new URL(url)
+    navigate(pathname + search + hash, { replace })
+  }
+})
+```
+
+The sync reads the address bar only on create and on `popstate`. A router navigation that keeps the page mounted (for example a Next.js `<Link>` to the same page with other params) does not fire `popstate`, so the sync does not apply its filters. The next user edit then writes the grid's filters over them. Call `applyUrl()` when the search params change. With a `history` function, `popstate` is `false` by default, so set `popstate: true` to apply the URL on back and forward:
+
+```tsx
+const query = useSearchParams().toString()
+const { status, applyUrl } = useGridUrlSync({
+  api,
+  history: url => router.replace(url),
+  popstate: true
+})
+
+useEffect(() => {
+  if (status === 'active') applyUrl()
+}, [query, status, applyUrl])
+```
 
 `'replace'` and `'push'` keep `history.state`, but they remove the Next.js keys `__NA` and `_N` from it. Next.js skips its router update for a write with these keys. With them removed, the Next.js router (`useSearchParams`) gets the new URL. A state that is not a plain object stays as it is.
 
@@ -644,18 +694,19 @@ The options are the [`createGridUrlSync` options](#vanilla-js-creategridurlsync)
 
 The hook returns the snapshot and the methods of the sync:
 
-| Property                             | Description                                                                      |
-| ------------------------------------ | -------------------------------------------------------------------------------- |
-| `status`                             | `'idle'` (no grid, no sync yet, or a server render), `'active'` or `'destroyed'` |
-| `url`, `hasFilters`, `issues`        | The URL with the grid's filters, whether there are filters, the latest issues    |
-| `views`, `activeViewId`              | The saved views and the active one                                               |
-| `applyUrl(url?)`, `applyFilters(f)`  | Apply a URL or filters. They return `{ issues }`                                 |
-| `getUrl(baseUrl?)`                   | The URL with the grid's filters, for example to share                            |
-| `saveView`, `loadView`, `deleteView` | The saved view methods of the sync                                               |
+| Property                             | Description                                                                                   |
+| ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `status`                             | `'idle'` (no grid, no sync yet, or a server render), `'active'` or `'destroyed'`              |
+| `url`, `hasFilters`, `issues`        | The URL with the grid's filters, whether the URL holds filters (see below), the latest issues |
+| `views`, `activeViewId`              | The saved views and the active one                                                            |
+| `applyUrl(url?)`, `applyFilters(f)`  | Apply a URL or filters. They return `{ issues }`                                              |
+| `getUrl(baseUrl?)`                   | The URL with the grid's filters, for example to share                                         |
+| `saveView`, `loadView`, `deleteView` | The saved view methods of the sync                                                            |
 
 - **The core's rules hold.** On mount, a URL with filters wins over the stored view, a URL with no filters keeps the grid's filters, and a URL apply writes no history.
 - **Options can change after mount.** A new codec, `maxValueLength`, history mode, `popstate` or `storageKey` makes a new sync on the same grid. It does not apply the URL again, and it keeps the active view. A new `storageKey` restores that store's view. A new codec object with the same settings, a new `onIssue` or a new `history` function makes no new sync.
 - **The result is stable.** It is the same object until a snapshot value changes, and the methods never change.
+- **`hasFilters` counts only the filters that the URL holds.** With `individual()`, a combined (AND/OR) filter or a set filter is not in the URL (`UNSUPPORTED_FILTER`). So `hasFilters` is `false` while the grid shows such a filter, and a "Clear" button with `disabled={!hasFilters}` stays disabled. To clear any filter, keep the button enabled.
 - **A method with no sync** (no grid yet, `enabled: false`): `applyUrl` and `applyFilters` report `NOT_READY` to `onIssue`, and so do `saveView` and `loadView` with a `storageKey`. `getUrl` returns the base URL. `deleteView` still works with storage only.
 - **Issues stay across a new sync.** After an option change or a `StrictMode` remount, `issues` still shows the latest apply's issues until the next apply. A new `storageKey` that restores its stored view clears them, as `loadView` does. `onIssue` gets each issue one time.
 - `StrictMode`, React's `<Activity>` and server rendering are supported.
@@ -739,7 +790,7 @@ Rules for the vanilla API:
 On create (when `applyUrlOnCreate` is not `false`), the sync picks the starting filters in this order:
 
 1. The URL holds the filters of the stored view (compared in URL form). The sync restores the view with its full model, and keeps `activeViewId` and the pointer. This is how a reload keeps a view that was loaded with `history` on.
-2. The URL has at least one filter. The URL wins. `activeViewId` is `null` and the pointer is cleared. A URL with only bad params does not win.
+2. The URL has at least one filter. The URL wins. `activeViewId` is `null` and the pointer is cleared. A URL with only bad params does not win, and its bad params are not reported: `onIssue` gets nothing, and `issues` stays empty. With no `views`, the sync reports them.
 3. A stored view exists. The sync restores it. With `history` on, the URL is written with replace, so page load adds no back-button step.
 4. Else, the grid keeps its filters.
 
@@ -747,7 +798,7 @@ A stored pointer that names a missing view is ignored.
 
 #### Saved views in React
 
-Give a `storageKey` to let users name and load filter sets. The key enables the feature and is the name of its storage, so two grids on the same origin must use different keys:
+Give a `storageKey` to let users name and load filter sets. The key enables the feature and is the name of its storage, so two grids on the same origin must use different keys. They must also use different URL params (see [Vanilla JS: `createGridUrlSync`](#vanilla-js-creategridurlsync)):
 
 ```tsx
 const { views, activeViewId, saveView, loadView, deleteView } = useGridUrlSync({
@@ -917,7 +968,7 @@ The library generates clean, human-readable URLs:
 ```
 Base URL: https://app.com/page
 With text filters: https://app.com/page?f_name_contains=john&f_status_eq=active
-With number filters: https://app.com/page?f_salary_gte=75000&f_age_range=25,45
+With number filters: https://app.com/page?f_salary_gte=75000&f_age_range=25%2C45
 Mixed filters: https://app.com/page?f_name_contains=john&f_salary_gte=75000&f_age_lt=50
 ```
 
@@ -928,7 +979,7 @@ Parameter structure:
 - **Text Operations**: `contains`, `eq`, `neq`, `startsWith`, `endsWith`, `notContains`, `blank`, `notBlank`
 - **Number Operations**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `range`, `blank`, `notBlank`
 - **Date Operations**: `eq`, `neq`, `before`, `beforeEq`, `after`, `afterEq`, `daterange`, `blank`, `notBlank`
-- **Range Format**: `f_column_range=min,max` (comma-separated values)
+- **Range Format**: `f_column_range=min,max` (comma-separated values). The library writes the comma as `%2C`. A link with a raw comma (`f_age_range=25,45`) also works.
 - Standard URL encoding for special characters
 - Supports column names with underscores (e.g., `user_id`, `salary_base`, `created_date`)
 

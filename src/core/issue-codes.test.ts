@@ -276,6 +276,31 @@ const CASES: [
     InvalidFilterError,
     'UNKNOWN_COLUMN',
     'gone'
+  ],
+  [
+    'an operation that the column does not have',
+    o => {
+      const sync = syncOn(
+        api =>
+          api.getColumn.mockReturnValue({
+            getColDef: () => ({ filter: 'agDateColumnFilter' })
+          }),
+        o
+      )
+
+      sync.applyFilters({
+        created: {
+          filterType: 'date',
+          type: 'lessThanOrEqual',
+          dateFrom: '2024-03-15'
+        }
+      })
+
+      sync.destroy()
+    },
+    InvalidFilterError,
+    'UNSUPPORTED_OPERATION',
+    'created'
   ]
 ]
 

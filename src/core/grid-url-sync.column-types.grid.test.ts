@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type {
+  ColDef,
   FilterModel,
   GridOptions,
   TextFilterModel
 } from 'ag-grid-community'
 import { createGridUrlSync, createSync, handOver } from './grid-url-sync.js'
+import { grouped } from './codecs.js'
 import type { IssueEvent } from './types.js'
 import {
   asGridApi,
@@ -718,5 +720,296 @@ describe('createGridUrlSync: a filter on a column that the grid does not have (#
 
     expect(issues).toEqual([])
     expect(setFilterModel).toHaveBeenCalledWith(model)
+  })
+})
+
+/** AG Grid's date filter options and the two `OrEqual` options */
+const ALL_DATE_OPTIONS = [
+  'equals',
+  'notEqual',
+  'lessThan',
+  'lessThanOrEqual',
+  'greaterThan',
+  'greaterThanOrEqual',
+  'inRange',
+  'blank',
+  'notBlank'
+]
+
+const DATED_ROWS = [
+  { created: '2024-01-10', age: 1 },
+  { created: '2024-02-10', age: 5 },
+  { created: '2024-03-15', age: 9 }
+]
+
+/** A date column and a number column, with the column options given */
+function optionsGrid(
+  created: Partial<ColDef> = {},
+  age: Partial<ColDef> = {},
+  gridOptions: Partial<GridOptions> = {}
+) {
+  return createRealGrid({
+    columnDefs: [
+      {
+        field: 'created',
+        filter: 'agDateColumnFilter',
+        cellDataType: 'dateString',
+        ...created
+      },
+      { field: 'age', filter: 'agNumberColumnFilter', ...age }
+    ],
+    rowData: DATED_ROWS,
+    ...gridOptions
+  })
+}
+
+describe('createGridUrlSync: an operation that the column does not have (#325)', () => {
+  it('leaves out beforeEq on a default date filter and reports UNSUPPORTED_OPERATION', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/?f_created_beforeEq=2024-03-15&f_age_gt=2'
+    )
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = optionsGrid()
+    const setFilterModel = vi.spyOn(api, 'setFilterModel')
+    const sync = createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(setFilterModel).toHaveBeenCalledWith({
+      age: { filterType: 'number', type: 'greaterThan', filter: 2 }
+    })
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'greaterThan', filter: 2 }
+    })
+    expect(onIssue).toHaveBeenCalledTimes(1)
+    expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+      issue: { code: 'UNSUPPORTED_OPERATION', column: 'created' },
+      source: 'url'
+    })
+    expect(onIssue.mock.calls[0]?.[0].issue.severity).toBe('warning')
+    expect(sync.getSnapshot().issues).toMatchObject([
+      { code: 'UNSUPPORTED_OPERATION', column: 'created' }
+    ])
+  })
+
+  it('applies beforeEq when the column lists lessThanOrEqual', async () => {
+    window.history.replaceState(null, '', '/?f_created_beforeEq=2024-03-15')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const api = optionsGrid({
+      filterParams: { filterOptions: ALL_DATE_OPTIONS }
+    })
+
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toMatchObject({
+      created: { filterType: 'date', type: 'lessThanOrEqual' }
+    })
+    expect(api.getDisplayedRowCount()).toBe(3)
+    expect(onIssue).not.toHaveBeenCalled()
+  })
+
+  it('reads the filter options of the default column definition', async () => {
+    window.history.replaceState(null, '', '/?f_created_afterEq=2024-02-10')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const api = optionsGrid(
+      {},
+      {},
+      { defaultColDef: { filterParams: { filterOptions: ALL_DATE_OPTIONS } } }
+    )
+
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toMatchObject({
+      created: { filterType: 'date', type: 'greaterThanOrEqual' }
+    })
+    expect(api.getDisplayedRowCount()).toBe(2)
+    expect(onIssue).not.toHaveBeenCalled()
+  })
+
+  it("checks AG Grid's default filter on a date data type", async () => {
+    window.history.replaceState(null, '', '/?f_created_beforeEq=2024-03-15')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = optionsGrid({ filter: true })
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({})
+    expect(onIssue.mock.calls.map(([event]) => event.issue)).toMatchObject([
+      { code: 'UNSUPPORTED_OPERATION', column: 'created' }
+    ])
+  })
+
+  it('checks a number or text filter against its own filter options', async () => {
+    window.history.replaceState(null, '', '/?f_age_lt=6&f_name_startsWith=j')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const api = createRealGrid({
+      columnDefs: [
+        {
+          field: 'name',
+          filter: 'agTextColumnFilter',
+          filterParams: { filterOptions: ['contains', 'equals'] }
+        },
+        {
+          field: 'age',
+          filter: 'agNumberColumnFilter',
+          filterParams: { filterOptions: ['equals'] }
+        }
+      ]
+    })
+
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({})
+    expect(onIssue.mock.calls.map(([event]) => event.issue)).toMatchObject([
+      { code: 'UNSUPPORTED_OPERATION', column: 'age' },
+      { code: 'UNSUPPORTED_OPERATION', column: 'name' }
+    ])
+  })
+
+  it('keeps each operation of the default number and text options', async () => {
+    window.history.replaceState(null, '', '/?f_age_lte=40&f_name_startsWith=j')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = createRealGrid()
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'lessThanOrEqual', filter: 40 },
+      name: { filterType: 'text', type: 'startsWith', filter: 'j' }
+    })
+    expect(onIssue).not.toHaveBeenCalled()
+  })
+
+  it('keeps a custom filter option that the column lists', () => {
+    const odd = {
+      displayKey: 'odd',
+      displayName: 'Odd',
+      predicate: (_: number[], value: number | null) => (value ?? 0) % 2 === 1,
+      numberOfInputs: 0
+    } as const
+
+    const api = optionsGrid({}, { filterParams: { filterOptions: [odd] } })
+    const sync = createGridUrlSync({ api, applyUrlOnCreate: false })
+
+    const { issues } = sync.applyFilters({
+      age: { filterType: 'number', type: 'odd' }
+    })
+
+    expect(issues).toEqual([])
+    expect(api.getFilterModel()).toEqual({
+      age: { filterType: 'number', type: 'odd' }
+    })
+  })
+
+  it('checks each condition of combined conditions', () => {
+    const api = optionsGrid()
+    const sync = createGridUrlSync({ api, applyUrlOnCreate: false })
+
+    const { issues } = sync.applyFilters({
+      created: {
+        filterType: 'date',
+        operator: 'OR',
+        conditions: [
+          { filterType: 'date', type: 'equals', dateFrom: '2024-01-10' },
+          {
+            filterType: 'date',
+            type: 'lessThanOrEqual',
+            dateFrom: '2024-02-10'
+          }
+        ]
+      }
+    })
+
+    expect(issues).toMatchObject([
+      { code: 'UNSUPPORTED_OPERATION', column: 'created' }
+    ])
+    expect(api.getFilterModel()).toEqual({})
+  })
+
+  it('checks a 0.5-form operation of a json URL', async () => {
+    const json = JSON.stringify({
+      created: {
+        filterType: 'date',
+        type: 'dateBeforeOrEqual',
+        filter: '2024-03-15'
+      }
+    })
+
+    window.history.replaceState(null, '', `/?gf=${encodeURIComponent(json)}`)
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+    const api = optionsGrid()
+    createGridUrlSync({
+      api,
+      onIssue,
+      codec: grouped({ param: 'gf', format: 'json' })
+    })
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({})
+    expect(onIssue.mock.calls.map(([event]) => event.issue)).toMatchObject([
+      { code: 'UNSUPPORTED_OPERATION', column: 'created' }
+    ])
+  })
+
+  it('checks the operation when a waiting URL applies', async () => {
+    window.history.replaceState(null, '', '/?f_created_beforeEq=2024-03-15')
+    const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+    const api = createRealGrid({
+      columnDefs: [{ field: 'created' }],
+      defaultColDef: { filter: true },
+      rowData: null
+    })
+
+    createGridUrlSync({ api, onIssue })
+    await settle()
+
+    expect(onIssue).not.toHaveBeenCalled()
+
+    api.setGridOption('rowData', DATED_ROWS)
+    await settle()
+
+    expect(api.getFilterModel()).toEqual({})
+    expect(api.getDisplayedRowCount()).toBe(3)
+    expect(onIssue.mock.calls.map(([event]) => event.issue)).toMatchObject([
+      { code: 'UNSUPPORTED_OPERATION', column: 'created' }
+    ])
+  })
+
+  it('does not check a custom filter component', () => {
+    const api = createRealGrid({
+      columnDefs: [{ field: 'age', cellDataType: 'number', filter: AnyFilter }],
+      rowData: DATED_ROWS
+    })
+
+    const setFilterModel = vi.spyOn(api, 'setFilterModel')
+    const sync = createGridUrlSync({ api, applyUrlOnCreate: false })
+
+    const model = {
+      age: { filterType: 'number', type: 'someOperation', filter: 1 }
+    }
+
+    const { issues } = sync.applyFilters(model)
+
+    expect(issues).toEqual([])
+    expect(setFilterModel).toHaveBeenCalledWith(model)
+  })
+
+  it('does not check a filter with no operation yet (#260)', () => {
+    const api = optionsGrid()
+    const sync = createGridUrlSync({ api, applyUrlOnCreate: false })
+
+    const { issues } = sync.applyFilters({
+      age: { filterType: 'number', filter: 3 }
+    })
+
+    expect(issues).toEqual([])
   })
 })

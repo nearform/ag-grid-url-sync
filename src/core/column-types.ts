@@ -85,6 +85,75 @@ export function sureColumnType(
 }
 
 /**
+ * AG Grid's default `filterOptions` of each built-in filter (#325). The lists
+ * are the same in AG Grid 31 to 36. The date filter has no `lessThanOrEqual`
+ * and no `greaterThanOrEqual`.
+ */
+const SHARED_OPTIONS = ['equals', 'notEqual', 'blank', 'notBlank']
+
+const DATE_OPTIONS = [...SHARED_OPTIONS, 'lessThan', 'greaterThan', 'inRange']
+
+const DEFAULT_OPTIONS: Readonly<Record<FilterType, readonly string[]>> = {
+  text: [
+    ...SHARED_OPTIONS,
+    'contains',
+    'notContains',
+    'startsWith',
+    'endsWith'
+  ],
+  number: [...DATE_OPTIONS, 'lessThanOrEqual', 'greaterThanOrEqual'],
+  date: DATE_OPTIONS
+}
+
+/** A filter option: an AG Grid name, or a custom option with its own name */
+const FilterOptionSchema = v.union([
+  v.string(),
+  v.object({ displayKey: v.string() })
+])
+
+/** The filter options of a column's filterParams. Null or none: the default */
+const FilterParamsSchema = v.object({
+  filterOptions: v.optional(v.nullable(v.array(FilterOptionSchema)))
+})
+
+/**
+ * The operations that a column's filter takes (#325): its
+ * `filterParams.filterOptions`, else AG Grid's default list. Only for a
+ * built-in text, number or date filter, or AG Grid's default filter
+ * (`filter: true`) on a known type. undefined when the sync cannot tell: a
+ * custom filter component, another filter name, no filter, a type that AG
+ * Grid has not inferred yet, or filter options that are not a list.
+ */
+export function columnOperations(
+  api: GridApi,
+  column: string
+): ReadonlySet<string> | undefined {
+  const type = gridColumnType(api, column)
+
+  if (type === undefined || type === 'pending') return undefined
+
+  try {
+    const { filter, filterParams } = api.getColumn(column)?.getColDef() ?? {}
+
+    if (filter !== true && !BUILT_IN_FILTERS.has(filter)) return undefined
+
+    const params = v.safeParse(FilterParamsSchema, filterParams ?? {})
+
+    if (!params.success) return undefined
+
+    const options = params.output.filterOptions ?? DEFAULT_OPTIONS[type]
+
+    return new Set(
+      options.map(option =>
+        v.is(v.string(), option) ? option : option.displayKey
+      )
+    )
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Whether the grid has no column with this id (#312). False when the grid
  * cannot tell: a test double or an old AG Grid version with no getColumn, or
  * a grid that throws. AG Grid 31 to 33 give only the columns of the column

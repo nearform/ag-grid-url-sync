@@ -15,6 +15,7 @@ import {
   isTextFilterOperation
 } from './types.js'
 import { operatorById, operatorFromAgGrid } from './operators.js'
+import type { ColumnModel } from './schemas.js'
 import {
   AgGridFilterSchema,
   JsonObjectSchema,
@@ -25,6 +26,7 @@ import { reportIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
 import {
+  columnOperations,
   gridColumnType,
   isUnknownColumn,
   sureColumnType
@@ -424,10 +426,59 @@ function typeMismatch(
   )
 }
 
+const SIMPLE_FILTER_TYPES: ReadonlySet<unknown> = new Set([
+  'text',
+  'number',
+  'date'
+])
+
 /**
- * An AG Grid model with each column that the grid does not have (#312), and
- * each column that fails the type check (#225), left out and reported. It
- * does not call `setFilterModel`.
+ * The operations of a text, number or date model: its `type`, or the `type`
+ * of each of its combined conditions. A model with no type yet is still
+ * being edited, so it has no operation (#260).
+ */
+function modelOperations(model: ColumnModel): string[] {
+  const parts = Array.isArray(model.conditions)
+    ? model.conditions.filter(condition => isColumnModel(condition))
+    : [model]
+
+  return parts.flatMap(part => (v.is(v.string(), part.type) ? [part.type] : []))
+}
+
+/**
+ * UNSUPPORTED_OPERATION when the column's filter does not list an operation
+ * of the model (#325). AG Grid 31 to 33 use the first option in its place
+ * (`lessThanOrEqual` becomes `equals` on the default date filter), and AG
+ * Grid 36 drops the filter. A custom option that the column lists is kept.
+ * The operations are AG Grid names, as `filterOptions` has them.
+ */
+function unsupportedOperation(
+  gridApi: GridApi,
+  column: string,
+  model: ColumnModel
+): InvalidFilterError | null {
+  if (!SIMPLE_FILTER_TYPES.has(filterTypeOf(model))) return null
+
+  const allowed = columnOperations(gridApi, column)
+
+  if (!allowed) return null
+
+  const operation = modelOperations(model).find(name => !allowed.has(name))
+
+  if (operation === undefined) return null
+
+  return new InvalidFilterError(
+    `Column '${column}' has no filter option '${operation}'. Add it to filterParams.filterOptions.`,
+    undefined,
+    { code: 'UNSUPPORTED_OPERATION', column }
+  )
+}
+
+/**
+ * An AG Grid model with each column that the grid does not have (#312), each
+ * column that fails the type check (#225), and each column with an operation
+ * that its filter does not list (#325), left out and reported. It does not
+ * call `setFilterModel`.
  */
 export function checkColumnTypes(
   model: FilterModel,
@@ -465,9 +516,11 @@ export function checkColumnTypes(
       operation
     )
 
-    if (mismatch) reportIssue(resolved, mismatch)
+    const issue = mismatch ?? unsupportedOperation(gridApi, column, entry)
 
-    return mismatch === null
+    if (issue) reportIssue(resolved, issue)
+
+    return issue === null
   })
 
   // Object.fromEntries creates own keys, so `__proto__` stays a column

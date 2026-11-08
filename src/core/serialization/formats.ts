@@ -22,6 +22,7 @@ import { convertToAGGridFilter, fromGridModel } from '../grid-integration.js'
 import type { ColumnModel } from '../schemas.js'
 import { isColumnModel } from '../schemas.js'
 import {
+  columnTexts,
   heldColumns,
   isSimpleKind,
   modelToState,
@@ -29,47 +30,6 @@ import {
 } from '../model-form.js'
 import { stableJson } from '../stable-json.js'
 import { toError } from '../to-error.js'
-
-/** The filter types whose strings are not all values */
-const BUILT_IN_TYPES: ReadonlySet<unknown> = new Set([
-  'text',
-  'number',
-  'date',
-  'set',
-  'multi'
-])
-
-/** Each string in a JSON value, at any level */
-function allStrings(value: ColumnModel[string]): string[] {
-  if (v.is(v.string(), value)) return [value]
-
-  if (Array.isArray(value)) return value.flatMap(allStrings)
-
-  return isColumnModel(value) ? Object.values(value).flatMap(allStrings) : []
-}
-
-/**
- * The values of a column model that maxValueLength limits: a text filter's
- * value, a set filter's values, and each string of a custom filter's model,
- * also in conditions and multi filters (#283 review). Dates, numbers and
- * operation names are not limited.
- */
-function textValues(model: ColumnModel): string[] {
-  if (!BUILT_IN_TYPES.has(model.filterType)) return allStrings(model)
-
-  const own =
-    model.filterType === 'text' && v.is(v.string(), model.filter)
-      ? [model.filter]
-      : model.filterType === 'set' && Array.isArray(model.values)
-        ? model.values.filter(value => v.is(v.string(), value))
-        : []
-
-  const nested = [model.conditions, model.filterModels].flatMap(list =>
-    Array.isArray(list) ? list.filter(isColumnModel).flatMap(textValues) : []
-  )
-
-  return [...own, ...nested]
-}
 
 /**
  * Returns a copy of the model with each column that has a text value over
@@ -87,9 +47,7 @@ function dropOverLengthTextValues(
 
   const kept = Object.entries(model).filter(([column, entry]) => {
     try {
-      const texts = isColumnModel(entry) ? textValues(entry) : allStrings(entry)
-
-      for (const text of texts) validateFilterValue(text, cfg)
+      for (const text of columnTexts(entry)) validateFilterValue(text, cfg)
 
       return true
     } catch (error) {

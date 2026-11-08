@@ -311,6 +311,92 @@ describe('createGridUrlSync: snapshot and subscribe', () => {
   })
 })
 
+// hasFilters tells if the grid has a filter, also one that the URL does not
+// hold, so a "Clear" button works for each filter (#315)
+describe('createGridUrlSync: hasFilters (#315)', () => {
+  const NAME_OR = {
+    name: {
+      filterType: 'text',
+      operator: 'OR',
+      conditions: [
+        { filterType: 'text', type: 'contains', filter: 'jo' },
+        { filterType: 'text', type: 'contains', filter: 'ja' }
+      ]
+    }
+  } as const
+
+  it('is true for a combined filter that the URL does not hold', async () => {
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api })
+
+    api.setFilterModel(NAME_OR)
+    await settle()
+
+    const snapshot = sync.getSnapshot()
+
+    expect(snapshot.issues.map(issue => issue.code)).toEqual([
+      'UNSUPPORTED_FILTER'
+    ])
+    expect(snapshot.url).not.toContain('f_name')
+    expect(snapshot.hasFilters).toBe(true)
+  })
+
+  it('is true for a value that is longer than maxValueLength', async () => {
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api, maxValueLength: 3 })
+
+    api.setFilterModel({
+      name: { filterType: 'text', type: 'contains', filter: 'abcd' }
+    })
+
+    await settle()
+
+    expect(sync.getSnapshot().issues.map(issue => issue.code)).toEqual([
+      'VALUE_TOO_LONG'
+    ])
+    expect(sync.getSnapshot().hasFilters).toBe(true)
+  })
+
+  it('is false again when the combined filter is cleared', async () => {
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api })
+
+    api.setFilterModel(NAME_OR)
+    await settle()
+    api.setFilterModel(null)
+    await settle()
+
+    expect(sync.getSnapshot().hasFilters).toBe(false)
+    expect(sync.getSnapshot().issues).toEqual([])
+  })
+
+  it('keeps the snapshot identity on a new read of the same filter', async () => {
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api })
+
+    api.setFilterModel(NAME_OR)
+    await settle()
+    const before = sync.getSnapshot()
+
+    api.onFilterChanged()
+    await settle()
+
+    expect(sync.getSnapshot()).toBe(before)
+  })
+
+  it('is true for a filter that is set before create', async () => {
+    const api = createRealGrid({
+      initialState: { filter: { filterModel: NAME_OR } }
+    })
+
+    const sync = createGridUrlSync({ api })
+    await settle()
+
+    expect(api.getFilterModel()).toMatchObject(NAME_OR)
+    expect(sync.getSnapshot().hasFilters).toBe(true)
+  })
+})
+
 describe('createGridUrlSync: onIssue', () => {
   it('a throwing onIssue does not make create throw or leak listeners', async () => {
     window.history.replaceState(null, '', '/?f_age_gt=abc')

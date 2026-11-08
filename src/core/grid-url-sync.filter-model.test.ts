@@ -4,6 +4,7 @@ import { createGridUrlSync } from './grid-url-sync.js'
 import { grouped, individual } from './codecs.js'
 import { readUrlFilters } from './url-parser.js'
 import { writeUrlFilters } from './url-generator.js'
+import { generateUrl } from './url.js'
 import { createViewStore } from './view-storage.js'
 import type { IssueEvent } from './types.js'
 import {
@@ -374,3 +375,117 @@ describe('a custom filter model that is an array', () => {
     sync.destroy()
   })
 })
+
+// A text value over maxValueLength is not in the URL: the writer leaves it
+// out and reports VALUE_TOO_LONG. So the URL does not hold that column, and
+// a URL apply keeps it on the grid, as it keeps a set filter (#310).
+const NAME_LONG: FilterModel = {
+  name: { filterType: 'text', type: 'contains', filter: '0123456' }
+}
+
+const STATUS_LONG: FilterModel = {
+  status: { filterType: 'set', values: ['0123456'] }
+}
+
+const CODECS = [
+  ['individual', individual()],
+  ['grouped querystring', grouped({ format: 'querystring' })],
+  ['grouped json', grouped({ format: 'json' })],
+  ['grouped base64', grouped({ format: 'base64' })]
+] as const
+
+describe.each(GRID_TIMINGS)(
+  'a value over maxValueLength (%s timing)',
+  timing => {
+    describe.each(CODECS)('the %s codec', (_, codec) => {
+      it('applyUrl with the same URL keeps the column on the grid', async () => {
+        const grid = createTimedGrid(timing)
+        const onIssue = vi.fn<(event: IssueEvent) => void>()
+
+        const sync = createGridUrlSync({
+          api: grid.api,
+          codec,
+          history: 'replace',
+          maxValueLength: 5,
+          onIssue
+        })
+
+        sync.applyFilters({ ...NAME_LONG, ...AGE_30 })
+        await tick()
+
+        expect(onIssue.mock.calls[0]?.[0]).toMatchObject({
+          issue: { code: 'VALUE_TOO_LONG', column: 'name' }
+        })
+        expect(grid.api.getFilterModel()).toEqual({ ...NAME_LONG, ...AGE_30 })
+
+        expect(sync.applyUrl()).toEqual({ issues: [] })
+        await tick()
+
+        expect(grid.api.getFilterModel()).toEqual({ ...NAME_LONG, ...AGE_30 })
+
+        sync.destroy()
+      })
+
+      it('a URL apply on create keeps the column on the grid', async () => {
+        window.history.replaceState(
+          null,
+          '',
+          generateUrl(window.location.href, AGE_30, { codec })
+        )
+        const grid = createTimedGrid(timing, NAME_LONG)
+
+        const sync = createGridUrlSync({
+          api: grid.api,
+          codec,
+          maxValueLength: 5
+        })
+
+        await tick()
+
+        expect(grid.api.getFilterModel()).toEqual({ ...NAME_LONG, ...AGE_30 })
+
+        sync.destroy()
+      })
+
+      it('a URL column wins over a column with a value over maxValueLength', async () => {
+        const grid = createTimedGrid(timing, { ...NAME_LONG, ...AGE_30 })
+
+        const sync = createGridUrlSync({
+          api: grid.api,
+          codec,
+          maxValueLength: 5
+        })
+
+        sync.applyUrl(generateUrl(window.location.href, NAME_JO, { codec }))
+        await tick()
+
+        expect(grid.api.getFilterModel()).toEqual(NAME_JO)
+
+        sync.destroy()
+      })
+    })
+
+    it('the json codec keeps a set filter with a value over maxValueLength', async () => {
+      const grid = createTimedGrid(timing)
+
+      const sync = createGridUrlSync({
+        api: grid.api,
+        codec: grouped({ format: 'json' }),
+        history: 'replace',
+        maxValueLength: 5
+      })
+
+      sync.applyFilters({ ...STATUS_LONG, ...AGE_30 })
+      await tick()
+
+      expect(readUrlFilters(window.location.href, JSON_CODEC)).toEqual(AGE_30)
+
+      sync.applyUrl()
+      await tick()
+
+      expect(grid.api.getFilterModel()).toEqual({ ...STATUS_LONG, ...AGE_30 })
+
+      sync.destroy()
+    })
+  }
+)

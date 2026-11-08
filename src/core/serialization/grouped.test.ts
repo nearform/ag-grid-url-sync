@@ -288,6 +288,16 @@ describe('Format Serializers', () => {
     it('should throw on invalid JSON', () => {
       expect(() => serializer.deserialize('invalid-json')).toThrow()
     })
+
+    // An array is not a map of columns (#308)
+    it.each(['[1,2]', '[]', '[{"filterType":"set"}]'])(
+      'should throw on the JSON array %s',
+      value => {
+        expect(() => serializer.deserialize(value)).toThrow(
+          'JSON parsing failed: Invalid JSON: must be an object'
+        )
+      }
+    )
   })
 
   describe('Base64Serializer', () => {
@@ -309,6 +319,13 @@ describe('Format Serializers', () => {
 
     it('should throw on invalid base64', () => {
       expect(() => serializer.deserialize('invalid-base64!')).toThrow()
+    })
+
+    // An array is not a map of columns (#308)
+    it('should throw on a JSON array', () => {
+      expect(() => serializer.deserialize(btoa('[1,2]'))).toThrow(
+        'Invalid JSON: must be an object'
+      )
     })
 
     // #212: btoa accepts Latin-1 only

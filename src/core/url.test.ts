@@ -120,6 +120,190 @@ describe('parseUrlFilters', () => {
   })
 })
 
+describe('the value checks of json and base64 (#308)', () => {
+  /** The URL of a model (or of a JSON array) in a grouped format */
+  const groupedUrl = (
+    format: 'json' | 'base64',
+    model: FilterModel | number[]
+  ): string => {
+    const json = JSON.stringify(model)
+    const value = format === 'json' ? json : btoa(json)
+
+    return `?grid_filters=${encodeURIComponent(value)}`
+  }
+
+  /** The model and the issues that a URL gives */
+  const read = (
+    url: string,
+    options: Parameters<typeof parseUrlFilters>[1]
+  ) => {
+    const issues: URLSyncError[] = []
+
+    const model = parseUrlFilters(url, {
+      ...options,
+      onIssue: ({ issue }) => issues.push(issue)
+    })
+
+    return {
+      model,
+      issues: issues.map(({ code, column, severity }) => ({
+        code,
+        column,
+        severity
+      }))
+    }
+  }
+
+  // The same filter in an individual URL and in a grouped model
+  const BAD_VALUES = [
+    {
+      label: 'a number range in the wrong order',
+      param: 'f_age_range=50,20',
+      column: 'age',
+      model: { filterType: 'number', type: 'inRange', filter: 50, filterTo: 20 }
+    },
+    {
+      label: 'a number value that is not a number',
+      param: 'f_age_eq=abc',
+      column: 'age',
+      model: { filterType: 'number', type: 'equals', filter: 'abc' }
+    },
+    {
+      label: 'a number value that would be rounded',
+      param: 'f_age_gt=12345678901234567890',
+      column: 'age',
+      model: {
+        filterType: 'number',
+        type: 'greaterThan',
+        filter: '12345678901234567890'
+      }
+    },
+    {
+      label: 'a date that does not exist',
+      param: 'f_created_after=2024-02-30',
+      column: 'created',
+      model: {
+        filterType: 'date',
+        type: 'greaterThan',
+        dateFrom: '2024-02-30'
+      }
+    },
+    {
+      label: 'a date value that is not a date',
+      param: 'f_created_eq=hello',
+      column: 'created',
+      model: { filterType: 'date', type: 'equals', dateFrom: 'hello' }
+    },
+    {
+      label: 'a date range in the wrong order',
+      param: 'f_created_daterange=2024-12-01,2024-01-01',
+      column: 'created',
+      model: {
+        filterType: 'date',
+        type: 'inRange',
+        dateFrom: '2024-12-01',
+        dateTo: '2024-01-01'
+      }
+    },
+    {
+      label: 'a 0.5 date filter with a date that does not exist',
+      param: 'f_created_eq=2024-02-30',
+      column: 'created',
+      model: { filterType: 'date', type: 'eq', filter: '2024-02-30' }
+    }
+  ] as const
+
+  const columnTypes = (column: string) =>
+    column === 'age' ? ('number' as const) : ('date' as const)
+
+  const KEPT: FilterModel = {
+    name: { filterType: 'text', type: 'contains', filter: 'jo' }
+  }
+
+  describe.each(['json', 'base64'] as const)('%s', format => {
+    it.each(BAD_VALUES)(
+      'drops $label with the issue that individual() gives',
+      ({ param, column, model }) => {
+        const individualRead = read(`?${param}`, { columnTypes })
+
+        const groupedRead = read(
+          groupedUrl(format, { ...KEPT, [column]: model }),
+          { codec: grouped({ format }) }
+        )
+
+        expect(individualRead.model).toEqual({})
+        expect(individualRead.issues).toHaveLength(1)
+        expect(groupedRead.model).toEqual(KEPT)
+        expect(groupedRead.issues).toEqual(individualRead.issues)
+      }
+    )
+
+    it.each([
+      [
+        'a number range in order',
+        { filterType: 'number', type: 'inRange', filter: 20, filterTo: 50 }
+      ],
+      [
+        'a number value as text',
+        { filterType: 'number', type: 'equals', filter: '42' }
+      ],
+      [
+        'a date with a midnight time',
+        {
+          filterType: 'date',
+          type: 'greaterThan',
+          dateFrom: '2024-02-29 00:00:00',
+          dateTo: null
+        }
+      ],
+      [
+        'a number filter that the user is still editing',
+        { filterType: 'number', type: 'equals', filter: null }
+      ],
+      [
+        'a blank number filter',
+        { filterType: 'number', type: 'blank', filter: null }
+      ],
+      [
+        'combined conditions with a bad value',
+        {
+          filterType: 'number',
+          operator: 'AND',
+          conditions: [
+            { filterType: 'number', type: 'inRange', filter: 50, filterTo: 20 }
+          ]
+        }
+      ],
+      [
+        'a filter option of its own with a bad value',
+        { filterType: 'date', type: 'lastWeek', dateFrom: '2024-02-30' }
+      ],
+      ['a set filter', { filterType: 'set', values: ['2024-02-30'] }],
+      [
+        'a custom filter',
+        { filterType: 'custom', type: 'inRange', filter: 50, filterTo: 20 }
+      ]
+    ])('keeps %s as it is, with no issue', (_label, model) => {
+      expect(
+        read(groupedUrl(format, { a: model }), {
+          codec: grouped({ format })
+        })
+      ).toEqual({ model: { a: model }, issues: [] })
+    })
+
+    it('reads a JSON array as no filter, with INVALID_GROUPED', () => {
+      const { model, issues } = read(groupedUrl(format, [1, 2]), {
+        codec: grouped({ format })
+      })
+
+      expect(model).toEqual({})
+      expect(issues).toEqual([
+        { code: 'INVALID_GROUPED', column: undefined, severity: 'warning' }
+      ])
+    })
+  })
+})
+
 describe('generateUrl', () => {
   it('writes the default codec', () => {
     expect(generateUrl('https://a.test/p', MODEL)).toBe(

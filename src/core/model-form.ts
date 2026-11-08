@@ -37,7 +37,7 @@ export function stateToModel(state: FilterState): FilterModel {
  * Whether the individual codec can hold this kind of column model: a text,
  * number or date filter with one condition
  */
-function isSimpleKind(model: ColumnModel): boolean {
+export function isSimpleKind(model: ColumnModel): boolean {
   const filterType = filterTypeOf(model)
 
   if (
@@ -155,9 +155,76 @@ export function heldColumns(
   )
 }
 
+/** The filter types whose strings are not all values */
+const BUILT_IN_TYPES: ReadonlySet<unknown> = new Set([
+  'text',
+  'number',
+  'date',
+  'set',
+  'multi'
+])
+
+/** Each string in a JSON value, at any level */
+function allStrings(value: ColumnModel[string]): string[] {
+  if (v.is(v.string(), value)) return [value]
+
+  if (Array.isArray(value)) return value.flatMap(allStrings)
+
+  return isColumnModel(value) ? Object.values(value).flatMap(allStrings) : []
+}
+
+/**
+ * The values of a column model that maxValueLength limits: a text filter's
+ * value, a set filter's values, and each string of a custom filter's model,
+ * also in conditions and multi filters (#283 review). Dates, numbers and
+ * operation names are not limited.
+ */
+function textValues(model: ColumnModel): string[] {
+  if (!BUILT_IN_TYPES.has(model.filterType)) return allStrings(model)
+
+  const own =
+    model.filterType === 'text' && v.is(v.string(), model.filter)
+      ? [model.filter]
+      : model.filterType === 'set' && Array.isArray(model.values)
+        ? model.values.filter(value => v.is(v.string(), value))
+        : []
+
+  const nested = [model.conditions, model.filterModels].flatMap(list =>
+    Array.isArray(list) ? list.filter(isColumnModel).flatMap(textValues) : []
+  )
+
+  return [...own, ...nested]
+}
+
+/** The values of a column's model that maxValueLength limits */
+export function columnTexts(entry: FilterModel[string]): string[] {
+  return isColumnModel(entry) ? textValues(entry) : allStrings(entry)
+}
+
+/**
+ * Whether the URL writer keeps a column of the URL form: it leaves out a
+ * column with a value over maxValueLength and reports VALUE_TOO_LONG. The
+ * individual writer does not check the value of a blank operation
+ * (serializeFilters).
+ */
+function fitsValueLength(
+  entry: FilterModel[string],
+  options: ResolvedOptions
+): boolean {
+  if (
+    !holdsAnyModel(options) &&
+    (entry.type === 'blank' || entry.type === 'notBlank')
+  ) {
+    return true
+  }
+
+  return columnTexts(entry).every(text => text.length <= options.maxValueLength)
+}
+
 /**
  * A URL model on the grid: the URL's columns, and the grid's columns that
- * the URL format cannot hold. A URL column wins.
+ * the URL format cannot hold. A URL column wins. A column with a value over
+ * maxValueLength is not in the URL, so the grid keeps it too (#310).
  */
 export function mergeUrlModel(
   live: FilterModel | null,
@@ -174,7 +241,9 @@ export function mergeUrlModel(
   })
 
   const kept = Object.entries(live).filter(
-    ([column]) => !Object.hasOwn(held, column) && !Object.hasOwn(url, column)
+    ([column]) =>
+      !Object.hasOwn(url, column) &&
+      !(Object.hasOwn(held, column) && fitsValueLength(held[column], options))
   )
 
   return Object.fromEntries([...kept, ...Object.entries(url)])

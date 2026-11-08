@@ -89,7 +89,7 @@ filterParams: {
 }
 ```
 
-> **🗓️ Date Format Note**: Date filters require strict ISO format (`YYYY-MM-DD`). All date values are validated for real calendar dates, including leap years and month boundaries. Invalid or non-ISO dates will be rejected.
+> **🗓️ Date Format Note**: Date filters require strict ISO format (`YYYY-MM-DD`). All date values are validated for real calendar dates, including leap years and month boundaries. Invalid or non-ISO dates will be rejected. All codecs do this check: `json` and `base64` check the dates of the built-in date filters too (0.6.0, #308).
 
 ### Filter Types of `eq`, `neq`, `blank` and `notBlank`
 
@@ -142,10 +142,11 @@ The library uses AG Grid's own `FilterModel` (the value of `gridApi.getFilterMod
 | `grouped({ format: 'querystring' })`                           | The same as `individual()`, in one param                                               |
 | `grouped({ format: 'json' })`, `grouped({ format: 'base64' })` | Any filter model: set, multi and custom filters, and combined conditions (`AND`, `OR`) |
 
-- **A URL apply changes only the columns that the format holds.** With `individual()`, a set filter or combined conditions on the grid stay when the user opens a link. A URL filter on the same column replaces it.
+- **A URL apply changes only the columns that the format holds.** With `individual()`, a set filter or combined conditions on the grid stay when the user opens a link. A filter with a text value over `maxValueLength` is not in the URL, so it also stays. A URL filter on the same column replaces it.
 - **A filter that the format cannot hold is an issue.** When the grid has one, the sync reports `UNSUPPORTED_FILTER` (a warning) one time, and leaves it out of the URL. This includes AG Grid's custom `filterOptions`. Use `grouped({ format: 'json' })` to keep it in the URL. The issue stays in `issues` while the grid has the filter, so with `throwOnError: true` the React hook throws again after each reset of the error boundary. To not throw for it, give `throwOnError: issue => issue.code !== 'UNSUPPORTED_FILTER'`.
 - `applyFilters(model)` replaces the full model, as `gridApi.setFilterModel(model)` does.
 - A custom filter's model can be any JSON value (an object, an array, a string, a number). `json` and `base64` hold each one. `individual()` reports one that is not an object as `UNSUPPORTED_FILTER`, and a URL apply keeps it on the grid. AG Grid ignores a value that a built-in filter cannot read.
+- **`json` and `base64` check the values of the built-in filters, as `individual()` does (#308).** A text, number or date filter with one condition gets the same checks: a number is a finite number that is not rounded, a date is a real `YYYY-MM-DD` date, and a range is in order. The library drops a column that fails, and reports `INVALID_NUMBER` or `INVALID_DATE` with the same `column` as `individual()`. The library does not check set, multi and custom filters, or combined conditions. A valid model comes back as it is.
 - The JSON and base64 values have the keys in sorted order, so the same filters give the same URL.
 - Links from 0.5 in the `json` and `base64` formats still open: the old form of a filter (for example `type: 'eq'`) is read as AG Grid's form.
 
@@ -543,7 +544,7 @@ The library never writes to the console. Each issue goes to `onIssue` one time, 
 | `INVALID_NUMBER`                                              | `warning` | A value that is not a number, or that would be rounded                                          |
 | `INVALID_DATE`                                                | `warning` | A date that does not exist, or a date range in the wrong order                                  |
 | `VALUE_TOO_LONG`                                              | `warning` | A text value over `maxValueLength`                                                              |
-| `INVALID_GROUPED`                                             | `warning` | A grouped value that does not decode (bad JSON or base64)                                       |
+| `INVALID_GROUPED`                                             | `warning` | A grouped value that does not decode (bad JSON or base64), or that is not a JSON object         |
 | `TYPE_MISMATCH`                                               | `warning` | A filter of another type than the column                                                        |
 | `UNKNOWN_COLUMN`                                              | `warning` | A filter on a column that the grid does not have                                                |
 | `INVALID_URL`                                                 | `warning` | A URL that the parser cannot read. The sync and the hook report it. `parseUrlFilters` throws it |
@@ -705,19 +706,19 @@ The options are the [`createGridUrlSync` options](#vanilla-js-creategridurlsync)
 
 The hook returns the snapshot and the methods of the sync:
 
-| Property                             | Description                                                                                   |
-| ------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `status`                             | `'idle'` (no grid, no sync yet, or a server render), `'active'` or `'destroyed'`              |
-| `url`, `hasFilters`, `issues`        | The URL with the grid's filters, whether the URL holds filters (see below), the latest issues |
-| `views`, `activeViewId`              | The saved views and the active one                                                            |
-| `applyUrl(url?)`, `applyFilters(f)`  | Apply a URL or filters. They return `{ issues }`                                              |
-| `getUrl(baseUrl?)`                   | The URL with the grid's filters, for example to share                                         |
-| `saveView`, `loadView`, `deleteView` | The saved view methods of the sync                                                            |
+| Property                             | Description                                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `status`                             | `'idle'` (no grid, no sync yet, or a server render), `'active'` or `'destroyed'`             |
+| `url`, `hasFilters`, `issues`        | The URL with the grid's filters, whether the grid has filters (see below), the latest issues |
+| `views`, `activeViewId`              | The saved views and the active one                                                           |
+| `applyUrl(url?)`, `applyFilters(f)`  | Apply a URL or filters. They return `{ issues }`                                             |
+| `getUrl(baseUrl?)`                   | The URL with the grid's filters, for example to share                                        |
+| `saveView`, `loadView`, `deleteView` | The saved view methods of the sync                                                           |
 
 - **The core's rules hold.** On mount, a URL with filters wins over the stored view, a URL with no filters keeps the grid's filters, and a URL apply writes no history.
 - **Options can change after mount.** A new codec, `maxValueLength`, history mode, `popstate` or `storageKey` makes a new sync on the same grid. It does not apply the URL again, and it keeps the active view. A new `storageKey` restores that store's view. A new codec object with the same settings, a new `onIssue` or a new `history` function makes no new sync.
 - **The result is stable.** It is the same object until a snapshot value changes, and the methods never change.
-- **`hasFilters` counts only the filters that the URL holds.** With `individual()`, a combined (AND/OR) filter or a set filter is not in the URL (`UNSUPPORTED_FILTER`). So `hasFilters` is `false` while the grid shows such a filter, and a "Clear" button with `disabled={!hasFilters}` stays disabled. To clear any filter, keep the button enabled.
+- **`hasFilters` counts each filter of the grid.** It is `true` when `api.getFilterModel()` is not empty, also for a filter that the URL does not hold: a combined (AND/OR) filter, a set filter, a custom filter or a value that is longer than `maxValueLength`. So a "Clear" button with `disabled={!hasFilters}` works for each filter. `url` and `issues` tell what the URL holds.
 - **A method with no sync** (no grid yet, `enabled: false`): `applyUrl` and `applyFilters` report `NOT_READY` to `onIssue`, and so do `saveView` and `loadView` with a `storageKey`. `getUrl` returns the base URL. `deleteView` still works with storage only.
 - **Issues stay across a new sync.** After an option change or a `StrictMode` remount, `issues` still shows the latest apply's issues until the next apply. A new `storageKey` that restores its stored view clears them, as `loadView` does. `onIssue` gets each issue one time.
 - `StrictMode`, React's `<Activity>` and server rendering are supported.
@@ -838,7 +839,7 @@ The store is also available directly:
 import { createViewStore } from 'ag-grid-url-sync/views'
 
 const store = createViewStore('employee-grid')
-store.saveView('Engineering', gridApi.getFilterModel())
+store.saveView('Engineering', { filterModel: gridApi.getFilterModel() })
 ```
 
 ### React with Grouped Serialization
@@ -1020,14 +1021,14 @@ Makes a sync between one grid and the URL. See [Vanilla JS: `createGridUrlSync`]
 
 The snapshot (`GridUrlSyncSnapshot`):
 
-| Field          | Type                                | Description                                           |
-| -------------- | ----------------------------------- | ----------------------------------------------------- |
-| `status`       | `'idle' \| 'active' \| 'destroyed'` | The state of the sync                                 |
-| `url`          | `string`                            | The URL with the grid's filters and the page's params |
-| `hasFilters`   | `boolean`                           | Whether the grid has filters that the library holds   |
-| `issues`       | `readonly URLSyncError[]`           | The issues of the latest apply and latest grid read   |
-| `views`        | `readonly GridView[]`               | The saved views, in save order                        |
-| `activeViewId` | `string \| null`                    | The id of the active saved view                       |
+| Field          | Type                                | Description                                                           |
+| -------------- | ----------------------------------- | --------------------------------------------------------------------- |
+| `status`       | `'idle' \| 'active' \| 'destroyed'` | The state of the sync                                                 |
+| `url`          | `string`                            | The URL with the grid's filters and the page's params                 |
+| `hasFilters`   | `boolean`                           | Whether the grid has filters, also filters that the URL does not hold |
+| `issues`       | `readonly URLSyncError[]`           | The issues of the latest apply and latest grid read                   |
+| `views`        | `readonly GridView[]`               | The saved views, in save order                                        |
+| `activeViewId` | `string \| null`                    | The id of the active saved view                                       |
 
 `IDLE_SNAPSHOT` is the snapshot with `status: 'idle'`, `url: ''`, no filters, no issues and no views.
 
@@ -1162,7 +1163,7 @@ The sync does more than the class did. It listens to the grid's filter changes, 
 | `new AGGridUrlSync(api, cfg)` | `createGridUrlSync({ api, ...options })`                                                                                                                                                                                       |
 | `createUrlSync(api, cfg)`     | `createGridUrlSync({ api, ...options })`                                                                                                                                                                                       |
 | `generateUrl(baseUrl?)`       | `getUrl(baseUrl?)`                                                                                                                                                                                                             |
-| `getUrlState(baseUrl?)`       | `getSnapshot()`: `{ url, hasFilters, issues }`, for the address bar. For another base URL, use `getUrl(baseUrl)`                                                                                                               |
+| `getUrlState(baseUrl?)`       | `getSnapshot()`: `{ url, hasFilters, issues }`, for the address bar. For another base URL, use `getUrl(baseUrl)`. `hasFilters` now counts each filter of the grid, as in part 3                                                |
 | `getQueryParams()`            | `new URL(sync.getUrl()).search`, or `new URL(sync.getSnapshot().url).search` (#236)                                                                                                                                            |
 | `applyFromUrl(url?)`          | `applyUrl(url?)`. It returns `{ issues }`. A URL that it cannot read is an `INVALID_URL` issue, not an error that it throws (unless `throwOnError` picks it)                                                                   |
 | `applyFilters(filterState)`   | `applyFilters(model)`, with AG Grid's `FilterModel` (see part 5)                                                                                                                                                               |
@@ -1226,22 +1227,23 @@ The options:
 
 The result:
 
-| 0.5 result                                           | 0.6 result                                                                                         |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `shareUrl(baseUrl?)`                                 | `getUrl(baseUrl?)`                                                                                 |
-| `currentUrl`                                         | `url`                                                                                              |
-| `isReady`                                            | `status === 'active'`                                                                              |
-| `applyUrlFilters(url?)`                              | `applyUrl(url?)`. It returns `{ issues }`                                                          |
-| `applyFilters(filters)`                              | `applyFilters(model)`, with AG Grid's `FilterModel`. It returns `{ issues }`                       |
-| `clearFilters()`                                     | `applyFilters({})`                                                                                 |
-| `parseUrlFilters(url)`                               | `parseUrlFilters(url, { codec })` from `ag-grid-url-sync`. Give the same codec as the hook         |
-| `getQueryParams()`                                   | `new URL(getUrl()).search`, while `status` is `'active'` (#236)                                    |
-| `getFiltersAsFormat(format)`                         | Removed. Use `generateUrl` with `grouped({ format })`, as in part 2                                |
-| `getSerializationMode()`                             | Removed. Your app gives the codec, so it knows the mode                                            |
-| `getCurrentFormat()`                                 | Removed. Your app gives the codec, so it knows the format (in 0.5, this hook method gave the mode) |
-| `hasFilters`, `issues`                               | The same                                                                                           |
-| `views`                                              | `views`. Its type is now `readonly GridView[]`                                                     |
-| `activeViewId`, `saveView`, `loadView`, `deleteView` | The same                                                                                           |
+| 0.5 result                                           | 0.6 result                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shareUrl(baseUrl?)`                                 | `getUrl(baseUrl?)`                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `currentUrl`                                         | `url`                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `isReady`                                            | `status === 'active'`                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `applyUrlFilters(url?)`                              | `applyUrl(url?)`. It returns `{ issues }`                                                                                                                                                                                                                                                                                                                                                                                             |
+| `applyFilters(filters)`                              | `applyFilters(model)`, with AG Grid's `FilterModel`. It returns `{ issues }`                                                                                                                                                                                                                                                                                                                                                          |
+| `clearFilters()`                                     | `applyFilters({})`                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `parseUrlFilters(url)`                               | `parseUrlFilters(url, { codec })` from `ag-grid-url-sync`. Give the same codec as the hook. It throws `InvalidURLError` for a URL that it cannot read (the 0.5 method returned `{}`), so call it in a `try`. The value of `eq`, `neq`, `blank` and `notBlank` stays text: give `columnTypes` to read it as a number or a date (see [Filter Types of `eq`, `neq`, `blank` and `notBlank`](#filter-types-of-eq-neq-blank-and-notblank)) |
+| `getQueryParams()`                                   | `new URL(getUrl()).search`, while `status` is `'active'` (#236)                                                                                                                                                                                                                                                                                                                                                                       |
+| `getFiltersAsFormat(format)`                         | Removed. Use `generateUrl` with `grouped({ format })`, as in part 2                                                                                                                                                                                                                                                                                                                                                                   |
+| `getSerializationMode()`                             | Removed. Your app gives the codec, so it knows the mode                                                                                                                                                                                                                                                                                                                                                                               |
+| `getCurrentFormat()`                                 | Removed. Your app gives the codec, so it knows the format (in 0.5, this hook method gave the mode)                                                                                                                                                                                                                                                                                                                                    |
+| `hasFilters`                                         | `hasFilters`. It is now `true` for each filter of the grid, also a filter that the URL does not hold (for example a combined or a set filter). In 0.5, it counted only the filters that the library supports                                                                                                                                                                                                                          |
+| `issues`                                             | The same                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `views`                                              | `views`. Its type is now `readonly GridView[]`                                                                                                                                                                                                                                                                                                                                                                                        |
+| `activeViewId`, `saveView`, `loadView`, `deleteView` | The same                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ### 4. The pure functions
 
@@ -1303,7 +1305,7 @@ sync.applyFilters({
 - A URL apply merges. It changes only the columns that the codec holds. The columns that it cannot hold (set, multi, combined conditions, custom filters) stay on the grid. In 0.5, a URL apply cleared them.
 - `applyFilters(model)` replaces the full model, as `gridApi.setFilterModel(model)` does.
 - A new issue code, `UNSUPPORTED_FILTER` (a warning): the grid has a filter that the codec cannot hold. The sync reports it when it reads the grid, and `generateUrl` reports it too.
-- The `json` and `base64` formats write AG Grid's native model, with sorted keys, so they hold any filter model. 0.6 writes only this form. It still reads the 0.5 form, so 0.5 links open.
+- The `json` and `base64` formats write AG Grid's native model, with sorted keys, so they hold any filter model. 0.6 writes only this form. It still reads the 0.5 form, so 0.5 links open. When they read a link, they check the values of the built-in text, number and date filters, as `individual()` does (#308).
 
 The removed types and constants:
 

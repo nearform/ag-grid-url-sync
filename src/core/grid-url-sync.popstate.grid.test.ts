@@ -123,4 +123,29 @@ describe('createGridUrlSync: popstate', () => {
     expect(remove).toHaveBeenCalledWith('popstate', expect.any(Function))
     remove.mockRestore()
   })
+
+  it('keeps a filter with a value over maxValueLength on a hash link (#310)', async () => {
+    const api = createRealGrid()
+    const sync = createGridUrlSync({ api, history: 'push', maxValueLength: 5 })
+
+    // maxValueLength limits a text value only, not a number
+    sync.applyFilters({
+      age: { filterType: 'number', type: 'equals', filter: 1234567 },
+      name: { filterType: 'text', type: 'contains', filter: '0123456' }
+    })
+    await settle()
+
+    expect(window.location.search).toBe('?f_age_eq=1234567')
+
+    // An in-page link adds an entry with the same filters
+    pushPage(`${window.location.search}#section`)
+    await settle()
+
+    expect(api.getFilterModel()).toMatchObject({
+      age: { filter: 1234567 },
+      name: { filter: '0123456' }
+    })
+
+    sync.destroy()
+  })
 })

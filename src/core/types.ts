@@ -309,6 +309,8 @@ export type IssueCode =
   | 'TYPE_MISMATCH'
   // The grid has no column with this id (#312)
   | 'UNKNOWN_COLUMN'
+  // The column's filter does not list the operation (#325)
+  | 'UNSUPPORTED_OPERATION'
   | 'INVALID_URL'
   | 'UNSUPPORTED_FILTER'
   // Operation failures
@@ -660,7 +662,9 @@ export interface GridUrlSync {
    * Writes an AG Grid filter model to the grid as the app's own write. It
    * replaces the full model, as `setFilterModel` does. A filter on a column
    * that the grid does not have is left out (`UNKNOWN_COLUMN`). A filter of
-   * another type than the column is left out (`TYPE_MISMATCH`). When it
+   * another type than the column is left out (`TYPE_MISMATCH`). A filter
+   * with an operation that the column's filter options do not list is left
+   * out (`UNSUPPORTED_OPERATION`). When it
    * lands, the URL is written in the `history` mode, as for a user edit.
    */
   applyFilters(model: FilterModel): ApplyResult

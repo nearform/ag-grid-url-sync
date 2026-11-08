@@ -71,7 +71,7 @@ Supports **all AG Grid text, number, and date filter operations** (26 total) wit
 Two date operations depend on the settings of the AG Grid column:
 
 - **`daterange`:** AG Grid's `inRange` leaves out the start and end dates. To keep them, set `filterParams: { inRangeInclusive: true }` on the column.
-- **`beforeEq` and `afterEq`:** they need the AG Grid filter options `lessThanOrEqual` and `greaterThanOrEqual`. AG Grid's default date filter does not have these options, so it uses `equals` in their place. The grid then shows other rows, and the sync reports no issue. Add the options to the column:
+- **`beforeEq` and `afterEq`:** they need the AG Grid filter options `lessThanOrEqual` and `greaterThanOrEqual`. AG Grid's default date filter does not have these options. AG Grid 31 to 33 then use `equals` in their place, and AG Grid 36 drops the filter. So the sync does not give such a filter to the grid, and reports an `UNSUPPORTED_OPERATION` issue (see [Filters That Do Not Fit the Grid's Columns](#filters-that-do-not-fit-the-grids-columns)). Add the options to the column:
 
 ```ts
 filterParams: {
@@ -129,8 +129,9 @@ Before the sync writes a model to the grid (a URL apply or `applyFilters`), it c
 - **A column that the grid does not have** is an `UNKNOWN_COLUMN` issue. For example, a link from an older app version can have a filter on a column that you removed or renamed. AG Grid drops such a filter too, and writes a warning to the console. The sync does not give it to AG Grid, so the console stays clean.
 - **A number or date filter** on a column of another type is a `TYPE_MISMATCH` issue.
 - **A text filter** (for example `f_age_contains=3`) on a number or date column is a `TYPE_MISMATCH` issue. AG Grid changes such a filter (`contains 3` becomes `equals 3`) or drops it. This check is only for a column with `agNumberColumnFilter` or `agDateColumnFilter`, or with AG Grid's default filter (`filter: true`) and a number or date data type.
+- **An operation that the column's filter options do not have** is an `UNSUPPORTED_OPERATION` issue. For example, AG Grid's default date filter has no `lessThanOrEqual`, so `f_created_beforeEq=2024-03-15` does not fit it. AG Grid 31 to 33 change such a filter (`lessThanOrEqual` becomes `equals`), and AG Grid 36 drops it. The sync reads the options from `filterParams.filterOptions` of the column (also from `defaultColDef` and column types). With no `filterOptions`, it uses AG Grid's default options of the filter. A custom filter option that the column has is a valid operation. For combined conditions, the sync checks the operation of each condition. This check is only for a column with `agTextColumnFilter`, `agNumberColumnFilter` or `agDateColumnFilter`, or with AG Grid's default filter (`filter: true`).
 
-The sync does not check a text `blank` or `notBlank`: it has no value, and AG Grid's number and date filters read it. It does not check a filter on a column with a custom filter component, because the component can take any model.
+The sync does not check a text `blank` or `notBlank` for its type: it has no value, and AG Grid's number and date filters read it. It does not check a filter on a column with a custom filter component, because the component can take any model. It does not check set and multi filters, or a column whose data type AG Grid has not inferred yet: the sync checks that column when the row data arrives.
 
 ### Filter Models
 
@@ -547,6 +548,7 @@ The library never writes to the console. Each issue goes to `onIssue` one time, 
 | `INVALID_GROUPED`                                             | `warning` | A grouped value that does not decode (bad JSON or base64), or that is not a JSON object         |
 | `TYPE_MISMATCH`                                               | `warning` | A filter of another type than the column                                                        |
 | `UNKNOWN_COLUMN`                                              | `warning` | A filter on a column that the grid does not have                                                |
+| `UNSUPPORTED_OPERATION`                                       | `warning` | A filter with an operation that the column's filter options do not have                         |
 | `INVALID_URL`                                                 | `warning` | A URL that the parser cannot read. The sync and the hook report it. `parseUrlFilters` throws it |
 | `UNSUPPORTED_FILTER`                                          | `warning` | A filter that the URL format cannot hold (set, multi, custom, combined conditions)              |
 | `GRID_ERROR`                                                  | `error`   | The AG Grid API threw                                                                           |
@@ -1338,6 +1340,7 @@ One callback, `onIssue({ issue, source })`, replaces `onParseError(error)` and t
 | (none)                                                    | `issue.severity`: `'warning'` for a data issue, `'error'` for an operation that failed                  |
 | (none)                                                    | The code `UNSUPPORTED_FILTER` (see part 5)                                                              |
 | (none)                                                    | The code `UNKNOWN_COLUMN`: a filter on a column that the grid does not have                             |
+| (none)                                                    | The code `UNSUPPORTED_OPERATION`: an operation that the column's filter options do not have             |
 | (none)                                                    | `TYPE_MISMATCH` also for a text filter on a number or date column                                       |
 
 `createGridUrlSync` and `useGridUrlSync` send every issue to `onIssue` one time. See [Error Handling](#error-handling).

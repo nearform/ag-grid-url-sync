@@ -120,6 +120,8 @@ export interface GridApiFake {
   addEventListener?(event: string, listener: FilterChangedListener): void
   removeEventListener?(event: string, listener: FilterChangedListener): void
   getColumn?(colId: string): ColumnFake | null
+  /** All the grid's columns, also the columns that the grid makes */
+  getAllGridColumns?(): { getColId(): string }[]
   /** AG Grid 31 and later: the grid's state, with the filters that it holds */
   getState?(): { filter?: { filterModel?: FilterModel } }
 }

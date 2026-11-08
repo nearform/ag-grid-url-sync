@@ -307,6 +307,8 @@ export type IssueCode =
   | 'VALUE_TOO_LONG'
   | 'INVALID_GROUPED'
   | 'TYPE_MISMATCH'
+  // The grid has no column with this id (#312)
+  | 'UNKNOWN_COLUMN'
   | 'INVALID_URL'
   | 'UNSUPPORTED_FILTER'
   // Operation failures
@@ -656,9 +658,10 @@ export interface GridUrlSync {
   applyUrl(url?: string): ApplyResult
   /**
    * Writes an AG Grid filter model to the grid as the app's own write. It
-   * replaces the full model, as `setFilterModel` does. A number or date
-   * filter on a column of another type is left out (`TYPE_MISMATCH`). When
-   * it lands, the URL is written in the `history` mode, as for a user edit.
+   * replaces the full model, as `setFilterModel` does. A filter on a column
+   * that the grid does not have is left out (`UNKNOWN_COLUMN`). A filter of
+   * another type than the column is left out (`TYPE_MISMATCH`). When it
+   * lands, the URL is written in the `history` mode, as for a user edit.
    */
   applyFilters(model: FilterModel): ApplyResult
   /** The URL with the grid's filters (default base: the address bar) */

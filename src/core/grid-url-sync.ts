@@ -235,6 +235,8 @@ export function createSync(
   let status: SyncStatus = 'active'
   // The URL form of the grid's model: the part that the codec holds (#225)
   let state: FilterModel = {}
+  // Whether the grid has a filter, also one that the URL does not hold (#315)
+  let hasFilters = false
   let url = ''
   let applyIssues: readonly URLSyncError[] = NO_ISSUES
   let readIssues: readonly URLSyncError[] = NO_ISSUES
@@ -340,7 +342,6 @@ export function createSync(
       ...writeIssues
     ]
 
-    const hasFilters = Object.keys(state).length > 0
     const sameList = sameIssues(snapshot.issues, list)
     const activeViewId = active?.id ?? null
 
@@ -408,6 +409,8 @@ export function createSync(
     } catch (cause) {
       fail(call, cause, 'GRID_ERROR')
     }
+
+    hasFilters = Object.keys(model ?? {}).length > 0
 
     // A column that the codec cannot hold is an issue of the read (#225)
     state = urlFormOf(model, call.options)

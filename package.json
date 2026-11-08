@@ -1,6 +1,6 @@
 {
   "name": "ag-grid-url-sync",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Sync AG Grid filters (text, number, date) with the URL: shareable links, browser history and saved views. Framework-free core and a React hook.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

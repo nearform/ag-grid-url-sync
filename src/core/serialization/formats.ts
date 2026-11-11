@@ -1,13 +1,16 @@
 import * as v from 'valibot'
+import type { FilterModel } from 'ag-grid-community'
 import type {
-  FilterState,
+  AGGridFilter,
   SerializationFormat,
   FormatSerializer,
   AGGridUrlSyncConfig,
-  ResolvedOptions
+  ResolvedOptions,
+  URLSyncError
 } from '../types.js'
 import { InvalidSerializationError } from '../types.js'
 import {
+  checkFilterValues,
   parseIndividualParams,
   serializeFilters
 } from '../individual-params.js'
@@ -15,27 +18,36 @@ import { validateFilterValue } from '../validation.js'
 import { DEFAULT_CONFIG, resolveOptions } from '../options.js'
 import { reportIssue, rethrowIfThrown, toIssue } from '../issues.js'
 import { ColumnFilterSchema, JsonObjectSchema } from '../schemas.js'
+import { convertToAGGridFilter, fromGridModel } from '../grid-integration.js'
+import type { ColumnModel } from '../schemas.js'
+import { isColumnModel } from '../schemas.js'
+import {
+  columnTexts,
+  heldColumns,
+  isSimpleKind,
+  modelToState,
+  stateToModel
+} from '../model-form.js'
+import { stableJson } from '../stable-json.js'
 import { toError } from '../to-error.js'
 
 /**
- * Returns a copy of the filter state with every text value over
- * `maxValueLength` removed. Each dropped filter is reported through
- * `config.onParseError`, wrapped in `InvalidSerializationError(format, cause)`
- * like the grouped querystring format (#213, #207). Non-text filters and
- * in-range values are untouched.
+ * Returns a copy of the model with each column that has a text value over
+ * `maxValueLength` removed, also in its conditions or its multi filter's
+ * models. Each dropped column is reported through `config.onParseError`,
+ * wrapped in `InvalidSerializationError(format, cause)` like the grouped
+ * querystring format (#213, #207, #225).
  */
 function dropOverLengthTextValues(
-  filterState: FilterState,
+  model: FilterModel,
   config: AGGridUrlSyncConfig | undefined,
   format: SerializationFormat
-): FilterState {
+): FilterModel {
   const cfg = resolveOptions(config)
 
-  const kept = Object.entries(filterState).filter(([column, filter]) => {
-    if (filter.filterType !== 'text') return true
-
+  const kept = Object.entries(model).filter(([column, entry]) => {
     try {
-      validateFilterValue(filter.filter, cfg, filter.type)
+      for (const text of columnTexts(entry)) validateFilterValue(text, cfg)
 
       return true
     } catch (error) {
@@ -52,32 +64,118 @@ function dropOverLengthTextValues(
 }
 
 /**
- * Parse JSON and validate its structure. Does no length filtering.
- *
- * Each filter is parsed with its schema, so the result holds only the fields
- * that a filter has: other keys in the URL value are dropped.
+ * The issue that the individual codec gives for the values of a column
+ * model, or undefined when it takes them. The model is read as the
+ * individual codec reads a grid model, and then its values get the checks
+ * of a URL param (#308).
  */
-function parseAndValidateJson(value: string): FilterState {
+function valueIssue(
+  column: string,
+  model: ColumnModel,
+  options: ResolvedOptions
+): URLSyncError | undefined {
+  try {
+    // The read throws its issue, so the caller can report it in its own form
+    const state = fromGridModel(Object.fromEntries([[column, model]]), {
+      ...options,
+      throwOnError: true
+    })
+
+    for (const filter of Object.values(state)) checkFilterValues(column, filter)
+
+    return undefined
+  } catch (error) {
+    return toIssue(error, 'INVALID_PARAM', column)
+  }
+}
+
+/**
+ * Returns a copy of the model with each column whose values the individual
+ * codec rejects removed (#308). Only a built-in text, number or date filter
+ * with one condition is checked, with the rules of `individual()`: a number
+ * is a finite number that is not rounded, a date is a real `YYYY-MM-DD`
+ * date, and a range is in order. Set, multi, custom and combined models are
+ * kept as they are. Each dropped column is reported through
+ * `config.onParseError` with the code and the column that `individual()`
+ * gives, wrapped in `InvalidSerializationError(format, cause)`.
+ */
+function dropInvalidValues(
+  model: FilterModel,
+  config: AGGridUrlSyncConfig | undefined,
+  format: SerializationFormat
+): FilterModel {
+  const cfg = resolveOptions(config)
+
+  const kept = Object.entries(model).filter(([column, entry]) => {
+    if (!isColumnModel(entry) || !isSimpleKind(entry)) return true
+
+    const issue = valueIssue(column, entry, cfg)
+
+    if (issue) reportIssue(cfg, new InvalidSerializationError(format, issue))
+
+    return issue === undefined
+  })
+
+  // Own keys, so a column named `__proto__` stays a column
+  return Object.fromEntries(kept)
+}
+
+/**
+ * The model of a json or base64 value, after the checks that a link from
+ * outside the app gets: the length of each text value, and the values of
+ * each built-in filter (#213, #308)
+ */
+function checkedModel(
+  value: string,
+  config: AGGridUrlSyncConfig | undefined,
+  format: SerializationFormat
+): FilterModel {
+  return dropInvalidValues(
+    dropOverLengthTextValues(parseAndValidateJson(value), config, format),
+    config,
+    format
+  )
+}
+
+/**
+ * A column of a JSON value as an AG Grid model. A column in the 0.5 form
+ * (the library's own filter state, for example `type: 'eq'`) is converted,
+ * so old links still open. Where the two forms overlap, they are the same.
+ */
+function fromJsonColumn(column: ColumnModel): ColumnModel | AGGridFilter {
+  const old = v.safeParse(ColumnFilterSchema, column)
+
+  return old.success ? convertToAGGridFilter(old.output) : column
+}
+
+/**
+ * Parse JSON and validate its structure. Does no length or value checks.
+ *
+ * The value must be a JSON object that is not an array: an array is not a
+ * map of columns (#308). A column's model is kept as it is: any valid AG
+ * Grid filter model round-trips (#225).
+ */
+function parseAndValidateJson(value: string): FilterModel {
   try {
     const json: unknown = JSON.parse(value)
 
     // Checked, not parsed: Valibot's record output leaves out a `__proto__`
     // key, and here that key is a column name like any other
-    if (!v.is(JsonObjectSchema, json)) {
+    // JsonObjectSchema takes an array too: its indexes would be columns
+    if (Array.isArray(json) || !v.is(JsonObjectSchema, json)) {
       throw new Error('Invalid JSON: must be an object')
     }
 
-    const entries = Object.entries(json).map(([columnId, filter]) => {
-      const column = v.safeParse(ColumnFilterSchema, filter)
-
-      if (!column.success) {
-        throw new Error(
-          `Invalid JSON: filter for column ${columnId} is not a valid filter object`
-        )
-      }
-
-      return [columnId, column.output] as const
-    })
+    // A custom filter's model can be any JSON value. Null is no filter.
+    const entries = Object.entries(json)
+      .filter(([, filter]) => filter !== null)
+      .map(
+        ([columnId, filter]) =>
+          [
+            columnId,
+            isColumnModel(filter) ? fromJsonColumn(filter) : filter
+          ] as const
+      )
 
     // Object.fromEntries creates own keys, so a column named `__proto__`
     // stays a column. An assignment to a plain object would call the
@@ -88,6 +186,17 @@ function parseAndValidateJson(value: string): FilterState {
   }
 }
 
+/** The JSON of a model, with sorted keys: equal models give equal URLs */
+function toJson(
+  model: FilterModel,
+  config: AGGridUrlSyncConfig | undefined,
+  format: SerializationFormat
+): string {
+  return stableJson(
+    dropOverLengthTextValues(heldColumns(model), config, format)
+  )
+}
+
 /**
  * QueryString format serializer
  * Writes the individual filter parameters as one query string value
@@ -95,14 +204,16 @@ function parseAndValidateJson(value: string): FilterState {
 export class QueryStringSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'querystring'
 
-  serialize(filterState: FilterState, config?: AGGridUrlSyncConfig): string {
-    return serializeFilters(filterState, innerConfig(config)).toString()
+  serialize(model: FilterModel, config?: AGGridUrlSyncConfig): string {
+    // A column that the format cannot hold is reported as it is (#225)
+    const state = modelToState(model, config)
+
+    return serializeFilters(state, innerConfig(config)).toString()
   }
 
-  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterState {
-    return parseIndividualParams(
-      new URLSearchParams(value),
-      innerConfig(config)
+  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterModel {
+    return stateToModel(
+      parseIndividualParams(new URLSearchParams(value), innerConfig(config))
     )
   }
 }
@@ -120,6 +231,8 @@ function innerConfig(config?: AGGridUrlSyncConfig): ResolvedOptions {
   return {
     ...DEFAULT_CONFIG,
     maxValueLength: outer.maxValueLength,
+    // The params inside name the same columns (#224)
+    columnTypes: outer.columnTypes,
     // Errors for parameters inside the grouped value are wrapped like the
     // other grouped serialization errors. The original error is the cause.
     onParseError: error =>
@@ -129,42 +242,37 @@ function innerConfig(config?: AGGridUrlSyncConfig): ResolvedOptions {
 
 /**
  * JSON format serializer
- * Serializes FilterState directly as JSON
+ * Serializes the AG Grid filter model directly as JSON. A read checks the
+ * values of the built-in text, number and date filters, as the individual
+ * codec does (#308).
  */
 export class JsonSerializer implements FormatSerializer {
   readonly format: SerializationFormat = 'json'
 
-  serialize(filterState: FilterState, config?: AGGridUrlSyncConfig): string {
-    return JSON.stringify(dropOverLengthTextValues(filterState, config, 'json'))
+  serialize(model: FilterModel, config?: AGGridUrlSyncConfig): string {
+    return toJson(model, config, 'json')
   }
 
-  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterState {
-    return dropOverLengthTextValues(parseAndValidateJson(value), config, 'json')
+  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterModel {
+    return checkedModel(value, config, 'json')
   }
 }
 
 /**
  * Base64 format serializer
- * JSON encoded then base64 encoded for maximum compactness
+ * JSON encoded then base64 encoded for maximum compactness. A read checks
+ * the values as the JSON format does (#308).
  */
 export class Base64Serializer implements FormatSerializer {
   readonly format: SerializationFormat = 'base64'
 
-  serialize(filterState: FilterState, config?: AGGridUrlSyncConfig): string {
-    const filtered = dropOverLengthTextValues(filterState, config, 'base64')
-
-    return btoa(escapeNonAscii(JSON.stringify(filtered)))
+  serialize(model: FilterModel, config?: AGGridUrlSyncConfig): string {
+    return btoa(escapeNonAscii(toJson(model, config, 'base64')))
   }
 
-  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterState {
+  deserialize(value: string, config?: AGGridUrlSyncConfig): FilterModel {
     try {
-      const decoded = atob(value)
-
-      return dropOverLengthTextValues(
-        parseAndValidateJson(decoded),
-        config,
-        'base64'
-      )
+      return checkedModel(atob(value), config, 'base64')
     } catch (error) {
       // An issue that throwOnError threw is not wrapped again (#229)
       rethrowIfThrown(error)

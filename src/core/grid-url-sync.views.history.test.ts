@@ -53,9 +53,9 @@ interface Setup {
 /** A store with A = NAME_JO, B = AGE_30 and Open = STATUS_OPEN, no pointer */
 function setup(timing: GridTiming, history: HistoryMode = 'push'): Setup {
   const store = createViewStore('t')
-  const a = store.saveView('A', NAME_JO)
-  const b = store.saveView('B', AGE_30)
-  const open = store.saveView('Open', STATUS_OPEN)
+  const a = store.saveView('A', { filterModel: NAME_JO })
+  const b = store.saveView('B', { filterModel: AGE_30 })
+  const open = store.saveView('Open', { filterModel: STATUS_OPEN })
   store.persistActiveViewId(null)
 
   const grid = createTimedGrid(timing)
@@ -204,8 +204,8 @@ describe.each(GRID_TIMINGS)(
       const length = window.history.length
 
       const result = sync.applyFilters({
-        age: { filterType: 'number', type: 'eq', filter: 30 },
-        name: { filterType: 'number', type: 'eq', filter: 1 }
+        age: { filterType: 'number', type: 'equals', filter: 30 },
+        name: { filterType: 'number', type: 'equals', filter: 1 }
       })
 
       await tick()
@@ -229,7 +229,7 @@ describe.each(GRID_TIMINGS)(
       await tick()
 
       sync.applyFilters({
-        age: { filterType: 'number', type: 'eq', filter: 30 }
+        age: { filterType: 'number', type: 'equals', filter: 30 }
       })
       await tick()
 
@@ -246,7 +246,7 @@ describe('createGridUrlSync: applyFilters when not ready', () => {
     sync.destroy()
 
     const result = sync.applyFilters({
-      age: { filterType: 'number', type: 'eq', filter: 30 }
+      age: { filterType: 'number', type: 'equals', filter: 30 }
     })
 
     expect(result.issues).toEqual([])
@@ -312,10 +312,12 @@ describe('createGridUrlSync: loads in one tick on a grid that rebuilds the model
   /** A store with A = NAME_JO and B = age 30 stored as a string */
   function rebuiltSetup() {
     const store = createViewStore('t')
-    const a = store.saveView('A', NAME_JO)
+    const a = store.saveView('A', { filterModel: NAME_JO })
 
     const b = store.saveView('B', {
-      age: { filterType: 'number', type: 'equals', filter: '30' }
+      filterModel: {
+        age: { filterType: 'number', type: 'equals', filter: '30' }
+      }
     })
 
     store.persistActiveViewId(null)
@@ -457,7 +459,7 @@ describe('createGridUrlSync: a write that lands in two parts', () => {
   /** A store with Both = NAME_JO + AGE_30, no pointer, on a split grid */
   function splitSetup() {
     const store = createViewStore('t')
-    const both = store.saveView('Both', BOTH)
+    const both = store.saveView('Both', { filterModel: BOTH })
     store.persistActiveViewId(null)
 
     const grid = createTimedGrid('in-call', {}, { late: ['age'] })
@@ -475,10 +477,7 @@ describe('createGridUrlSync: a write that lands in two parts', () => {
     const { grid, sync } = splitSetup()
     const length = window.history.length
 
-    sync.applyFilters({
-      name: { filterType: 'text', type: 'contains', filter: 'jo' },
-      age: { filterType: 'number', type: 'eq', filter: 30 }
-    })
+    sync.applyFilters(BOTH)
     await tick()
 
     expect(grid.api.getFilterModel()).toEqual(BOTH)

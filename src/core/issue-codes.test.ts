@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseUrlFilters } from './url-parser.js'
+import { readUrlFilters } from './url-parser.js'
 import { serializeFilters } from './url-generator.js'
 import { serializeGrouped } from './serialization/grouped.js'
-import { getFilterModel, applyFilterModel } from './grid-integration.js'
+import { createGridUrlSync } from './grid-url-sync.js'
+import { fromGridModel } from './grid-integration.js'
 import {
   URLSyncError,
   InvalidFilterError,
@@ -12,7 +13,11 @@ import {
   type FilterState,
   type IssueCode
 } from './types.js'
-import { asGridApi, createGridApiSpies } from '../test-helpers.js'
+import {
+  asGridApi,
+  createGridApiSpies,
+  createGridListeners
+} from '../test-helpers.js'
 
 // Each report gives the class, the code and the column that a caller can
 // switch on (#220). A caller who checks the class must still match.
@@ -33,11 +38,27 @@ function reported(run: (options: AGGridUrlSyncConfig) => void): Error[] {
   return onParseError.mock.calls.map(([error]) => error)
 }
 
-function grid(setup: (api: ReturnType<typeof createGridApiSpies>) => void) {
+type GridSpies = ReturnType<typeof createGridApiSpies>
+
+/**
+ * Makes a sync on a grid that the setup prepares. Each issue of the sync goes
+ * to the onParseError of the options, so a table case can read it.
+ */
+function syncOn(setup: (api: GridSpies) => void, options: AGGridUrlSyncConfig) {
   const api = createGridApiSpies()
   setup(api)
 
-  return asGridApi(api)
+  const listeners = createGridListeners()
+
+  return createGridUrlSync({
+    api: asGridApi({
+      ...api,
+      addEventListener: listeners.addEventListener,
+      removeEventListener: listeners.removeEventListener
+    }),
+    applyUrlOnCreate: false,
+    onIssue: ({ issue }) => options.onParseError?.(issue)
+  })
 }
 
 const grouped = (value: string) =>
@@ -52,56 +73,56 @@ const CASES: [
 ][] = [
   [
     'a param with no operation',
-    o => parseUrlFilters('?f_name=x', o),
+    o => readUrlFilters('?f_name=x', o),
     InvalidFilterError,
     'INVALID_PARAM',
     undefined
   ],
   [
     'an unknown operation',
-    o => parseUrlFilters('?f_name_regex=x', o),
+    o => readUrlFilters('?f_name_regex=x', o),
     InvalidFilterError,
     'INVALID_PARAM',
     'name'
   ],
   [
     'a value that is not a number',
-    o => parseUrlFilters('?f_age_gt=abc', o),
+    o => readUrlFilters('?f_age_gt=abc', o),
     InvalidFilterError,
     'INVALID_NUMBER',
     'age'
   ],
   [
     'a range with one value',
-    o => parseUrlFilters('?f_age_range=5', o),
+    o => readUrlFilters('?f_age_range=5', o),
     InvalidFilterError,
     'INVALID_NUMBER',
     'age'
   ],
   [
     'a range in the wrong order',
-    o => parseUrlFilters('?f_age_range=5,1', o),
+    o => readUrlFilters('?f_age_range=5,1', o),
     InvalidFilterError,
     'INVALID_NUMBER',
     'age'
   ],
   [
     'a date that does not exist',
-    o => parseUrlFilters('?f_d_before=2024-13-01', o),
+    o => readUrlFilters('?f_d_before=2024-13-01', o),
     InvalidFilterError,
     'INVALID_DATE',
     'd'
   ],
   [
     'a date range in the wrong order',
-    o => parseUrlFilters('?f_d_daterange=2024-12-01,2024-01-01', o),
+    o => readUrlFilters('?f_d_daterange=2024-12-01,2024-01-01', o),
     InvalidFilterError,
     'INVALID_DATE',
     'd'
   ],
   [
     'a URL value over maxValueLength',
-    o => parseUrlFilters(`?f_name_contains=${LONG}`, o),
+    o => readUrlFilters(`?f_name_contains=${LONG}`, o),
     InvalidFilterError,
     'VALUE_TOO_LONG',
     'name'
@@ -115,21 +136,21 @@ const CASES: [
   ],
   [
     'a grouped querystring value over maxValueLength',
-    o => parseUrlFilters(grouped(`f_name_contains=${LONG}`), o),
+    o => readUrlFilters(grouped(`f_name_contains=${LONG}`), o),
     InvalidSerializationError,
     'VALUE_TOO_LONG',
     'name'
   ],
   [
     'a grouped JSON value that does not decode',
-    o => parseUrlFilters(grouped('{bad'), { ...o, format: 'json' }),
+    o => readUrlFilters(grouped('{bad'), { ...o, format: 'json' }),
     InvalidSerializationError,
     'INVALID_GROUPED',
     undefined
   ],
   [
     'a grouped base64 value that does not decode',
-    o => parseUrlFilters(grouped('!!!'), { ...o, format: 'base64' }),
+    o => readUrlFilters(grouped('!!!'), { ...o, format: 'base64' }),
     InvalidSerializationError,
     'INVALID_GROUPED',
     undefined
@@ -143,30 +164,34 @@ const CASES: [
   ],
   [
     'a grid that throws an Error when read',
-    o =>
-      getFilterModel(
-        grid(api =>
+    o => {
+      const sync = syncOn(
+        api =>
           api.getFilterModel.mockImplementation(() => {
             throw new Error('x')
-          })
-        ),
+          }),
         o
-      ),
+      )
+
+      sync.destroy()
+    },
     URLSyncError,
     'GRID_ERROR',
     undefined
   ],
   [
     'a grid that throws a value that is not an Error',
-    o =>
-      getFilterModel(
-        grid(api =>
+    o => {
+      const sync = syncOn(
+        api =>
           api.getFilterModel.mockImplementation(() => {
             throw new String('x')
-          })
-        ),
+          }),
         o
-      ),
+      )
+
+      sync.destroy()
+    },
     URLSyncError,
     'GRID_ERROR',
     undefined
@@ -174,12 +199,10 @@ const CASES: [
   [
     'an unknown number operation in the grid',
     o =>
-      getFilterModel(
-        grid(api =>
-          api.getFilterModel.mockReturnValue({
-            n: { filterType: 'number', type: 'foo', filter: 1 }
-          })
-        ),
+      fromGridModel(
+        {
+          n: { filterType: 'number', type: 'foo', filter: 1 }
+        },
         o
       ),
     InvalidFilterError,
@@ -189,12 +212,10 @@ const CASES: [
   [
     'a grid string that is not a number',
     o =>
-      getFilterModel(
-        grid(api =>
-          api.getFilterModel.mockReturnValue({
-            n: { filterType: 'number', type: 'equals', filter: 'abc' }
-          })
-        ),
+      fromGridModel(
+        {
+          n: { filterType: 'number', type: 'equals', filter: 'abc' }
+        },
         o
       ),
     InvalidFilterError,
@@ -203,19 +224,83 @@ const CASES: [
   ],
   [
     'a grid that throws when written',
-    o =>
-      applyFilterModel(
-        {},
-        grid(api =>
+    o => {
+      const sync = syncOn(
+        api =>
           api.setFilterModel.mockImplementation(() => {
             throw new Error('x')
-          })
-        ),
+          }),
         o
-      ),
+      )
+
+      sync.applyFilters({})
+
+      sync.destroy()
+    },
     URLSyncError,
     'GRID_ERROR',
     undefined
+  ],
+  [
+    'a text filter on a number column',
+    o => {
+      const sync = syncOn(
+        api =>
+          api.getColumn.mockReturnValue({
+            getColDef: () => ({ filter: 'agNumberColumnFilter' })
+          }),
+        o
+      )
+
+      sync.applyFilters({
+        age: { filterType: 'text', type: 'contains', filter: '3' }
+      })
+
+      sync.destroy()
+    },
+    InvalidFilterError,
+    'TYPE_MISMATCH',
+    'age'
+  ],
+  [
+    'a filter on a column that the grid does not have',
+    o => {
+      const sync = syncOn(api => api.getColumn.mockReturnValue(null), o)
+
+      sync.applyFilters({
+        gone: { filterType: 'number', type: 'equals', filter: 1 }
+      })
+
+      sync.destroy()
+    },
+    InvalidFilterError,
+    'UNKNOWN_COLUMN',
+    'gone'
+  ],
+  [
+    'an operation that the column does not have',
+    o => {
+      const sync = syncOn(
+        api =>
+          api.getColumn.mockReturnValue({
+            getColDef: () => ({ filter: 'agDateColumnFilter' })
+          }),
+        o
+      )
+
+      sync.applyFilters({
+        created: {
+          filterType: 'date',
+          type: 'lessThanOrEqual',
+          dateFrom: '2024-03-15'
+        }
+      })
+
+      sync.destroy()
+    },
+    InvalidFilterError,
+    'UNSUPPORTED_OPERATION',
+    'created'
   ]
 ]
 
@@ -238,10 +323,10 @@ describe('issue codes (#220)', () => {
   })
 
   it('throws InvalidURLError with INVALID_URL for a host with no scheme', () => {
-    expect(() => parseUrlFilters('example.com?f_a_eq=1')).toThrow(
+    expect(() => readUrlFilters('example.com?f_a_eq=1')).toThrow(
       expect.objectContaining({ code: 'INVALID_URL' })
     )
-    expect(() => parseUrlFilters('example.com?f_a_eq=1')).toThrow(
+    expect(() => readUrlFilters('example.com?f_a_eq=1')).toThrow(
       InvalidURLError
     )
   })
@@ -249,16 +334,17 @@ describe('issue codes (#220)', () => {
   it("keeps the grid's error as the cause of GRID_ERROR", () => {
     const gridError = new Error('grid failed')
 
-    const [error] = reported(o =>
-      getFilterModel(
-        grid(api =>
+    const [error] = reported(o => {
+      const sync = syncOn(
+        api =>
           api.getFilterModel.mockImplementation(() => {
             throw gridError
-          })
-        ),
+          }),
         o
       )
-    )
+
+      sync.destroy()
+    })
 
     expect(error?.cause).toBe(gridError)
   })

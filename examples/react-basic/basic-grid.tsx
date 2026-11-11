@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import type { FilterModel, GridApi } from 'ag-grid-community'
-import { useAGGridUrlSync } from 'ag-grid-url-sync/react'
+import { generateUrl, grouped, individual } from 'ag-grid-url-sync'
+import type { IssueEvent, SerializationFormat } from 'ag-grid-url-sync'
+import { useGridUrlSync } from 'ag-grid-url-sync/react'
 import {
   employeeData,
   employeeColumnDefs,
@@ -35,53 +37,60 @@ export default function BasicGrid() {
     []
   )
 
-  // Set by onError below. The hook reports failures synchronously during a view
+  // Set by onIssue below. The hook reports failures synchronously during a view
   // operation, so handlers check this before claiming success. Otherwise the
   // success message overwrites the error the user needs to see.
   const errorReportedRef = useRef(false)
 
-  // Create hook options based on current config
-  const hookOptions = useMemo(
-    () => ({
-      autoApplyOnMount: true,
-      // Presence of the key enables saved views and namespaces the storage.
-      storageKey: 'employee-grid',
-      paramPrefix: 'filter_',
-      // Surface the hook's own errors to the user. Without this they only reach
-      // the dev console, so a full-storage save would fail with no explanation.
-      onError: (error: Error) => {
-        errorReportedRef.current = true
-        showMessage(error.message, 'error')
-      },
-      ...(config.mode === 'grouped' && {
-        serialization: 'grouped' as const,
-        format: config.format,
-        groupedParam: 'grid_filters'
-      })
-    }),
-    [config, showMessage]
+  // The codec of the current config. A new codec with the same settings makes
+  // no new sync, so the memo only keeps the code easy to read.
+  const codec = useMemo(
+    () =>
+      config.mode === 'grouped'
+        ? grouped({ param: 'grid_filters', format: config.format })
+        : individual({ prefix: 'filter_' }),
+    [config]
+  )
+
+  // Show the failed operations (severity 'error') to the user. The data issues
+  // (severity 'warning') are in `issues`, shown in the status bar below.
+  const onIssue = useCallback(
+    ({ issue }: IssueEvent) => {
+      if (issue.severity !== 'error') return
+
+      errorReportedRef.current = true
+      showMessage(issue.message, 'error')
+    },
+    [showMessage]
   )
 
   const {
-    shareUrl,
-    applyUrlFilters,
-    clearFilters,
+    status,
+    url,
     hasFilters,
-    isReady,
-    currentUrl,
-    getFiltersAsFormat,
+    issues,
+    getUrl,
+    applyUrl,
     applyFilters,
     views,
     activeViewId,
     saveView,
     loadView,
     deleteView
-  } = useAGGridUrlSync(gridApi, hookOptions)
+  } = useGridUrlSync({
+    api: gridApi,
+    codec,
+    // The key enables saved views and is the name of their storage
+    storageKey: 'employee-grid',
+    onIssue
+  })
+
+  const isReady = status === 'active'
 
   const memoizedDefaultColDef = useMemo(() => defaultColDef, [])
 
   const handleSaveView = useCallback(() => {
-    // The hook would report a not-ready save through onError, so this guard is
+    // The hook would report a not-ready save through onIssue, so this guard is
     // not what makes it safe. Checked here rather than at each call site so the
     // keyboard path below behaves the same as the disabled button.
     if (!isReady) return
@@ -102,7 +111,7 @@ export default function BasicGrid() {
       loadView(id)
 
       // A storage failure, or an id that no longer exists, already reported
-      // through onError. Do not paper over it with a success message.
+      // through onIssue. Do not paper over it with a success message.
       if (errorReportedRef.current) return
 
       const name = views.find(view => view.id === id)?.name
@@ -127,17 +136,17 @@ export default function BasicGrid() {
   )
 
   const handleShare = async () => {
-    const url = shareUrl()
+    const shareUrl = getUrl()
 
     try {
-      await navigator.clipboard.writeText(url)
+      await navigator.clipboard.writeText(shareUrl)
       showMessage(
         `✅ Filter URL copied to clipboard! (${config.mode} mode, ${config.format} format)`,
         'success'
       )
     } catch (err) {
       console.error('Failed to copy URL:', err)
-      showMessage(`Share this URL: ${url}`, 'info')
+      showMessage(`Share this URL: ${shareUrl}`, 'info')
     }
   }
 
@@ -370,28 +379,38 @@ export default function BasicGrid() {
           return
       }
 
-      if (applyFilters) {
-        applyFilters(filters)
-        showMessage(
-          `Applied ${scenario.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())} filter(s)`,
-          'success'
-        )
-      }
+      applyFilters(filters)
+      showMessage(
+        `Applied ${scenario.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())} filter(s)`,
+        'success'
+      )
     },
     [gridApi, applyFilters, showMessage]
   )
 
   const handleFormatTest = useCallback(() => {
-    if (!getFiltersAsFormat || config.mode === 'individual') {
+    if (!gridApi || config.mode === 'individual') {
       showMessage('Format testing requires grouped mode', 'error')
 
       return
     }
 
+    // The grouped value of the grid's filters in one format, written by the
+    // pure function with no second sync
+    const valueAs = (format: SerializationFormat): string => {
+      const written = generateUrl(
+        window.location.href,
+        gridApi.getFilterModel(),
+        { codec: grouped({ param: 'grid_filters', format }) }
+      )
+
+      return new URL(written).searchParams.get('grid_filters') ?? ''
+    }
+
     try {
-      const querystring = getFiltersAsFormat('querystring')
-      const json = getFiltersAsFormat('json')
-      const base64 = getFiltersAsFormat('base64')
+      const querystring = valueAs('querystring')
+      const json = valueAs('json')
+      const base64 = valueAs('base64')
 
       const results = [
         `QueryString: ${querystring.length} chars`,
@@ -403,7 +422,7 @@ export default function BasicGrid() {
     } catch {
       showMessage('Format test failed', 'error')
     }
-  }, [getFiltersAsFormat, config.mode, showMessage])
+  }, [gridApi, config.mode, showMessage])
 
   const handleConfigChange = useCallback(
     (newConfig: Partial<SerializationConfig>) => {
@@ -697,7 +716,7 @@ export default function BasicGrid() {
             </button>
 
             <button
-              onClick={clearFilters}
+              onClick={() => applyFilters({})}
               disabled={!hasFilters}
               style={{
                 padding: '10px 16px',
@@ -712,7 +731,7 @@ export default function BasicGrid() {
             </button>
 
             <button
-              onClick={() => applyUrlFilters()}
+              onClick={() => applyUrl()}
               style={{
                 padding: '10px 16px',
                 backgroundColor: '#28a745',
@@ -756,7 +775,8 @@ export default function BasicGrid() {
         >
           <strong>Status:</strong> {isReady ? '✅ Ready' : '⏳ Loading...'} |
           <strong> Filters:</strong> {hasFilters ? '✅ Active' : '❌ None'} |
-          <strong> Mode:</strong> {config.mode} |<strong> Format:</strong>{' '}
+          <strong> Issues:</strong> {issues.length} |<strong> Mode:</strong>{' '}
+          {config.mode} |<strong> Format:</strong>{' '}
           {config.mode === 'grouped' ? config.format : 'N/A'}
         </div>
 
@@ -778,7 +798,7 @@ export default function BasicGrid() {
         )}
 
         {/* Current URL Display */}
-        {currentUrl && (
+        {url && (
           <div
             style={{
               background: '#f8f9fa',
@@ -791,7 +811,7 @@ export default function BasicGrid() {
               color: '#495057'
             }}
           >
-            <strong>Current URL:</strong> {currentUrl}
+            <strong>Current URL:</strong> {url}
           </div>
         )}
       </div>
@@ -1190,7 +1210,8 @@ export default function BasicGrid() {
                 <strong>Format Options:</strong> QueryString, JSON, or Base64
               </li>
               <li>
-                <strong>Auto-Detection:</strong> URLs parsed automatically
+                <strong>Same Codec:</strong> A link opens with the codec that
+                wrote it
               </li>
             </ul>
           </div>

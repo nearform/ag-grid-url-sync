@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { serializeFilters, generateUrl } from './url-generator.js'
-import { parseUrlFilters } from './url-parser.js'
-import type { FilterState, InternalConfig } from './types.js'
+import { serializeFilters, writeUrlFilters } from './url-generator.js'
+import { readUrlFilters } from './url-parser.js'
+import type { FilterModel } from 'ag-grid-community'
+import type { ResolvedOptions } from './types.js'
 import { InvalidFilterError } from './types.js'
-import { asGridApi } from '../test-helpers.js'
 
 describe('URL Generator', () => {
-  const mockConfig: InternalConfig = {
-    gridApi: asGridApi({}),
+  const mockConfig: ResolvedOptions = {
     paramPrefix: 'f_',
     maxValueLength: 200,
     onParseError: vi.fn(),
@@ -24,7 +23,7 @@ describe('URL Generator', () => {
     it('skips a text value over maxValueLength and reports it', () => {
       const config = { ...mockConfig, maxValueLength: 5 }
 
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john smith' },
         age: { filterType: 'number', type: 'greaterThan', filter: 25 }
       }
@@ -39,7 +38,7 @@ describe('URL Generator', () => {
     })
 
     it('should serialize basic text filter', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
@@ -48,8 +47,8 @@ describe('URL Generator', () => {
     })
 
     it('should serialize number filter', () => {
-      const filterState: FilterState = {
-        age: { filterType: 'number', type: 'eq', filter: 25 }
+      const filterState: FilterModel = {
+        age: { filterType: 'number', type: 'equals', filter: 25 }
       }
 
       const result = serializeFilters(filterState, mockConfig)
@@ -57,8 +56,8 @@ describe('URL Generator', () => {
     })
 
     it('should serialize date filter', () => {
-      const filterState: FilterState = {
-        created: { filterType: 'date', type: 'eq', filter: '2024-01-15' }
+      const filterState: FilterModel = {
+        created: { filterType: 'date', type: 'equals', dateFrom: '2024-01-15' }
       }
 
       const result = serializeFilters(filterState, mockConfig)
@@ -66,7 +65,7 @@ describe('URL Generator', () => {
     })
 
     it('should serialize range filters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         age: {
           filterType: 'number',
           type: 'inRange',
@@ -75,9 +74,9 @@ describe('URL Generator', () => {
         },
         period: {
           filterType: 'date',
-          type: 'dateRange',
-          filter: '2024-01-01',
-          filterTo: '2024-12-31'
+          type: 'inRange',
+          dateFrom: '2024-01-01',
+          dateTo: '2024-12-31'
         }
       }
 
@@ -87,7 +86,7 @@ describe('URL Generator', () => {
     })
 
     it('should serialize blank operations', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         optional: { filterType: 'text', type: 'blank', filter: '' },
         required: { filterType: 'text', type: 'notBlank', filter: '' }
       }
@@ -104,7 +103,7 @@ describe('URL Generator', () => {
       ['+', 'a+b'],
       ['space', 'first name']
     ])('should keep a column id that contains %s', (_label, column) => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         [column]: { filterType: 'text', type: 'contains', filter: 'q' }
       }
 
@@ -113,8 +112,8 @@ describe('URL Generator', () => {
     })
 
     it.each([
-      ['date', { filterType: 'date', type: 'dateAfter', filter: '' } as const],
-      ['text', { filterType: 'text', type: 'contains', filter: '' } as const]
+      ['date', { filterType: 'date', type: 'greaterThan', dateFrom: '' }],
+      ['text', { filterType: 'text', type: 'contains', filter: '' }]
     ])('should skip a %s filter with an empty value', (_label, filter) => {
       const errors = vi.fn()
 
@@ -128,8 +127,8 @@ describe('URL Generator', () => {
     })
 
     it('should keep a number filter with the value 0', () => {
-      const filterState: FilterState = {
-        qty: { filterType: 'number', type: 'eq', filter: 0 }
+      const filterState: FilterModel = {
+        qty: { filterType: 'number', type: 'equals', filter: 0 }
       }
 
       const result = serializeFilters(filterState, mockConfig)
@@ -137,7 +136,7 @@ describe('URL Generator', () => {
     })
 
     it('should keep a text value that contains =', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         expr: { filterType: 'text', type: 'contains', filter: 'a=b' }
       }
 
@@ -146,7 +145,7 @@ describe('URL Generator', () => {
     })
 
     it('should handle special characters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         query: { filterType: 'text', type: 'contains', filter: 'test & more' }
       }
 
@@ -155,27 +154,32 @@ describe('URL Generator', () => {
     })
   })
 
-  describe('generateUrl', () => {
+  describe('writeUrlFilters', () => {
     it('should generate URL with filters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
-      const result = generateUrl('https://example.com', filterState, mockConfig)
+      const result = writeUrlFilters(
+        'https://example.com',
+        filterState,
+        mockConfig
+      )
+
       expect(result).toBe('https://example.com/?f_name_contains=john')
     })
 
     it('should handle empty filter state', () => {
-      const result = generateUrl('https://example.com', {}, mockConfig)
+      const result = writeUrlFilters('https://example.com', {}, mockConfig)
       expect(result).toBe('https://example.com')
     })
 
     it('should preserve existing query parameters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
-      const result = generateUrl(
+      const result = writeUrlFilters(
         'https://example.com?page=1',
         filterState,
         mockConfig
@@ -186,18 +190,28 @@ describe('URL Generator', () => {
     })
 
     it('should round-trip column ids with special characters', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         'a=b': { filterType: 'text', type: 'contains', filter: 'one' },
         'x&y': { filterType: 'number', type: 'greaterThan', filter: 2 },
-        '100%': { filterType: 'date', type: 'dateAfter', filter: '2024-01-15' }
+        '100%': {
+          filterType: 'date',
+          type: 'greaterThan',
+          dateFrom: '2024-01-15',
+          dateTo: null
+        }
       }
 
-      const url = generateUrl('https://example.com', filterState, mockConfig)
-      expect(parseUrlFilters(url, mockConfig)).toEqual(filterState)
+      const url = writeUrlFilters(
+        'https://example.com',
+        filterState,
+        mockConfig
+      )
+
+      expect(readUrlFilters(url, mockConfig)).toEqual(filterState)
     })
 
     describe('host params', () => {
-      const filterState: FilterState = {
+      const filterState: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
@@ -206,7 +220,7 @@ describe('URL Generator', () => {
         ['grouped', { ...mockConfig, serialization: 'grouped' as const }]
       ])('should keep repeated host params in %s mode', (_label, config) => {
         const result = new URL(
-          generateUrl(
+          writeUrlFilters(
             'https://example.com/?tag=a&page=1&tag=b',
             filterState,
             config
@@ -223,7 +237,7 @@ describe('URL Generator', () => {
       ])(
         'should keep repeated host params with no filters in %s mode',
         (_label, config) => {
-          const result = generateUrl(
+          const result = writeUrlFilters(
             'https://example.com/?tag=a&tag=b',
             {},
             config
@@ -241,7 +255,7 @@ describe('URL Generator', () => {
       'should remove old filter params when filters are cleared in %s mode',
       (_label, config) => {
         expect(
-          generateUrl(
+          writeUrlFilters(
             'https://example.com/?f_a_contains=old&grid_filters=f_b_eq%3D1',
             {},
             config
@@ -252,7 +266,7 @@ describe('URL Generator', () => {
 
     it('should keep the hash when filters are cleared', () => {
       expect(
-        generateUrl(
+        writeUrlFilters(
           'https://example.com/list?f_a_contains=old#top',
           {},
           mockConfig
@@ -263,7 +277,7 @@ describe('URL Generator', () => {
     // #228: the writer and the parser must read paramPrefix the same way. A
     // prefix without a trailing `_` gets one, and '' means the default `f_`.
     describe('paramPrefix', () => {
-      const state: FilterState = {
+      const state: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'john' }
       }
 
@@ -274,17 +288,22 @@ describe('URL Generator', () => {
         ['', 'f_name_contains']
       ])('should write prefix %j as %s and parse it back', (prefix, key) => {
         const config = { ...mockConfig, paramPrefix: prefix }
-        const url = generateUrl('https://example.com/?page=2', state, config)
+
+        const url = writeUrlFilters(
+          'https://example.com/?page=2',
+          state,
+          config
+        )
 
         expect([...new URL(url).searchParams.keys()]).toEqual(['page', key])
-        expect(parseUrlFilters(url, config)).toEqual(state)
+        expect(readUrlFilters(url, config)).toEqual(state)
         expect(mockConfig.onParseError).not.toHaveBeenCalled()
       })
 
       it('should remove stale filter params when the prefix is empty', () => {
         const config = { ...mockConfig, paramPrefix: '' }
 
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?f_old_contains=x&page=2',
           state,
           config
@@ -295,12 +314,12 @@ describe('URL Generator', () => {
     })
 
     describe('stale params from the other mode', () => {
-      const newState: FilterState = {
+      const newState: FilterModel = {
         b: { filterType: 'text', type: 'contains', filter: 'new' }
       }
 
       it('should remove the grouped param in individual mode', () => {
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?grid_filters=f_a_contains%3Dold&page=1',
           newState,
           mockConfig
@@ -308,11 +327,11 @@ describe('URL Generator', () => {
 
         expect(new URL(url).searchParams.has('grid_filters')).toBe(false)
         expect(new URL(url).searchParams.get('page')).toBe('1')
-        expect(parseUrlFilters(url, mockConfig)).toEqual(newState)
+        expect(readUrlFilters(url, mockConfig)).toEqual(newState)
       })
 
       it('should remove the grouped param in individual mode with no filters', () => {
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?grid_filters=f_a_contains%3Dold&page=1',
           {},
           mockConfig
@@ -324,7 +343,7 @@ describe('URL Generator', () => {
       it('should remove a custom grouped param in individual mode', () => {
         const config = { ...mockConfig, groupedParam: 'gf' }
 
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?gf=f_a_contains%3Dold',
           newState,
           config
@@ -336,7 +355,7 @@ describe('URL Generator', () => {
       it('should remove prefixed params in grouped mode', () => {
         const config = { ...mockConfig, serialization: 'grouped' as const }
 
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/?f_a_contains=old&page=1',
           newState,
           config
@@ -345,7 +364,7 @@ describe('URL Generator', () => {
         const params = new URL(url).searchParams
         expect(params.has('f_a_contains')).toBe(false)
         expect(params.get('page')).toBe('1')
-        expect(parseUrlFilters(url, config)).toEqual(newState)
+        expect(readUrlFilters(url, config)).toEqual(newState)
       })
     })
 
@@ -361,7 +380,11 @@ describe('URL Generator', () => {
           }
 
           expect(
-            generateUrl('https://app.com/data?x=1&grid_filters=old', {}, config)
+            writeUrlFilters(
+              'https://app.com/data?x=1&grid_filters=old',
+              {},
+              config
+            )
           ).toBe('https://app.com/data?x=1')
         }
       )
@@ -375,7 +398,7 @@ describe('URL Generator', () => {
             format
           }
 
-          const tooLong: FilterState = {
+          const tooLong: FilterModel = {
             name: {
               filterType: 'text',
               type: 'contains',
@@ -383,7 +406,7 @@ describe('URL Generator', () => {
             }
           }
 
-          expect(generateUrl('https://app.com/data', tooLong, config)).toBe(
+          expect(writeUrlFilters('https://app.com/data', tooLong, config)).toBe(
             'https://app.com/data'
           )
           expect(mockConfig.onParseError).toHaveBeenCalledOnce()
@@ -403,10 +426,7 @@ describe('URL Generator', () => {
           }
 
           expect(
-            parseUrlFilters(
-              `https://app.com/data?grid_filters=${value}`,
-              config
-            )
+            readUrlFilters(`https://app.com/data?grid_filters=${value}`, config)
           ).toEqual({})
           expect(mockConfig.onParseError).not.toHaveBeenCalled()
         }
@@ -416,13 +436,17 @@ describe('URL Generator', () => {
     // #314: the page's own params keep their text and order, and the filter
     // params go after them, in both modes
     describe('page params text and order', () => {
-      const state: FilterState = {
+      const state: FilterModel = {
         name: { filterType: 'text', type: 'contains', filter: 'a' }
       }
 
       const grouped = { ...mockConfig, serialization: 'grouped' as const }
       const json = { ...grouped, format: 'json' as const }
-      const jsonValue = encodeURIComponent(JSON.stringify(state))
+
+      // The json format writes the keys in sorted order
+      const jsonValue = encodeURIComponent(
+        '{"name":{"filter":"a","filterType":"text","type":"contains"}}'
+      )
 
       it.each([
         ['individual', mockConfig, 'f_name_contains=a'],
@@ -432,7 +456,11 @@ describe('URL Generator', () => {
         'should keep a param with no value and an encoded space in %s mode',
         (_label, config, filterPart) => {
           expect(
-            generateUrl('https://app.com/?debug&q=two%20words', state, config)
+            writeUrlFilters(
+              'https://app.com/?debug&q=two%20words',
+              state,
+              config
+            )
           ).toBe(`https://app.com/?debug&q=two%20words&${filterPart}`)
         }
       )
@@ -444,7 +472,7 @@ describe('URL Generator', () => {
         'should keep the page params as they were with no filters in %s mode',
         (_label, config) => {
           expect(
-            generateUrl(
+            writeUrlFilters(
               'https://app.com/?debug&f_a_contains=old&q=a+b&grid_filters=x',
               {},
               config
@@ -460,7 +488,7 @@ describe('URL Generator', () => {
         'should remove a filter param between page params in %s mode',
         (_label, config, filterPart) => {
           expect(
-            generateUrl(
+            writeUrlFilters(
               'https://app.com/?a=1&f_old_contains=x&b=2&grid_filters=y&c',
               state,
               config
@@ -471,13 +499,17 @@ describe('URL Generator', () => {
 
       it('should keep repeated page params in their order', () => {
         expect(
-          generateUrl('https://app.com/?tag=a&page=1&tag=b', state, mockConfig)
+          writeUrlFilters(
+            'https://app.com/?tag=a&page=1&tag=b',
+            state,
+            mockConfig
+          )
         ).toBe('https://app.com/?tag=a&page=1&tag=b&f_name_contains=a')
       })
 
       it('should remove a filter param with an encoded name', () => {
         expect(
-          generateUrl(
+          writeUrlFilters(
             'https://app.com/?f%5Fold_contains=x&grid%5Ffilters=y&a=1',
             state,
             mockConfig
@@ -493,12 +525,12 @@ describe('URL Generator', () => {
           'https://app.com/?a=1&b=2&f_name_contains=a'
         ]
       ])('should drop the empty parts of %s', (input, expected) => {
-        expect(generateUrl(input, state, mockConfig)).toBe(expected)
+        expect(writeUrlFilters(input, state, mockConfig)).toBe(expected)
       })
 
       it('should keep the hash after the params', () => {
         expect(
-          generateUrl('https://app.com/list?debug#top', state, mockConfig)
+          writeUrlFilters('https://app.com/list?debug#top', state, mockConfig)
         ).toBe('https://app.com/list?debug&f_name_contains=a#top')
       })
     })

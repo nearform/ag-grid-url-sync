@@ -57,9 +57,13 @@ function setup(
   } = {}
 ): Setup {
   const seed = createViewStore('t')
-  const a = seed.saveView('A', NAME_JO)
-  const b = seed.saveView('B', AGE_30)
-  const extra = more.map(([name, model]) => seed.saveView(name, model))
+  const a = seed.saveView('A', { filterModel: NAME_JO })
+  const b = seed.saveView('B', { filterModel: AGE_30 })
+
+  const extra = more.map(([name, model]) =>
+    seed.saveView(name, { filterModel: model })
+  )
+
   seed.persistActiveViewId(null)
 
   const store = options.store ?? seed
@@ -617,7 +621,7 @@ describe.each(GRID_TIMINGS)(
     /** A sync with the active view A (NAME_JO) and a stored pointer to it */
     async function activeView(history: 'none' | 'push' = 'none') {
       const store = createViewStore('t')
-      const a = store.saveView('A', NAME_JO)
+      const a = store.saveView('A', { filterModel: NAME_JO })
       store.persistActiveViewId(null)
 
       const grid = createTimedGrid(timing)
@@ -760,7 +764,7 @@ describe.each(GRID_TIMINGS)(
 
     it('the restore on create reports a value that is too long with source url', async () => {
       const store = createViewStore('t')
-      store.saveView('L', LONG_NAME)
+      store.saveView('L', { filterModel: LONG_NAME })
       const { onIssue, sync } = shortValues(store)
       await tick()
 
@@ -793,7 +797,7 @@ describe.each(GRID_TIMINGS)(
 
     it('loadView reports a value that is too long with source api', async () => {
       const store = createViewStore('t')
-      const long = store.saveView('L', LONG_NAME)
+      const long = store.saveView('L', { filterModel: LONG_NAME })
       store.persistActiveViewId(null)
       const { onIssue, sync } = shortValues(store)
 

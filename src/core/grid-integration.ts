@@ -2,10 +2,9 @@ import * as v from 'valibot'
 import type {
   AGGridUrlSyncConfig,
   FilterState,
-  InternalConfig,
-  ResolvedOptions,
   ColumnFilter,
-  AGGridFilter
+  AGGridFilter,
+  FilterType
 } from './types.js'
 import type { ISimpleFilterModelType } from 'ag-grid-community'
 import {
@@ -16,18 +15,23 @@ import {
   isTextFilterOperation
 } from './types.js'
 import { operatorById, operatorFromAgGrid } from './operators.js'
-import { AgGridFilterSchema, JsonObjectSchema } from './schemas.js'
-import { reportIssue, toIssue } from './issues.js'
+import type { ColumnModel } from './schemas.js'
+import {
+  AgGridFilterSchema,
+  JsonObjectSchema,
+  filterTypeOf,
+  isColumnModel
+} from './schemas.js'
+import { reportIssue } from './issues.js'
 import { readNumber } from './validation.js'
 import { resolveOptions } from './options.js'
-import type { ColDef, GridApi } from 'ag-grid-community'
-
-/**
- * The grid's filter model, as `api.getFilterModel()` gives it. This is AG
- * Grid's `FilterModel`, which AG Grid 28 to 30 do not export (#300). The
- * package does not export this type.
- */
-export type FilterModel = ReturnType<GridApi['getFilterModel']>
+import {
+  columnOperations,
+  gridColumnType,
+  isUnknownColumn,
+  sureColumnType
+} from './column-types.js'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 
 /**
  * The AG Grid name of an internal operation. Null (no operation, in AG Grid's
@@ -84,113 +88,6 @@ function toIsoDateString(val: string | undefined): string {
   const match = val.match(/^(\d{4}-\d{2}-\d{2})/)
 
   return match?.[1] ? match[1] : val || ''
-}
-
-/**
- * The grid API methods that give a column's definition. AG Grid 28 to 30
- * have getColumn on the column API only, and getColumnDef on the grid API
- * (#300).
- */
-type ColumnDefSource = Pick<GridApi, 'getColumnDef'> &
-  Partial<Pick<GridApi, 'getColumn'>>
-
-/**
- * The definition of a column, or null for a column that the grid does not
- * have. getColumnDef gives the same definition as getColumn's getColDef.
- */
-function findColumnDef(
-  gridApi: ColumnDefSource,
-  columnId: string
-): ColDef | null {
-  if (gridApi.getColumn === undefined) return gridApi.getColumnDef(columnId)
-
-  return gridApi.getColumn(columnId)?.getColDef() ?? null
-}
-
-/**
- * Detects the expected filter type for a column based on AG Grid configuration
- */
-export function detectColumnFilterType(
-  gridApi: GridApi,
-  columnId: string
-): 'text' | 'number' | 'date' {
-  try {
-    const colDef = findColumnDef(gridApi, columnId)
-
-    if (!colDef) return 'text' // Default to text for unknown columns
-
-    // 1. Explicit filter configuration takes priority
-    if (colDef.filter === 'agDateColumnFilter') return 'date'
-
-    if (colDef.filter === 'agNumberColumnFilter') return 'number'
-
-    if (colDef.filter === 'agTextColumnFilter') return 'text'
-
-    // 2. Cell data type configuration
-    if (colDef.cellDataType === 'date') return 'date'
-
-    if (colDef.cellDataType === 'number') return 'number'
-
-    if (colDef.cellDataType === 'text') return 'text'
-
-    // 3. Default to text for backward compatibility
-    return 'text'
-  } catch {
-    return 'text' // Safe fallback
-  }
-}
-
-/**
- * Gets the current filter model from AG Grid as a filter state. Filter types
- * that the library does not support are skipped, and a filter that is not
- * valid is reported through `options.onParseError`.
- *
- * @param gridApi - AG Grid API instance
- * @param options - Optional options. Only `onParseError` is read.
- */
-export function getFilterModel(
-  gridApi: GridApi,
-  options?: AGGridUrlSyncConfig
-): FilterState
-/**
- * Gets the current filter model from AG Grid
- *
- * @deprecated Give the grid API as an argument:
- * `getFilterModel(gridApi, options)`. This form will be removed in 0.6.0.
- */
-export function getFilterModel(config: InternalConfig): FilterState
-export function getFilterModel(
-  source: GridApi | InternalConfig,
-  options?: AGGridUrlSyncConfig
-): FilterState {
-  // The deprecated form has the grid in its config object. A GridApi has no
-  // `gridApi` key.
-  if ('gridApi' in source) {
-    return readGridFilters(source.gridApi, resolveOptions(source))
-  }
-
-  return readGridFilters(source, resolveOptions(options))
-}
-
-function readGridFilters(
-  gridApi: GridApi,
-  options: ResolvedOptions
-): FilterState {
-  // Only the grid call is in the try. An issue report runs outside it, so a
-  // handler that throws gets its own error back, not a GRID_ERROR (#220).
-  let model: FilterModel | null
-
-  try {
-    // AG Grid can hand back null despite the declared return type
-    model = gridApi.getFilterModel()
-  } catch (error) {
-    // The grid API threw, which is not a problem with a filter
-    reportIssue(options, toIssue(error, 'GRID_ERROR'))
-
-    return {}
-  }
-
-  return fromGridModel(model, options)
 }
 
 /**
@@ -384,7 +281,7 @@ export function fromGridModel(
 /**
  * Converts internal filter to AG Grid filter format
  */
-function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
+export function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
   if (filter.filterType === 'date') {
     // Handle date range operations
     if (filter.type === 'dateRange') {
@@ -456,65 +353,182 @@ function convertToAGGridFilter(filter: ColumnFilter): AGGridFilter {
 }
 
 /**
- * Applies a filter state to AG Grid. A filter whose type does not match the
- * column is skipped with a warning. An error from the grid is reported
- * through `options.onParseError`.
- *
- * @param filterState - Filter state to apply
- * @param gridApi - AG Grid API instance
- * @param options - Optional options. Only `onParseError` is read.
+ * Whether the operation of a text filter takes no value: `blank` and
+ * `notBlank`, which are the AG Grid names and the internal ids
  */
-export function applyFilterModel(
-  filterState: FilterState,
-  gridApi: GridApi,
-  options?: AGGridUrlSyncConfig
-): void
-/**
- * Applies a filter state to AG Grid
- *
- * @deprecated Give the grid API as an argument:
- * `applyFilterModel(filterState, gridApi, options)`. This form will be
- * removed in 0.6.0.
- */
-export function applyFilterModel(
-  filterState: FilterState,
-  config: InternalConfig
-): void
-export function applyFilterModel(
-  filterState: FilterState,
-  target: GridApi | InternalConfig,
-  options?: AGGridUrlSyncConfig
-): void {
-  // The deprecated form has the grid in its config object. A GridApi has no
-  // `gridApi` key.
-  if ('gridApi' in target) {
-    writeGridFilters(filterState, target.gridApi, resolveOptions(target))
-
-    return
-  }
-
-  writeGridFilters(filterState, target, resolveOptions(options))
-}
-
-function writeGridFilters(
-  filterState: FilterState,
-  gridApi: GridApi,
-  options: ResolvedOptions
-): void {
-  const model = toGridModel(filterState, gridApi, options)
-
-  // Only the grid call is in the try. An issue report runs outside it, so a
-  // handler that throws gets its own error back, not a GRID_ERROR (#220).
-  try {
-    gridApi.setFilterModel(model)
-  } catch (error) {
-    // The grid API threw, which is not a problem with a filter
-    reportIssue(options, toIssue(error, 'GRID_ERROR'))
-  }
+function takesNoValue(operation: string | undefined): boolean {
+  return operatorFromAgGrid('text', operation)?.arity === 0
 }
 
 /**
- * Converts URL filters to the AG Grid filter model that `applyFilterModel`
+ * The filter type that a column takes, or null when the filter is not
+ * checked. A number or date filter is checked on each column.
+ *
+ * A text filter is checked only on a column whose filter takes only numbers
+ * or dates (#307). AG Grid changes the text model there: `contains 3` becomes
+ * `equals 3` or is dropped, and `equals '31'` compares a string. A custom
+ * filter component can take a text model, so it is not checked. A text
+ * `blank` or `notBlank` is not checked: it has no value, and AG Grid's number
+ * and date filters read it (#260).
+ *
+ * Null while AG Grid has not inferred the column type: there is nothing to
+ * check against, and AG Grid defers the model until it knows (#224). Other
+ * filter types (set, multi, custom) are not checked (#225).
+ */
+function expectedType(
+  gridApi: GridApi,
+  column: string,
+  filterType: string | undefined,
+  operation: string | undefined
+): FilterType | null {
+  if (filterType === 'text') {
+    if (takesNoValue(operation)) return null
+
+    return sureColumnType(gridApi, column) ?? null
+  }
+
+  if (filterType !== 'number' && filterType !== 'date') return null
+
+  const columnType = gridColumnType(gridApi, column)
+
+  if (columnType === 'pending') return null
+
+  return columnType === 'number' || columnType === 'date' ? columnType : 'text'
+}
+
+/** UNKNOWN_COLUMN: the grid has no column with this id (#312) */
+function unknownColumn(column: string): InvalidFilterError {
+  return new InvalidFilterError(
+    `The grid has no column '${column}'`,
+    undefined,
+    { code: 'UNKNOWN_COLUMN', column }
+  )
+}
+
+/**
+ * TYPE_MISMATCH when a filter is on a column of another type. The operation
+ * is the filter's `type`: an AG Grid name or an internal id.
+ */
+function typeMismatch(
+  gridApi: GridApi,
+  column: string,
+  filterType: string | undefined,
+  operation: string | undefined
+): InvalidFilterError | null {
+  const expected = expectedType(gridApi, column, filterType, operation)
+
+  if (expected === null || filterType === expected) return null
+
+  return new InvalidFilterError(
+    `Column '${column}' expects a ${expected} filter but received a ${filterType} filter. This may indicate a configuration mismatch in the column definition or filter application.`,
+    undefined,
+    { code: 'TYPE_MISMATCH', column }
+  )
+}
+
+const SIMPLE_FILTER_TYPES: ReadonlySet<unknown> = new Set([
+  'text',
+  'number',
+  'date'
+])
+
+/**
+ * The operations of a text, number or date model: its `type`, or the `type`
+ * of each of its combined conditions. A model with no type yet is still
+ * being edited, so it has no operation (#260).
+ */
+function modelOperations(model: ColumnModel): string[] {
+  const parts = Array.isArray(model.conditions)
+    ? model.conditions.filter(condition => isColumnModel(condition))
+    : [model]
+
+  return parts.flatMap(part => (v.is(v.string(), part.type) ? [part.type] : []))
+}
+
+/**
+ * UNSUPPORTED_OPERATION when the column's filter does not list an operation
+ * of the model (#325). AG Grid 31 to 33 use the first option in its place
+ * (`lessThanOrEqual` becomes `equals` on the default date filter), and AG
+ * Grid 36 drops the filter. A custom option that the column lists is kept.
+ * The operations are AG Grid names, as `filterOptions` has them.
+ */
+function unsupportedOperation(
+  gridApi: GridApi,
+  column: string,
+  model: ColumnModel
+): InvalidFilterError | null {
+  if (!SIMPLE_FILTER_TYPES.has(filterTypeOf(model))) return null
+
+  const allowed = columnOperations(gridApi, column)
+
+  if (!allowed) return null
+
+  const operation = modelOperations(model).find(name => !allowed.has(name))
+
+  if (operation === undefined) return null
+
+  return new InvalidFilterError(
+    `Column '${column}' has no filter option '${operation}'. Add it to filterParams.filterOptions.`,
+    undefined,
+    { code: 'UNSUPPORTED_OPERATION', column }
+  )
+}
+
+/**
+ * An AG Grid model with each column that the grid does not have (#312), each
+ * column that fails the type check (#225), and each column with an operation
+ * that its filter does not list (#325), left out and reported. It does not
+ * call `setFilterModel`.
+ */
+export function checkColumnTypes(
+  model: FilterModel,
+  gridApi: GridApi,
+  options?: AGGridUrlSyncConfig
+): FilterModel {
+  const resolved = resolveOptions(options)
+
+  // A JavaScript caller can pass null, which clears the grid
+  if (!v.is(JsonObjectSchema, model)) return {}
+
+  const kept = Object.entries(model).filter(([column, entry]) => {
+    // AG Grid drops such a column too, with a console warning
+    if (isUnknownColumn(gridApi, column)) {
+      // A null entry is no filter, so no filter is lost
+      if (entry !== null && entry !== undefined) {
+        reportIssue(resolved, unknownColumn(column))
+      }
+
+      return false
+    }
+
+    // A custom filter's model can be any value: it is not checked (#283
+    // review)
+    if (!isColumnModel(entry)) return true
+
+    const operation = v.is(v.string(), entry['type'])
+      ? entry['type']
+      : undefined
+
+    const mismatch = typeMismatch(
+      gridApi,
+      column,
+      filterTypeOf(entry),
+      operation
+    )
+
+    const issue = mismatch ?? unsupportedOperation(gridApi, column, entry)
+
+    if (issue) reportIssue(resolved, issue)
+
+    return issue === null
+  })
+
+  // Object.fromEntries creates own keys, so `__proto__` stays a column
+  return Object.fromEntries(kept)
+}
+
+/**
+ * Converts URL filters to the AG Grid filter model that the sync
  * would write. It does not call `setFilterModel`.
  */
 export function toGridModel(
@@ -532,31 +546,16 @@ export function toGridModel(
     // A JavaScript caller can pass anything here
     if (!v.is(JsonObjectSchema, filter)) continue
 
-    // Detect expected filter type for this column
-    const expectedType = detectColumnFilterType(gridApi, column)
+    const mismatch = typeMismatch(
+      gridApi,
+      column,
+      filter.filterType,
+      filter.type
+    )
 
-    // Validate filter type compatibility
-    if (filter.filterType === 'date' && expectedType !== 'date') {
-      reportIssue(
-        resolved,
-        new InvalidFilterError(
-          `Column '${column}' expects a ${expectedType} filter but received a date filter. This may indicate a configuration mismatch in the column definition or filter application.`,
-          undefined,
-          { code: 'TYPE_MISMATCH', column }
-        )
-      )
-      continue
-    }
+    if (mismatch) {
+      reportIssue(resolved, mismatch)
 
-    if (filter.filterType === 'number' && expectedType !== 'number') {
-      reportIssue(
-        resolved,
-        new InvalidFilterError(
-          `Column '${column}' expects a ${expectedType} filter but received a number filter. This may indicate a configuration mismatch in the column definition or filter application.`,
-          undefined,
-          { code: 'TYPE_MISMATCH', column }
-        )
-      )
       continue
     }
 

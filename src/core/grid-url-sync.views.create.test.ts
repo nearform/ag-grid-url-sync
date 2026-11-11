@@ -41,8 +41,12 @@ interface Stored {
 /** A store with A = NAME_JO and Mixed = NAME_JO + STATUS_OPEN, no pointer */
 function seed(): Stored {
   const store = createViewStore('t')
-  const a = store.saveView('A', NAME_JO)
-  const mixed = store.saveView('Mixed', { ...NAME_JO, ...STATUS_OPEN })
+  const a = store.saveView('A', { filterModel: NAME_JO })
+
+  const mixed = store.saveView('Mixed', {
+    filterModel: { ...NAME_JO, ...STATUS_OPEN }
+  })
+
   store.persistActiveViewId(null)
 
   return { store, a, mixed }
@@ -306,7 +310,7 @@ describe('createGridUrlSync: a restore that lands in two parts', () => {
 
   it('a reload keeps the view, its pointer and the entry', async () => {
     const store = createViewStore('t')
-    const both = store.saveView('Both', BOTH)
+    const both = store.saveView('Both', { filterModel: BOTH })
     store.persistActiveViewId(both.id)
     window.history.replaceState(null, '', '/?f_name_contains=jo&f_age_eq=30')
     const length = window.history.length
@@ -332,7 +336,7 @@ describe('createGridUrlSync: a restore that lands in two parts', () => {
 
   it('an empty URL restores the view with its full filters', async () => {
     const store = createViewStore('t')
-    const both = store.saveView('Both', BOTH)
+    const both = store.saveView('Both', { filterModel: BOTH })
     store.persistActiveViewId(both.id)
     const length = window.history.length
 

@@ -1,32 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import {
-  getFilterModel,
-  applyFilterModel,
-  detectColumnFilterType,
-  toGridModel,
-  fromGridModel
-} from './grid-integration.js'
+import { toGridModel, fromGridModel } from './grid-integration.js'
 
-import type { FilterModel } from 'ag-grid-community'
-import { generateUrl } from './url-generator.js'
-import { parseUrlFilters } from './url-parser.js'
-import type { InternalConfig, FilterState } from './types.js'
-import {
-  asGridApi,
-  createGridApiSpies,
-  type ColDefFake
-} from '../test-helpers.js'
+import { writeUrlFilters } from './url-generator.js'
+import type { ResolvedOptions, FilterState } from './types.js'
+import { asGridApi, createGridApiSpies } from '../test-helpers.js'
 
 describe('Grid Integration', () => {
   let mockGridApi: ReturnType<typeof createGridApiSpies>
-  let mockConfig: InternalConfig
+  let mockConfig: ResolvedOptions
   let consoleSpy: ReturnType<typeof vi.spyOn>
+
+  // The grid read and write of the sync: the model of the grid goes through
+  // fromGridModel, and a filter state goes through toGridModel to the grid
+  const readGrid = (options: ResolvedOptions) =>
+    fromGridModel(mockGridApi.getFilterModel(), options)
+
+  const writeGrid = (state: FilterState, options: ResolvedOptions) =>
+    mockGridApi.setFilterModel(
+      toGridModel(state, asGridApi(mockGridApi), options)
+    )
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mockGridApi = createGridApiSpies()
     mockConfig = {
-      gridApi: asGridApi(mockGridApi),
       paramPrefix: 'f_',
       maxValueLength: 200,
       onParseError: vi.fn(),
@@ -41,63 +38,14 @@ describe('Grid Integration', () => {
     consoleSpy.mockRestore()
   })
 
-  describe('detectColumnFilterType', () => {
-    it('should detect number filter type', () => {
-      mockGridApi.getColumn.mockReturnValue({
-        getColDef: () => ({ filter: 'agNumberColumnFilter' })
-      })
-
-      const result = detectColumnFilterType(asGridApi(mockGridApi), 'age')
-      expect(result).toBe('number')
-    })
-
-    it('should detect date filter type', () => {
-      mockGridApi.getColumn.mockReturnValue({
-        getColDef: () => ({ filter: 'agDateColumnFilter' })
-      })
-
-      const result = detectColumnFilterType(asGridApi(mockGridApi), 'created')
-      expect(result).toBe('date')
-    })
-
-    it('should default to text filter type', () => {
-      mockGridApi.getColumn.mockReturnValue({
-        getColDef: () => ({ filter: 'agTextColumnFilter' })
-      })
-
-      const result = detectColumnFilterType(asGridApi(mockGridApi), 'name')
-      expect(result).toBe('text')
-    })
-
-    it('should handle missing column', () => {
-      mockGridApi.getColumn.mockReturnValue(null)
-
-      const result = detectColumnFilterType(
-        asGridApi(mockGridApi),
-        'nonexistent'
-      )
-
-      expect(result).toBe('text')
-    })
-
-    it('should handle column without filter definition', () => {
-      mockGridApi.getColumn.mockReturnValue({
-        getColDef: () => ({})
-      })
-
-      const result = detectColumnFilterType(asGridApi(mockGridApi), 'nofilter')
-      expect(result).toBe('text')
-    })
-  })
-
-  describe('getFilterModel', () => {
+  describe('fromGridModel on the grid model', () => {
     it('should convert text filters from AG Grid', () => {
       mockGridApi.getFilterModel.mockReturnValue({
         name: { filterType: 'text', type: 'contains', filter: 'john' },
         status: { filterType: 'text', type: 'equals', filter: 'active' }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({
         name: { filterType: 'text', type: 'contains', filter: 'john' },
@@ -116,7 +64,7 @@ describe('Grid Integration', () => {
           )
         )
 
-        const result = getFilterModel(mockConfig)
+        const result = readGrid(mockConfig)
 
         expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
         expect(Object.entries(result)).toEqual([
@@ -132,7 +80,7 @@ describe('Grid Integration', () => {
         salary: { filterType: 'number', type: 'notEqual', filter: 0 }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({
         age: { filterType: 'number', type: 'eq', filter: 25 },
@@ -151,7 +99,7 @@ describe('Grid Integration', () => {
         }
       })
 
-      expect(getFilterModel(mockConfig)).toEqual({
+      expect(readGrid(mockConfig)).toEqual({
         id: { filterType: 'number', type: 'eq', filter: 12345678901234567000 }
       })
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
@@ -168,7 +116,7 @@ describe('Grid Integration', () => {
         name: { filterType: 'number', type: 'equals', filter: 'abc' }
       })
 
-      expect(getFilterModel(mockConfig)).toEqual({
+      expect(readGrid(mockConfig)).toEqual({
         price: { filterType: 'number', type: 'greaterThan', filter: 1e21 }
       })
       expect(mockConfig.onParseError).toHaveBeenCalledTimes(2)
@@ -202,7 +150,7 @@ describe('Grid Integration', () => {
         }
       })
 
-      expect(getFilterModel(mockConfig)).toEqual({
+      expect(readGrid(mockConfig)).toEqual({
         a: { filterType: 'number', type: 'greaterThan', filter: 5 },
         b: { filterType: 'number', type: 'lessThan', filter: 7 }
       })
@@ -225,7 +173,7 @@ describe('Grid Integration', () => {
         }
       })
 
-      expect(getFilterModel(mockConfig)).toEqual({
+      expect(readGrid(mockConfig)).toEqual({
         p: { filterType: 'number', type: 'inRange', filter: 5, filterTo: 10 }
       })
       expect(mockConfig.onParseError).toHaveBeenCalledOnce()
@@ -253,7 +201,7 @@ describe('Grid Integration', () => {
         }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({
         created: { filterType: 'date', type: 'eq', filter: '2024-01-15' },
@@ -276,7 +224,7 @@ describe('Grid Integration', () => {
         created: { filterType: 'date', type: 'equals', filter: '2024-01-15' }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({
         created: { filterType: 'date', type: 'eq', filter: '2024-01-15' }
@@ -289,7 +237,7 @@ describe('Grid Integration', () => {
         required: { filterType: 'text', type: 'notBlank' }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({
         optional: { filterType: 'text', type: 'blank', filter: '' },
@@ -297,21 +245,10 @@ describe('Grid Integration', () => {
       })
     })
 
-    it('should handle errors gracefully', () => {
-      mockGridApi.getFilterModel.mockImplementation(() => {
-        throw new Error('Grid API Error')
-      })
-
-      const result = getFilterModel(mockConfig)
-
-      expect(result).toEqual({})
-      expect(mockConfig.onParseError).toHaveBeenCalledWith(expect.any(Error))
-    })
-
     it('should handle null filter model', () => {
       mockGridApi.getFilterModel.mockReturnValue(null)
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({})
     })
@@ -326,7 +263,7 @@ describe('Grid Integration', () => {
         salary: { filterType: 'number', type: 'equals', filter: 50000 }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({
         salary: { filterType: 'number', type: 'eq', filter: 50000 }
@@ -334,7 +271,7 @@ describe('Grid Integration', () => {
     })
   })
 
-  describe('applyFilterModel', () => {
+  describe('toGridModel on a filter state', () => {
     it('should apply text filters to AG Grid', () => {
       const filterState: FilterState = {
         name: { filterType: 'text', type: 'contains', filter: 'john' },
@@ -345,7 +282,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agTextColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
         name: { filterType: 'text', type: 'contains', filter: 'john' },
@@ -365,7 +302,7 @@ describe('Grid Integration', () => {
           getColDef: () => ({ filter: 'agTextColumnFilter' })
         })
 
-        applyFilterModel(filterState, mockConfig)
+        writeGrid(filterState, mockConfig)
 
         const model = mockGridApi.setFilterModel.mock.calls[0]?.[0]
 
@@ -392,7 +329,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agNumberColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
         age: { filterType: 'number', type: 'greaterThan', filter: 25 },
@@ -425,7 +362,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agDateColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
         created: {
@@ -459,7 +396,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agDateColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
         optional: {
@@ -486,7 +423,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agNumberColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
         age: { filterType: 'number', type: 'inRange', filter: 25 }
@@ -502,7 +439,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agTextColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(consoleSpy).not.toHaveBeenCalled()
       expect(mockConfig.onParseError).toHaveBeenCalledOnce()
@@ -527,7 +464,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agTextColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(consoleSpy).not.toHaveBeenCalled()
       expect(mockConfig.onParseError).toHaveBeenCalledOnce()
@@ -544,7 +481,7 @@ describe('Grid Integration', () => {
     })
 
     it('should skip invalid filter objects', () => {
-      // SAFETY: applyFilterModel skips an entry that is not a filter object
+      // SAFETY: toGridModel skips an entry that is not a filter object
       // (the case under test), as a JavaScript caller can give one
       const filterState: FilterState = {
         valid: { filterType: 'text', type: 'contains', filter: 'john' },
@@ -556,24 +493,11 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agTextColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
         valid: { filterType: 'text', type: 'contains', filter: 'john' }
       })
-    })
-
-    it('should handle errors gracefully', () => {
-      const filterState: FilterState = {
-        name: { filterType: 'text', type: 'contains', filter: 'john' }
-      }
-
-      mockGridApi.setFilterModel.mockImplementation(() => {
-        throw new Error('Grid API Error')
-      })
-
-      expect(() => applyFilterModel(filterState, mockConfig)).not.toThrow()
-      expect(mockConfig.onParseError).toHaveBeenCalledWith(expect.any(Error))
     })
 
     it('should handle all date operation mappings', () => {
@@ -600,7 +524,7 @@ describe('Grid Integration', () => {
         getColDef: () => ({ filter: 'agDateColumnFilter' })
       })
 
-      applyFilterModel(filterState, mockConfig)
+      writeGrid(filterState, mockConfig)
 
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
         before: {
@@ -631,151 +555,28 @@ describe('Grid Integration', () => {
     })
   })
 
-  // gridApi is an argument, not a config field (#219). The tests above use the
-  // deprecated config form, which still works.
-  describe('gridApi as an argument (#219)', () => {
-    const gridModel = {
-      name: { filterType: 'text', type: 'contains', filter: 'john' },
-      age: { filterType: 'number', type: 'greaterThan', filter: 25 }
-    }
-
-    const filterState: FilterState = {
-      name: { filterType: 'text', type: 'contains', filter: 'john' }
-    }
-
-    it('getFilterModel reads the grid with no options', () => {
-      mockGridApi.getFilterModel.mockReturnValue(gridModel)
-
-      expect(getFilterModel(asGridApi(mockGridApi))).toEqual({
+  describe('without options (#219)', () => {
+    it('fromGridModel reads a model with no options', () => {
+      expect(
+        fromGridModel({
+          name: { filterType: 'text', type: 'contains', filter: 'john' },
+          age: { filterType: 'number', type: 'greaterThan', filter: 25 }
+        })
+      ).toEqual({
         name: { filterType: 'text', type: 'contains', filter: 'john' },
         age: { filterType: 'number', type: 'greaterThan', filter: 25 }
       })
     })
 
-    it('getFilterModel reports errors to the onParseError option', () => {
-      const onParseError = vi.fn()
-      mockGridApi.getFilterModel.mockImplementation(() => {
-        throw new Error('Grid API Error')
-      })
-
-      expect(getFilterModel(asGridApi(mockGridApi), { onParseError })).toEqual(
-        {}
-      )
-      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
-    })
-
-    it('getFilterModel gives the same result as the config form', () => {
-      mockGridApi.getFilterModel.mockReturnValue(gridModel)
-
-      expect(getFilterModel(asGridApi(mockGridApi))).toEqual(
-        getFilterModel(mockConfig)
-      )
-    })
-
-    it('applyFilterModel writes the model with no options', () => {
-      applyFilterModel(filterState, asGridApi(mockGridApi))
-
-      expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
-        name: { filterType: 'text', type: 'contains', filter: 'john' }
-      })
-    })
-
-    it('applyFilterModel reports errors to the onParseError option', () => {
-      const onParseError = vi.fn()
-      mockGridApi.setFilterModel.mockImplementation(() => {
-        throw new Error('Grid API Error')
-      })
-
-      expect(() =>
-        applyFilterModel(filterState, asGridApi(mockGridApi), { onParseError })
-      ).not.toThrow()
-      expect(onParseError).toHaveBeenCalledWith(expect.any(Error))
-    })
-
-    it('applyFilterModel does not throw without onParseError', () => {
-      mockGridApi.setFilterModel.mockImplementation(() => {
-        throw new Error('Grid API Error')
-      })
-
-      expect(() =>
-        applyFilterModel(filterState, asGridApi(mockGridApi))
-      ).not.toThrow()
-    })
-  })
-
-  // On AG Grid 28 to 30, getColumn is on the column API only. The grid API
-  // has getColumnDef, which gives the same column definition (#300).
-  describe('a grid API with no getColumn, as on AG Grid 28 to 30 (#300)', () => {
-    const COLUMN_DEFS = new Map<string, ColDefFake>([
-      ['age', { filter: 'agNumberColumnFilter' }],
-      ['created', { filter: 'agDateColumnFilter' }],
-      ['name', { filter: 'agTextColumnFilter' }],
-      ['score', { cellDataType: 'number' }],
-      ['updated', { cellDataType: 'date' }]
-    ])
-
-    const legacyApi = () => ({
-      getFilterModel: vi.fn<() => FilterModel | null>(),
-      setFilterModel: vi.fn<(model: FilterModel | null) => void>(),
-      getColumnDef: vi.fn(
-        (colId: string): ColDefFake | null => COLUMN_DEFS.get(colId) ?? null
-      )
-    })
-
-    it.each([
-      ['age', 'number'],
-      ['created', 'date'],
-      ['name', 'text'],
-      ['score', 'number'],
-      ['updated', 'date'],
-      ['missing', 'text']
-    ])(
-      'detectColumnFilterType reads getColumnDef for %s',
-      (colId, expected) => {
-        const api = legacyApi()
-
-        expect(detectColumnFilterType(asGridApi(api), colId)).toBe(expected)
-        expect(api.getColumnDef).toHaveBeenCalledWith(colId)
-      }
-    )
-
-    it('applyFilterModel keeps the number and date filters of the URL', () => {
-      const api = legacyApi()
-      const onParseError = vi.fn()
-
-      applyFilterModel(
-        parseUrlFilters('?f_age_gt=30&f_created_eq=2024-01-15', {
-          onParseError
-        }),
-        asGridApi(api),
-        { onParseError }
-      )
-
-      expect(onParseError).not.toHaveBeenCalled()
-      expect(api.setFilterModel).toHaveBeenCalledWith({
-        age: { filterType: 'number', type: 'greaterThan', filter: 30 },
-        created: {
-          filterType: 'date',
-          type: 'equals',
-          dateFrom: '2024-01-15',
-          dateTo: null
-        }
-      })
-    })
-
-    it('toGridModel still reports TYPE_MISMATCH for a number filter on a text column', () => {
-      const onParseError = vi.fn()
-
+    it('toGridModel writes the model with no options', () => {
       expect(
         toGridModel(
-          { name: { filterType: 'number', type: 'eq', filter: 1 } },
-          asGridApi(legacyApi()),
-          { onParseError }
+          { name: { filterType: 'text', type: 'contains', filter: 'john' } },
+          asGridApi(mockGridApi)
         )
-      ).toEqual({})
-      expect(onParseError).toHaveBeenCalledWith(
-        expect.objectContaining({ code: 'TYPE_MISMATCH', column: 'name' })
-      )
+      ).toEqual({
+        name: { filterType: 'text', type: 'contains', filter: 'john' }
+      })
     })
   })
 
@@ -807,7 +608,7 @@ describe('Grid Integration', () => {
           name: { filterType: 'text', type: 'contains', filter: 'john' }
         })
 
-        expect(getFilterModel(mockConfig)).toEqual({
+        expect(readGrid(mockConfig)).toEqual({
           name: { filterType: 'text', type: 'contains', filter: 'john' }
         })
         expect(mockConfig.onParseError).not.toHaveBeenCalled()
@@ -819,10 +620,7 @@ describe('Grid Integration', () => {
         n: { filterType: 'number', type: 'equals', filter: null }
       })
 
-      const url = generateUrl(
-        'https://example.com/',
-        getFilterModel(mockConfig)
-      )
+      const url = writeUrlFilters('https://example.com/', readGrid(mockConfig))
 
       expect(url).toBe('https://example.com')
     })
@@ -837,7 +635,7 @@ describe('Grid Integration', () => {
         n: { filterType: 'number', type: 'inRange', ...values }
       })
 
-      expect(getFilterModel(mockConfig)).toEqual({})
+      expect(readGrid(mockConfig)).toEqual({})
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
     })
 
@@ -848,7 +646,7 @@ describe('Grid Integration', () => {
           n: { filterType: 'number', type }
         })
 
-        expect(getFilterModel(mockConfig)).toEqual({
+        expect(readGrid(mockConfig)).toEqual({
           n: { filterType: 'number', type, filter: 0 }
         })
         expect(mockConfig.onParseError).not.toHaveBeenCalled()
@@ -862,9 +660,9 @@ describe('Grid Integration', () => {
           n: { filterType: 'number', type, filter: null }
         })
 
-        const url = generateUrl(
+        const url = writeUrlFilters(
           'https://example.com/',
-          getFilterModel(mockConfig)
+          readGrid(mockConfig)
         )
 
         expect(new URL(url).searchParams.get(`f_n_${type}`)).toBe('true')
@@ -881,7 +679,7 @@ describe('Grid Integration', () => {
           getColDef: () => ({ filter: 'agNumberColumnFilter' })
         })
 
-        applyFilterModel(getFilterModel(mockConfig), mockConfig)
+        writeGrid(readGrid(mockConfig), mockConfig)
 
         expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
           n: { filterType: 'number', type, filter: null }
@@ -898,7 +696,7 @@ describe('Grid Integration', () => {
         d: { filterType: 'date', type: 'lessThan', ...value }
       })
 
-      expect(getFilterModel(mockConfig)).toEqual({})
+      expect(readGrid(mockConfig)).toEqual({})
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
     })
 
@@ -911,7 +709,7 @@ describe('Grid Integration', () => {
         d: { filterType: 'date', type: 'inRange', ...values }
       })
 
-      expect(getFilterModel(mockConfig)).toEqual({})
+      expect(readGrid(mockConfig)).toEqual({})
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
     })
 
@@ -920,7 +718,7 @@ describe('Grid Integration', () => {
         d: { filterType: 'date', type, dateFrom: null, dateTo: null }
       })
 
-      expect(getFilterModel(mockConfig)).toEqual({
+      expect(readGrid(mockConfig)).toEqual({
         d: { filterType: 'date', type, filter: '' }
       })
     })
@@ -936,14 +734,14 @@ describe('Grid Integration', () => {
         throw handlerError
       })
 
-    it('reaches the caller of applyFilterModel and is reported one time', () => {
+    it('reaches the caller of toGridModel and is reported one time', () => {
       const onParseError = throwingHandler()
       mockGridApi.getColumn.mockReturnValue({
         getColDef: () => ({ filter: 'agTextColumnFilter' })
       })
 
       expect(() =>
-        applyFilterModel(
+        toGridModel(
           { name: { filterType: 'number', type: 'eq', filter: 1 } },
           asGridApi(mockGridApi),
           { onParseError }
@@ -955,14 +753,14 @@ describe('Grid Integration', () => {
       )
     })
 
-    it('reaches the caller of getFilterModel and is reported one time', () => {
+    it('reaches the caller of fromGridModel and is reported one time', () => {
       const onParseError = throwingHandler()
       mockGridApi.getFilterModel.mockReturnValue({
         n: { filterType: 'number', type: 'foo', filter: 1 }
       })
 
       expect(() =>
-        getFilterModel(asGridApi(mockGridApi), { onParseError })
+        fromGridModel(mockGridApi.getFilterModel(), { onParseError })
       ).toThrow(handlerError)
       expect(onParseError).toHaveBeenCalledOnce()
       expect(onParseError).toHaveBeenCalledWith(

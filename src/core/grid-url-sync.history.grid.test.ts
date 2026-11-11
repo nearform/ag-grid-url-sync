@@ -330,7 +330,7 @@ describe('createGridUrlSync: replace for a history function (#304)', () => {
 
   it('the restore of a stored view on create gives replace: true', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(view.id)
     const router = routerFn()
     const api = createRealGrid()
@@ -346,7 +346,7 @@ describe('createGridUrlSync: replace for a history function (#304)', () => {
 
   it('loadView and applyFilters give replace: false', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(null)
     const router = routerFn()
     const api = createRealGrid()

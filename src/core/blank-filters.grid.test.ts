@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { GridApi } from 'ag-grid-community'
-import { applyFilterModel, getFilterModel } from './grid-integration.js'
-import { generateUrl } from './url-generator.js'
-import { parseUrlFilters } from './url-parser.js'
+import { checkColumnTypes } from './grid-integration.js'
+import { writeUrlFilters } from './url-generator.js'
+import { readUrlFilters } from './url-parser.js'
 import { createRealGrid } from '../test-helpers.js'
 
 // A blank filter round-trips through the URL on a real AG Grid, not a fake
@@ -45,12 +45,12 @@ describe.each([
     await source.setColumnFilterModel(column, { filterType, type })
     source.onFilterChanged()
 
-    const url = generateUrl('https://example.com/', getFilterModel(source))
+    const url = writeUrlFilters('https://example.com/', source.getFilterModel())
 
     expect(new URL(url).searchParams.get(`f_${column}_${type}`)).toBe('true')
 
     const target = createTestGrid()
-    applyFilterModel(parseUrlFilters(url), target)
+    target.setFilterModel(checkColumnTypes(readUrlFilters(url), target))
 
     expect(target.getFilterModel()[column]).toMatchObject({ filterType, type })
     expect(shownRows(target)).toEqual(expectedRows)

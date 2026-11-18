@@ -36,7 +36,7 @@ beforeEach(() => {
 describe('createGridUrlSync: views on a real grid', () => {
   it('load, reload, back', async () => {
     const store = createViewStore('t')
-    const a = store.saveView('A', { ...NAME_JO, ...AGE_GT_5 })
+    const a = store.saveView('A', { filterModel: { ...NAME_JO, ...AGE_GT_5 } })
     store.persistActiveViewId(null)
 
     const firstApi = createRealGrid()
@@ -87,7 +87,7 @@ describe('createGridUrlSync: views on a real grid', () => {
 describe('createSync: a kept view', () => {
   it('restores the kept view with replace, not as a view load', async () => {
     const store = createViewStore('t')
-    const a = store.saveView('A', NAME_JO)
+    const a = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(null)
     window.history.replaceState(null, '', '/?f_age_gt=5')
     const push = vi.spyOn(window.history, 'pushState')

@@ -359,7 +359,7 @@ describe('useGridUrlSync: options after mount (#271)', () => {
 
   test('a history function gets the URL and the replace flag (#304)', async () => {
     const other = createViewStore('other')
-    const view = other.saveView('B', AGE_GT_5)
+    const view = other.saveView('B', { filterModel: AGE_GT_5 })
     other.persistActiveViewId(view.id)
     const api = createRealGrid()
     const history = vi.fn()
@@ -754,7 +754,7 @@ describe('useGridUrlSync: issues across a new sync (#271 review)', () => {
   })
 
   test('a new storageKey that restores its stored view drops the apply issues (#285)', async () => {
-    createViewStore('restore-b').saveView('X', NAME_X)
+    createViewStore('restore-b').saveView('X', { filterModel: NAME_X })
     const api = createRealGrid()
     const { result, rerender } = renderSync({ api, storageKey: 'restore-a' })
     await settle()
@@ -929,7 +929,7 @@ describe('useGridUrlSync: saved views (#271)', () => {
 
   test('restores the stored view on mount', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(view.id)
     const api = createRealGrid()
 
@@ -942,7 +942,7 @@ describe('useGridUrlSync: saved views (#271)', () => {
 
   test('a URL with filters wins over the stored view', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     store.persistActiveViewId(view.id)
     window.history.replaceState(null, '', '/?f_name_contains=x')
     const api = createRealGrid()
@@ -972,7 +972,7 @@ describe('useGridUrlSync: saved views (#271)', () => {
 
   test('a new storageKey restores its stored view, and the URL does not win again', async () => {
     const other = createViewStore('other')
-    const view = other.saveView('B', AGE_GT_5)
+    const view = other.saveView('B', { filterModel: AGE_GT_5 })
     other.persistActiveViewId(view.id)
     window.history.replaceState(null, '', '/?f_name_contains=jo')
     const api = createRealGrid()
@@ -990,7 +990,7 @@ describe('useGridUrlSync: saved views (#271)', () => {
 
   test('shows the stored views and deletes one with no grid', () => {
     const store = createViewStore('t')
-    const view = store.saveView('A', NAME_JO)
+    const view = store.saveView('A', { filterModel: NAME_JO })
     const { result } = renderSync({ api: null, storageKey: 't' })
 
     expect(result.current.views.map(item => item.id)).toEqual([view.id])
@@ -1022,7 +1022,7 @@ describe.each(GRID_TIMINGS)(
   timing => {
     test('makes one live sync and adds no history entry on mount', async () => {
       const store = createViewStore('t')
-      const view = store.saveView('A', NAME_JO)
+      const view = store.saveView('A', { filterModel: NAME_JO })
       store.persistActiveViewId(view.id)
       const push = vi.spyOn(window.history, 'pushState')
       const { api, userEdit } = createTimedGrid(timing)
@@ -1049,34 +1049,6 @@ describe.each(GRID_TIMINGS)(
   }
 )
 
-// On AG Grid 28 to 30, the grid API has getColumnDef and no getColumn. The
-// hook's sync must still keep number and date filters (#300).
-describe('useGridUrlSync: a grid API with no getColumn, as on AG Grid 28 to 30 (#300)', () => {
-  beforeEach(() => {
-    useRealLocation('/?f_age_gt=35&f_created_eq=2024-01-01')
-  })
-
-  test('the apply on mount keeps the number and date filters, with no issue', async () => {
-    const onIssue = vi.fn()
-    const { api } = createTimedGrid('in-call', {}, { columnDefOnly: true })
-
-    const { result } = renderSync({ api, onIssue })
-    await settle()
-
-    expect(api.getFilterModel()).toEqual({
-      age: { filterType: 'number', type: 'greaterThan', filter: 35 },
-      created: {
-        filterType: 'date',
-        type: 'equals',
-        dateFrom: '2024-01-01',
-        dateTo: null
-      }
-    })
-    expect(result.current.issues).toEqual([])
-    expect(onIssue).not.toHaveBeenCalled()
-  })
-})
-
 // A grid that lands a write in two parts (#302), as AG Grid does with a React
 // custom filter: inside the call it shows only the other columns, and one
 // tick later it shows the full model in one 'api' event
@@ -1087,7 +1059,7 @@ describe('useGridUrlSync: a write that lands in two parts (#302)', () => {
     'a reload keeps the stored view and adds no history entry (StrictMode: %s)',
     async strict => {
       const store = createViewStore('t')
-      const view = store.saveView('Both', BOTH)
+      const view = store.saveView('Both', { filterModel: BOTH })
       store.persistActiveViewId(view.id)
       const push = vi.spyOn(window.history, 'pushState')
       const { api } = createTimedGrid('in-call', {}, { late: ['age'] })
@@ -1130,7 +1102,7 @@ describe('useGridUrlSync: a write that lands in two parts (#302)', () => {
 
   test('loadView keeps the view active and adds one history entry', async () => {
     const store = createViewStore('t')
-    const view = store.saveView('Both', BOTH)
+    const view = store.saveView('Both', { filterModel: BOTH })
     store.persistActiveViewId(null)
     const push = vi.spyOn(window.history, 'pushState')
     const { api } = createTimedGrid('in-call', {}, { late: ['age'] })

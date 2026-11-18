@@ -70,7 +70,7 @@ function mountWithPendingRestore(
   initial: FilterModel = {}
 ): Mounted {
   const store = createViewStore('pending')
-  const saved = store.saveView('Pending', view)
+  const saved = store.saveView('Pending', { filterModel: view })
   const grid = createHoldingGrid(initial)
   const sync = createGridUrlSync({ api: grid.api, views: store })
 

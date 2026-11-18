@@ -1,13 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { parseFilterParam, parseUrlFilters } from './url-parser.js'
-import { generateUrl } from './url-generator.js'
+import { readUrlFilters } from './url-parser.js'
+import { parseIndividualParams } from './individual-params.js'
+import { DEFAULT_CONFIG } from './options.js'
+import { writeUrlFilters } from './url-generator.js'
 import { InvalidFilterError, InvalidURLError } from './types.js'
-import type { FilterState, InternalConfig } from './types.js'
-import { asGridApi } from '../test-helpers.js'
+import type { ColumnFilter, FilterType, ResolvedOptions } from './types.js'
+
+/**
+ * Parses one prefixed param with the individual codec's internal parser, and
+ * gives its filter. With throwOnError, a bad param throws its issue.
+ */
+function parseParam(
+  param: string,
+  value: string,
+  columnType?: FilterType
+): ColumnFilter | undefined {
+  const filters = parseIndividualParams(new URLSearchParams([[param, value]]), {
+    ...DEFAULT_CONFIG,
+    paramPrefix: 'f_',
+    throwOnError: true,
+    columnTypes: columnType ? () => columnType : undefined
+  })
+
+  return Object.values(filters)[0]
+}
 
 describe('URL Parser', () => {
-  const mockConfig: InternalConfig = {
-    gridApi: asGridApi({}),
+  const mockConfig: ResolvedOptions = {
     paramPrefix: 'f_',
     maxValueLength: 200,
     onParseError: vi.fn(),
@@ -20,14 +39,14 @@ describe('URL Parser', () => {
     vi.clearAllMocks()
   })
 
-  describe('parseFilterParam', () => {
+  describe('parseIndividualParams, one param', () => {
     it('should parse text operations', () => {
-      expect(parseFilterParam('f_name_contains', 'john', 'f_')).toEqual({
+      expect(parseParam('f_name_contains', 'john')).toEqual({
         filterType: 'text',
         type: 'contains',
         filter: 'john'
       })
-      expect(parseFilterParam('f_status_eq', 'active', 'f_')).toEqual({
+      expect(parseParam('f_status_eq', 'active')).toEqual({
         filterType: 'text',
         type: 'eq',
         filter: 'active'
@@ -35,12 +54,12 @@ describe('URL Parser', () => {
     })
 
     it('should parse number operations', () => {
-      expect(parseFilterParam('f_age_eq', '25', 'f_')).toEqual({
+      expect(parseParam('f_age_eq', '25', 'number')).toEqual({
         filterType: 'number',
         type: 'eq',
         filter: 25
       })
-      expect(parseFilterParam('f_age_range', '25,65', 'f_')).toEqual({
+      expect(parseParam('f_age_range', '25,65')).toEqual({
         filterType: 'number',
         type: 'inRange',
         filter: 25,
@@ -52,7 +71,7 @@ describe('URL Parser', () => {
     describe.each([
       ['eq', 'eq'],
       ['neq', 'notEqual']
-    ])('shared operation %s with a guessed type', (op, type) => {
+    ])('shared operation %s on a number column (#224)', (op, type) => {
       it.each([
         '3M',
         '1e',
@@ -65,8 +84,11 @@ describe('URL Parser', () => {
         '12345678901234567890',
         '-12345678901234567891',
         '0.12345678901234567891'
-      ])('should keep %s as text', value => {
-        expect(parseFilterParam(`f_name_${op}`, value, 'f_')).toEqual({
+      ])('should report %s, and keep it as text with no type', value => {
+        expect(() => parseParam(`f_age_${op}`, value, 'number')).toThrow(
+          expect.objectContaining({ code: 'INVALID_NUMBER' })
+        )
+        expect(parseParam(`f_name_${op}`, value)).toEqual({
           filterType: 'text',
           type,
           filter: value
@@ -88,7 +110,7 @@ describe('URL Parser', () => {
         ['.5', 0.5],
         ['2e3', 2000]
       ])('should parse %s as a number', (value, expected) => {
-        expect(parseFilterParam(`f_age_${op}`, value, 'f_')).toEqual({
+        expect(parseParam(`f_age_${op}`, value, 'number')).toEqual({
           filterType: 'number',
           type,
           filter: expected
@@ -97,28 +119,28 @@ describe('URL Parser', () => {
     })
 
     it('should parse date operations', () => {
-      expect(parseFilterParam('f_created_eq', '2024-01-15', 'f_')).toEqual({
+      expect(parseParam('f_created_eq', '2024-01-15', 'date')).toEqual({
         filterType: 'date',
         type: 'eq',
         filter: '2024-01-15'
       })
-      expect(
-        parseFilterParam('f_period_daterange', '2024-01-01,2024-12-31', 'f_')
-      ).toEqual({
-        filterType: 'date',
-        type: 'dateRange',
-        filter: '2024-01-01',
-        filterTo: '2024-12-31'
-      })
+      expect(parseParam('f_period_daterange', '2024-01-01,2024-12-31')).toEqual(
+        {
+          filterType: 'date',
+          type: 'dateRange',
+          filter: '2024-01-01',
+          filterTo: '2024-12-31'
+        }
+      )
     })
 
     it('should parse blank operations', () => {
-      expect(parseFilterParam('f_optional_blank', 'true', 'f_')).toEqual({
+      expect(parseParam('f_optional_blank', 'true')).toEqual({
         filterType: 'text',
         type: 'blank',
         filter: ''
       })
-      expect(parseFilterParam('f_required_notBlank', 'true', 'f_')).toEqual({
+      expect(parseParam('f_required_notBlank', 'true')).toEqual({
         filterType: 'text',
         type: 'notBlank',
         filter: ''
@@ -126,26 +148,29 @@ describe('URL Parser', () => {
     })
 
     it('should throw on invalid parameters', () => {
-      expect(() => parseFilterParam('f_name', 'value')).toThrow(
-        InvalidFilterError
-      )
-      expect(() => parseFilterParam('f_name_invalid', 'value')).toThrow(
+      expect(() => parseParam('f_name', 'value')).toThrow(InvalidFilterError)
+      expect(() => parseParam('f_name_invalid', 'value')).toThrow(
         InvalidFilterError
       )
     })
   })
 
-  describe('parseUrlFilters', () => {
+  describe('readUrlFilters', () => {
     it('should parse URL with multiple filters', () => {
       const url =
         'https://example.com?f_name_contains=john&f_age_gte=25&f_created_after=2024-01-01'
 
-      const result = parseUrlFilters(url, mockConfig)
+      const result = readUrlFilters(url, mockConfig)
 
       expect(result).toEqual({
         name: { filterType: 'text', type: 'contains', filter: 'john' },
         age: { filterType: 'number', type: 'greaterThanOrEqual', filter: 25 },
-        created: { filterType: 'date', type: 'dateAfter', filter: '2024-01-01' }
+        created: {
+          filterType: 'date',
+          type: 'greaterThan',
+          dateFrom: '2024-01-01',
+          dateTo: null
+        }
       })
     })
 
@@ -153,7 +178,7 @@ describe('URL Parser', () => {
     it.each(['__proto__', 'constructor', 'prototype'])(
       'should keep a column named %s as an own key (#253)',
       column => {
-        const result = parseUrlFilters(
+        const result = readUrlFilters(
           `?f_name_contains=a&f_${column}_contains=b`,
           mockConfig
         )
@@ -168,10 +193,13 @@ describe('URL Parser', () => {
 
     it('should parse numbers outside the safe integer range (#238)', () => {
       expect(
-        parseUrlFilters('?f_a_gt=9007199254740992&f_b_eq=1e%2B21', mockConfig)
+        readUrlFilters('?f_a_gt=9007199254740992&f_b_eq=1e%2B21', {
+          ...mockConfig,
+          columnTypes: () => 'number'
+        })
       ).toEqual({
         a: { filterType: 'number', type: 'greaterThan', filter: 2 ** 53 },
-        b: { filterType: 'number', type: 'eq', filter: 1e21 }
+        b: { filterType: 'number', type: 'equals', filter: 1e21 }
       })
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
     })
@@ -194,7 +222,7 @@ describe('URL Parser', () => {
     ])(
       'should report %s, which would be rounded, and skip it (#238)',
       (param, rounded) => {
-        expect(parseUrlFilters(`?f_ok_gt=1&${param}`, mockConfig)).toEqual({
+        expect(readUrlFilters(`?f_ok_gt=1&${param}`, mockConfig)).toEqual({
           ok: { filterType: 'number', type: 'greaterThan', filter: 1 }
         })
         expect(mockConfig.onParseError).toHaveBeenCalledOnce()
@@ -208,7 +236,7 @@ describe('URL Parser', () => {
 
     it('should keep an exact number in any form in a number-only operation (#238)', () => {
       expect(
-        parseUrlFilters('?f_a_gt=1e21&f_b_range=1E%2B21,1.5e21', mockConfig)
+        readUrlFilters('?f_a_gt=1e21&f_b_range=1E%2B21,1.5e21', mockConfig)
       ).toEqual({
         a: { filterType: 'number', type: 'greaterThan', filter: 1e21 },
         b: {
@@ -223,7 +251,7 @@ describe('URL Parser', () => {
 
     it('should keep a value written with more digits than its shortest form (#238)', () => {
       expect(
-        parseUrlFilters(
+        readUrlFilters(
           '?f_price_gt=19.989999999999998&f_x_range=0.10000000000000001,1',
           mockConfig
         )
@@ -237,41 +265,41 @@ describe('URL Parser', () => {
     // URLSearchParams reads a raw `+` as a space
     // In a number-only operation, the space can only be an exponent sign. In
     // the eq type guess it stays text, so a text value such as "2E 5" (which
-    // generateUrl writes as 2E+5) round-trips.
+    // writeUrlFilters writes as 2E+5) round-trips.
     it('should read an exponent with a raw + in a number-only operation (#238)', () => {
       expect(
-        parseUrlFilters('?f_a_gt=1e+21&f_b_lt=1.e+5&f_c_eq=1e+21', mockConfig)
+        readUrlFilters('?f_a_gt=1e+21&f_b_lt=1.e+5&f_c_eq=1e+21', mockConfig)
       ).toEqual({
         a: { filterType: 'number', type: 'greaterThan', filter: 1e21 },
         b: { filterType: 'number', type: 'lessThan', filter: 1e5 },
-        c: { filterType: 'text', type: 'eq', filter: '1e 21' }
+        c: { filterType: 'text', type: 'equals', filter: '1e 21' }
       })
       expect(mockConfig.onParseError).not.toHaveBeenCalled()
     })
 
     it('should round-trip a text value shaped like a number with a space (#238)', () => {
-      const state: FilterState = {
-        code: { filterType: 'text', type: 'eq', filter: '2E 5' }
+      const model = {
+        code: { filterType: 'text', type: 'equals', filter: '2E 5' }
       }
 
       expect(
-        parseUrlFilters(
-          generateUrl('https://x.test/', state, mockConfig),
+        readUrlFilters(
+          writeUrlFilters('https://x.test/', model, mockConfig),
           mockConfig
         )
-      ).toEqual(state)
+      ).toEqual(model)
     })
 
     it('should keep a value that only starts with a number as text (#214)', () => {
-      expect(parseUrlFilters('?f_name_eq=3M', mockConfig)).toEqual({
-        name: { filterType: 'text', type: 'eq', filter: '3M' }
+      expect(readUrlFilters('?f_name_eq=3M', mockConfig)).toEqual({
+        name: { filterType: 'text', type: 'equals', filter: '3M' }
       })
     })
 
     it('should handle empty URLs and ignore non-filter params', () => {
-      expect(parseUrlFilters('https://example.com', mockConfig)).toEqual({})
+      expect(readUrlFilters('https://example.com', mockConfig)).toEqual({})
 
-      const result = parseUrlFilters(
+      const result = readUrlFilters(
         'https://example.com?page=1&f_name_contains=john&sort=name',
         mockConfig
       )
@@ -283,7 +311,7 @@ describe('URL Parser', () => {
 
     it('should handle URL encoding', () => {
       const url = 'https://example.com?f_query_contains=hello%20world'
-      const result = parseUrlFilters(url, mockConfig)
+      const result = readUrlFilters(url, mockConfig)
       expect(result.query?.filter).toBe('hello world')
     })
 
@@ -295,7 +323,7 @@ describe('URL Parser', () => {
       'should read prefix %j and ignore the page params (#228)',
       (prefix, url) => {
         expect(
-          parseUrlFilters(url, { ...mockConfig, paramPrefix: prefix })
+          readUrlFilters(url, { ...mockConfig, paramPrefix: prefix })
         ).toEqual({
           name: { filterType: 'text', type: 'contains', filter: 'john' }
         })
@@ -319,19 +347,19 @@ describe('URL Parser', () => {
         ['a raw query string', 'f_name_contains=bob'],
         ['a raw query string with other params', 'page=2&f_name_contains=bob']
       ])('should parse %s', (_label, url) => {
-        expect(parseUrlFilters(url, mockConfig)).toEqual({ name })
+        expect(readUrlFilters(url, mockConfig)).toEqual({ name })
       })
 
       it('should parse a raw query string that contains a dot', () => {
-        expect(parseUrlFilters('f_price_gt=1.5', mockConfig)).toEqual({
+        expect(readUrlFilters('f_price_gt=1.5', mockConfig)).toEqual({
           price
         })
       })
 
       it('should parse a relative path with a dot in its value', () => {
-        expect(parseUrlFilters('/products?f_price_gt=1.5', mockConfig)).toEqual(
-          { price }
-        )
+        expect(readUrlFilters('/products?f_price_gt=1.5', mockConfig)).toEqual({
+          price
+        })
       })
 
       it.each([
@@ -341,33 +369,33 @@ describe('URL Parser', () => {
           'page=2&f_name_contains=what?ever'
         ]
       ])('should keep a ? in a value of %s', (_label, url) => {
-        expect(parseUrlFilters(url, mockConfig)).toEqual({
+        expect(readUrlFilters(url, mockConfig)).toEqual({
           name: { filterType: 'text', type: 'contains', filter: 'what?ever' }
         })
       })
 
       it('should keep a # in a value of a raw query string', () => {
-        expect(parseUrlFilters('f_name_contains=a#b', mockConfig)).toEqual({
+        expect(readUrlFilters('f_name_contains=a#b', mockConfig)).toEqual({
           name: { filterType: 'text', type: 'contains', filter: 'a#b' }
         })
       })
 
       it('should keep a ? in a param name of a raw query string', () => {
-        expect(
-          parseUrlFilters('f_first?name_contains=bob', mockConfig)
-        ).toEqual({ 'first?name': name })
+        expect(readUrlFilters('f_first?name_contains=bob', mockConfig)).toEqual(
+          { 'first?name': name }
+        )
       })
 
       it('should read text with no scheme and no leading / as a raw query', () => {
         // A relative path must start with '/'. Without it, `users?...` is a
         // raw query whose first key is `users?f_name_contains`.
-        expect(
-          parseUrlFilters('users?f_name_contains=bob', mockConfig)
-        ).toEqual({})
+        expect(readUrlFilters('users?f_name_contains=bob', mockConfig)).toEqual(
+          {}
+        )
       })
 
       it('should return no filters for text with no filter params', () => {
-        expect(parseUrlFilters('not-a-url', mockConfig)).toEqual({})
+        expect(readUrlFilters('not-a-url', mockConfig)).toEqual({})
       })
     })
 
@@ -378,14 +406,14 @@ describe('URL Parser', () => {
 
       it('should ignore a host param called filters', () => {
         expect(
-          parseUrlFilters('?filters=active&f_name_contains=bob', mockConfig)
+          readUrlFilters('?filters=active&f_name_contains=bob', mockConfig)
         ).toEqual({ name })
       })
 
       it('should ignore grid_filters when groupedParam is different', () => {
         const config = { ...mockConfig, groupedParam: 'gf' }
         expect(
-          parseUrlFilters(
+          readUrlFilters(
             '?grid_filters=f_age_gt%3D1&f_name_contains=bob',
             config
           )
@@ -395,13 +423,13 @@ describe('URL Parser', () => {
       it('should read the configured groupedParam', () => {
         const config = { ...mockConfig, groupedParam: 'gf' }
         expect(
-          parseUrlFilters('?gf=f_name_contains%3Dbob&f_age_gt=1', config)
+          readUrlFilters('?gf=f_name_contains%3Dbob&f_age_gt=1', config)
         ).toEqual({ name })
       })
 
       it('should decode with the configured format', () => {
         const config = { ...mockConfig, format: 'json' as const }
-        expect(parseUrlFilters(`?grid_filters=${json}`, config)).toEqual({
+        expect(readUrlFilters(`?grid_filters=${json}`, config)).toEqual({
           name
         })
       })
@@ -416,20 +444,20 @@ describe('URL Parser', () => {
         }
 
         // A base64 value under a json config is not decoded as base64
-        expect(parseUrlFilters(`?grid_filters=${base64}`, config)).toEqual({})
+        expect(readUrlFilters(`?grid_filters=${base64}`, config)).toEqual({})
         expect(onParseError).toHaveBeenCalledOnce()
       })
 
       it('should read a grouped link in individual mode', () => {
         // serialization: 'individual', format: 'querystring' (the defaults)
         expect(
-          parseUrlFilters('?grid_filters=f_name_contains%3Dbob', mockConfig)
+          readUrlFilters('?grid_filters=f_name_contains%3Dbob', mockConfig)
         ).toEqual({ name })
       })
 
       it('should read prefixed params when the grouped param is empty', () => {
         expect(
-          parseUrlFilters('?grid_filters=&f_name_contains=bob', mockConfig)
+          readUrlFilters('?grid_filters=&f_name_contains=bob', mockConfig)
         ).toEqual({ name })
       })
     })
@@ -441,7 +469,7 @@ describe('URL Parser', () => {
         ['an unclosed IPv6 host', 'http://[::1?f_name_contains=bob'],
         ['a protocol-relative URL with a bad host', '//[']
       ])('should throw InvalidURLError for %s', (_label, url) => {
-        expect(() => parseUrlFilters(url, mockConfig)).toThrow(InvalidURLError)
+        expect(() => readUrlFilters(url, mockConfig)).toThrow(InvalidURLError)
       })
 
       it.each([
@@ -459,7 +487,7 @@ describe('URL Parser', () => {
       ])(
         'should throw InvalidURLError for %s with no scheme',
         (_label, url) => {
-          expect(() => parseUrlFilters(url, mockConfig)).toThrow(/no scheme/)
+          expect(() => readUrlFilters(url, mockConfig)).toThrow(/no scheme/)
         }
       )
 
@@ -467,7 +495,7 @@ describe('URL Parser', () => {
         let caught: unknown
 
         try {
-          parseUrlFilters('http://', mockConfig)
+          readUrlFilters('http://', mockConfig)
         } catch (error) {
           caught = error
         }
@@ -483,7 +511,7 @@ describe('URL Parser', () => {
       const url =
         'https://example.com?f_name_contains=valid&f_invalid_param=skip'
 
-      const result = parseUrlFilters(url, mockConfigWithError)
+      const result = readUrlFilters(url, mockConfigWithError)
       expect(result.name?.filter).toBe('valid')
       expect(result.invalid_param).toBeUndefined()
       expect(mockConfigWithError.onParseError).toHaveBeenCalled()

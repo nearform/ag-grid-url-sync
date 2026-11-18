@@ -1,7 +1,6 @@
-import type { GridApi } from 'ag-grid-community'
+import type { FilterModel, GridApi } from 'ag-grid-community'
 import type {
   ApplyResult,
-  FilterState,
   GridUrlSync,
   GridUrlSyncOptions,
   GridUrlSyncSnapshot,
@@ -15,15 +14,12 @@ import { DEFAULT_CONFIG } from './options.js'
 import { codecOptions, individual } from './codecs.js'
 import { isDataIssue, reportIssue, rethrowIfThrown, toIssue } from './issues.js'
 import { toError } from './to-error.js'
-import { parseUrlFilters } from './url-parser.js'
-import { generateUrl } from './url-generator.js'
+import { readUrlFilters } from './url-parser.js'
+import { gridColumnType, gridColumnTypes } from './column-types.js'
+import { writeUrlFilters } from './url-generator.js'
 import { resolveParamPrefix } from './individual-params.js'
-import {
-  fromGridModel,
-  getFilterModel,
-  toGridModel,
-  type FilterModel
-} from './grid-integration.js'
+import { checkColumnTypes } from './grid-integration.js'
+import { keyForm, mergeUrlModel, urlForm as urlFormOf } from './model-form.js'
 import type { GridView } from './view-storage.js'
 import type {
   Classified,
@@ -162,6 +158,11 @@ export interface Handover {
   /** The issues of the latest apply (#271 review) */
   readonly applyIssues: readonly URLSyncError[]
   /**
+   * A URL apply that waits for the row data (#224). The old sync called no
+   * setFilterModel for it, so the grid does not hold it: the next sync must.
+   */
+  readonly parked: ParkedApply | null
+  /**
    * The issues of the latest grid read, which onIssue got (#305). The next
    * sync does not report the same ones again. It reports a new one.
    */
@@ -214,12 +215,6 @@ export interface SyncStart {
    * keeps them: the grid shows what it showed.
    */
   readonly newStore?: boolean | undefined
-  /**
-   * The deprecated hook: a grid read and a pointer clear report with source
-   * 'grid', whatever started the work, as before #313. The hook gives them
-   * the 0.5.1 contexts by that source.
-   */
-  readonly gridSourceForGridWork?: boolean | undefined
 }
 
 /**
@@ -238,12 +233,12 @@ export function createSync(
 
   const listeners = new Set<() => void>()
   let status: SyncStatus = 'active'
-  let state: FilterState = {}
+  // The URL form of the grid's model: the part that the codec holds (#225)
+  let state: FilterModel = {}
+  // Whether the grid has a filter, also one that the URL does not hold (#315)
+  let hasFilters = false
   let url = ''
   let applyIssues: readonly URLSyncError[] = NO_ISSUES
-  // The key of the GRID_ERROR when the grid could not take the listeners
-  // on create, or null (#286)
-  let listenerFailure: string | null = null
   let readIssues: readonly URLSyncError[] = NO_ISSUES
   let writeIssues: readonly URLSyncError[] = NO_ISSUES
   const historyMode = options.history ?? 'none'
@@ -262,6 +257,16 @@ export function createSync(
   let held: string | null = null
   let viewList: readonly GridView[] = NO_VIEWS
   let snapshot: GridUrlSyncSnapshot = IDLE_SNAPSHOT
+  // The column types of the grid, for a shared operation in a URL (#224)
+  const columnTypes = gridColumnTypes(api)
+  // A URL apply that waits for AG Grid to infer a column type (#224)
+  let parked: ParkedApply | null = null
+  // The key of the GRID_ERROR when the grid could not take the listeners
+  // on create, or null (#286)
+  let listenerFailure: string | null = null
+  // The earlier sync's waiting apply, which a sync that cannot take its
+  // listeners cannot run: the next sync gets it (#286 review)
+  let passedPark: ParkedApply | null = null
 
   /**
    * Sends an issue to onIssue. An error from the app's handler is reported
@@ -276,11 +281,6 @@ export function createSync(
     }
   }
 
-  /** The source of a grid read or a pointer clear that the work started */
-  function gridWork(source: IssueSource): IssueSource {
-    return start.gridSourceForGridWork ? 'grid' : source
-  }
-
   function startCall(source: IssueSource, mode: IssueMode): Call {
     const issues: URLSyncError[] = []
 
@@ -290,6 +290,7 @@ export function createSync(
       options: {
         ...codec,
         maxValueLength,
+        columnTypes,
         onParseError: error => {
           // reportIssue only sends URLSyncError here
           if (!(error instanceof URLSyncError)) return
@@ -341,7 +342,6 @@ export function createSync(
       ...writeIssues
     ]
 
-    const hasFilters = Object.keys(state).length > 0
     const sameList = sameIssues(snapshot.issues, list)
     const activeViewId = active?.id ?? null
 
@@ -391,7 +391,7 @@ export function createSync(
    * call that wrote to the grid, or 'grid' for the grid's own filters (#313)
    */
   function readGrid(source: IssueSource = 'grid'): void {
-    for (const issue of readGridIssues()) emit(issue, gridWork(source))
+    for (const issue of readGridIssues()) emit(issue, source)
   }
 
   /**
@@ -401,15 +401,22 @@ export function createSync(
    */
   function readGridIssues(): URLSyncError[] {
     const call = startCall('grid', 'collect')
+    let model: FilterModel | null = null
 
     try {
-      state = getFilterModel(api, call.options)
+      // AG Grid can hand back null despite the declared return type
+      model = api.getFilterModel()
     } catch (cause) {
       fail(call, cause, 'GRID_ERROR')
     }
 
+    hasFilters = Object.keys(model ?? {}).length > 0
+
+    // A column that the codec cannot hold is an issue of the read (#225)
+    state = urlFormOf(model, call.options)
+
     url = hasWindow()
-      ? generateUrl(window.location.href, state, call.options)
+      ? writeUrlFilters(window.location.href, state, call.options)
       : ''
 
     const known = new Set(readIssues.map(issueKey))
@@ -429,11 +436,26 @@ export function createSync(
     mode: IssueMode,
     onCreate: boolean
   ): ApplyResult {
+    if (waitsForTypes(target)) {
+      try {
+        park({ target, source, mode, onCreate })
+      } catch (cause) {
+        // The grid cannot take the row data listener (#286 review): the
+        // apply cannot wait, and the grid keeps its filters
+        fail(startCall(source, mode), cause, 'GRID_ERROR')
+        publish()
+      }
+
+      return { issues: NO_ISSUES }
+    }
+
+    unpark()
+
     const call = startCall(source, mode)
-    let filters: FilterState | undefined
+    let filters: FilterModel | undefined
 
     try {
-      filters = parseUrlFilters(target, call.options)
+      filters = readUrlFilters(target, call.options)
     } catch (cause) {
       fail(call, cause, 'INVALID_URL')
     }
@@ -447,7 +469,12 @@ export function createSync(
       let model: FilterModel | undefined
 
       try {
-        model = toGridModel(filters, api, call.options)
+        // The URL changes only the columns that the codec holds (#225)
+        model = mergeUrlModel(
+          liveModel(),
+          checkColumnTypes(filters, api, call.options),
+          call.options
+        )
       } catch (cause) {
         own = null
         failed = true
@@ -472,10 +499,76 @@ export function createSync(
   }
 
   /**
+   * Whether a URL has a filter on a column whose type AG Grid has not
+   * inferred yet (#224). A shared operation's value would be read as text,
+   * and a text value on what becomes a number column filters out every row.
+   * A filter of one type cannot be checked against the column yet.
+   */
+  function waitsForTypes(target: string): boolean {
+    try {
+      const filters = readUrlFilters(
+        target,
+        startCall('url', 'collect').options
+      )
+
+      return Object.keys(filters).some(
+        column => gridColumnType(api, column) === 'pending'
+      )
+    } catch {
+      // The apply reports a URL that cannot be read
+      return false
+    }
+  }
+
+  /**
+   * Keeps the apply until the row data comes. AG Grid applies a filter model
+   * only then too, so the user sees the same. The last apply wins.
+   */
+  function park(next: ParkedApply): void {
+    if (!parked) api.addEventListener('rowDataUpdated', onRowData)
+
+    parked = next
+    // The URL replaces the claim of the earlier apply
+    applyIssues = NO_ISSUES
+    readGrid()
+    publish()
+  }
+
+  /** Drops the waiting apply: a newer write, a user change, or destroy */
+  function unpark(): void {
+    if (!parked) return
+
+    parked = null
+    api.removeEventListener('rowDataUpdated', onRowData)
+  }
+
+  /** The row data came: run the waiting apply once the types are known */
+  function onRowData(): void {
+    const waiting = parked
+
+    if (status !== 'active' || !waiting || waitsForTypes(waiting.target)) {
+      return
+    }
+
+    unpark()
+
+    // An event listener must not throw: the issues go to onIssue
+    apply(
+      waiting.target,
+      waiting.source,
+      waiting.mode === 'throw' ? 'report' : waiting.mode,
+      waiting.onCreate
+    )
+  }
+
+  /**
    * Calls setFilterModel as the sync's own write of the kind. False when the
    * grid threw: the call gets GRID_ERROR.
    */
   function setModel(model: FilterModel, kind: WriteKind, call: Call): boolean {
+    // A newer write wins over a URL that waits for the row data
+    unpark()
+
     // Before the call, so an event inside it is known as ours (#273). A
     // pending write stays known: a deferred grid lands it first.
     own = startWrite(own, kind)
@@ -539,13 +632,11 @@ export function createSync(
     return true
   }
 
-  /** The grid's filters now, or null when the grid cannot be read */
-  function liveState(): FilterState | null {
-    try {
-      return getFilterModel(api, startCall('grid', 'collect').options)
-    } catch {
-      return null
-    }
+  /** The URL form of the grid's filters now, or null when the grid cannot be read */
+  function liveState(): FilterModel | null {
+    const live = liveModel()
+
+    return live === null ? null : urlForm(live)
   }
 
   /** The grid's AG Grid model now, or null when the grid cannot be read */
@@ -591,8 +682,8 @@ export function createSync(
   }
 
   /** The filters that the codec makes of a model */
-  function urlForm(model: Columns): FilterState {
-    return fromGridModel(model, startCall('grid', 'collect').options)
+  function urlForm(model: Columns): FilterModel {
+    return urlFormOf(model, startCall('grid', 'collect').options)
   }
 
   /** The URL form of each column that the URL can hold */
@@ -691,7 +782,7 @@ export function createSync(
 
     const { id } = active
     active = null
-    clearPointer(id, startCall(gridWork(source), 'report'))
+    clearPointer(id, startCall(source, 'report'))
   }
 
   /**
@@ -721,8 +812,8 @@ export function createSync(
    * True when the write landed.
    */
   function settleUrlWrite(
-    filters: FilterState,
-    before: FilterState | null,
+    filters: FilterModel,
+    before: FilterModel | null,
     failed: boolean
   ): boolean {
     const accepted = acceptedPart(filters)
@@ -792,7 +883,7 @@ export function createSync(
    */
   function givesFilters(target: string): boolean {
     try {
-      const filters = parseUrlFilters(
+      const filters = readUrlFilters(
         target,
         startCall('url', 'collect').options
       )
@@ -820,14 +911,13 @@ export function createSync(
    * A key for a filter state that does not depend on the order of the
    * filters or of the page's params
    */
-  function filtersKey(filters: FilterState): string {
-    const sorted = Object.fromEntries(Object.entries(filters).sort(byColumnId))
+  function filtersKey(filters: FilterModel): string {
+    const { options } = startCall('grid', 'collect')
+    // The json form compares in a normal form, as the individual form does
+    const normal = keyForm(filters, options)
+    const sorted = Object.fromEntries(Object.entries(normal).sort(byColumnId))
 
-    return generateUrl(
-      'http://key.invalid/',
-      sorted,
-      startCall('grid', 'collect').options
-    )
+    return writeUrlFilters('http://key.invalid/', sorted, options)
   }
 
   /**
@@ -857,7 +947,7 @@ export function createSync(
 
     const key = filtersKey(state)
 
-    const current = parseUrlFilters(
+    const current = readUrlFilters(
       window.location.href,
       startCall('grid', 'collect').options
     )
@@ -888,7 +978,7 @@ export function createSync(
    */
   function holdsView(target: string, view: GridView): boolean {
     try {
-      const filters = parseUrlFilters(
+      const filters = readUrlFilters(
         target,
         startCall('url', 'collect').options
       )
@@ -936,7 +1026,7 @@ export function createSync(
       // The grid's own filters from create: the create's write, with no
       // new history entry. Not a user edit (#306), so its issues are the
       // grid's (#313).
-      for (const issue of found) emit(issue, gridWork('grid'))
+      for (const issue of found) emit(issue, 'grid')
 
       writeChange('grid', true)
       publish()
@@ -950,7 +1040,7 @@ export function createSync(
     // that made the write (#313). Only a change is the grid's.
     const source = result.kind === 'change' ? 'grid' : ownSource
 
-    for (const issue of found) emit(issue, gridWork(source))
+    for (const issue of found) emit(issue, source)
 
     // On each event, echoes too: a pending view can land in an echo of a
     // later own write. The rule is the same for the same grid model.
@@ -961,7 +1051,11 @@ export function createSync(
       event?.source === 'api'
     )
 
-    if (result.kind === 'change') writeChange('grid', false)
+    if (result.kind === 'change') {
+      // The user's change wins over a URL that waits for the row data
+      unpark()
+      writeChange('grid', false)
+    }
 
     if (result.kind === 'landing' && result.write !== null) {
       writeLanding(result.write, ownSource, result.rest === true)
@@ -1046,6 +1140,7 @@ export function createSync(
     if (status === 'destroyed') return
 
     status = 'destroyed'
+    unpark()
 
     if (listensToPopstate && hasWindow()) {
       window.removeEventListener('popstate', onPopstate)
@@ -1089,15 +1184,15 @@ export function createSync(
       }
 
       const call = startCall('api', 'throw')
-      let model: FilterModel | undefined
+      let checked: FilterModel | undefined
 
       try {
-        model = toGridModel(filters, api, call.options)
+        checked = checkColumnTypes(filters, api, call.options)
       } catch (cause) {
         fail(call, cause, 'GRID_ERROR')
       }
 
-      if (model) writeModel(model, 'app', call)
+      if (checked) writeModel(checked, 'app', call)
 
       applyIssues = call.issues.length ? call.issues : NO_ISSUES
       publish()
@@ -1115,14 +1210,15 @@ export function createSync(
 
       if (status === 'active') {
         try {
-          filters = getFilterModel(api, call.options)
+          // The read reports its issues (#225), so this call does not
+          filters = urlForm(api.getFilterModel())
         } catch (cause) {
           fail(call, cause, 'GRID_ERROR')
         }
       }
 
       try {
-        return generateUrl(base, filters, call.options)
+        return writeUrlFilters(base, filters, call.options)
       } catch (cause) {
         fail(call, cause, 'INVALID_URL')
 
@@ -1154,7 +1250,7 @@ export function createSync(
       let view: GridView
 
       try {
-        view = views.saveView(name, model)
+        view = views.saveView(name, { filterModel: model })
       } catch (cause) {
         fail(call, cause, 'STORAGE_WRITE_FAILED')
 
@@ -1303,6 +1399,7 @@ export function createSync(
     source: ownSource,
     keys,
     applyIssues,
+    parked: parked ?? passedPark,
     readIssues,
     listenerFailure
   }))
@@ -1323,6 +1420,7 @@ export function createSync(
     // A grid that cannot take a listener cannot be followed (#286): remove
     // each listener that it took, and report it
     status = 'destroyed'
+    passedPark = handed?.parked ?? null
     removeQuietly('filterChanged', onFilterChanged)
     removeQuietly('gridPreDestroyed', destroy)
 
@@ -1387,7 +1485,13 @@ export function createSync(
         ? undefined
         : viewList.find(view => view.id === keptViewId)
 
-    if (kept) {
+    if (handed?.parked) {
+      // The earlier sync's URL still waits for the row data. It is newer
+      // than a kept view: an apply drops the view's pending write.
+      const { target, source, mode, onCreate } = handed.parked
+
+      apply(target, source, mode, onCreate)
+    } else if (kept) {
       restore(kept)
     } else {
       readGrid()
@@ -1396,6 +1500,14 @@ export function createSync(
   }
 
   return sync
+}
+
+/** A URL apply that waits for AG Grid to infer a column type (#224) */
+export interface ParkedApply {
+  target: string
+  source: IssueSource
+  mode: IssueMode
+  onCreate: boolean
 }
 
 /**

@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import * as publicApi from '../index.js'
+import * as publicApi from './types.js'
 import {
   OPERATORS,
+  operationsOnlyFor,
+  sharedOperations,
   operatorById,
   operatorFromUrl,
   operatorFromAgGrid
@@ -61,10 +63,10 @@ describe('operator table (#217)', () => {
 describe('public operation constants (#217)', () => {
   it('keeps the operation lists', () => {
     expect({
-      TEXT_ONLY_OPERATIONS: publicApi.TEXT_ONLY_OPERATIONS,
-      NUMBER_ONLY_OPERATIONS: publicApi.NUMBER_ONLY_OPERATIONS,
-      DATE_ONLY_OPERATIONS: publicApi.DATE_ONLY_OPERATIONS,
-      SHARED_OPERATIONS: publicApi.SHARED_OPERATIONS,
+      TEXT_ONLY_OPERATIONS: operationsOnlyFor('text'),
+      NUMBER_ONLY_OPERATIONS: operationsOnlyFor('number'),
+      DATE_ONLY_OPERATIONS: operationsOnlyFor('date'),
+      SHARED_OPERATIONS: sharedOperations(),
       TEXT_FILTER_OPERATIONS: publicApi.TEXT_FILTER_OPERATIONS,
       NUMBER_FILTER_OPERATIONS: publicApi.NUMBER_FILTER_OPERATIONS,
       DATE_FILTER_OPERATIONS: publicApi.DATE_FILTER_OPERATIONS
@@ -132,101 +134,6 @@ describe('public operation constants (#217)', () => {
     `)
   })
 
-  it('keeps the URL mappings', () => {
-    expect({
-      OPERATION_MAP: publicApi.OPERATION_MAP,
-      INTERNAL_TO_URL_OPERATION_MAP: publicApi.INTERNAL_TO_URL_OPERATION_MAP
-    }).toMatchInlineSnapshot(`
-      {
-        "INTERNAL_TO_URL_OPERATION_MAP": {
-          "blank": "blank",
-          "contains": "contains",
-          "dateAfter": "after",
-          "dateAfterOrEqual": "afterEq",
-          "dateBefore": "before",
-          "dateBeforeOrEqual": "beforeEq",
-          "dateRange": "daterange",
-          "endsWith": "endsWith",
-          "eq": "eq",
-          "greaterThan": "gt",
-          "greaterThanOrEqual": "gte",
-          "inRange": "range",
-          "lessThan": "lt",
-          "lessThanOrEqual": "lte",
-          "notBlank": "notBlank",
-          "notContains": "notContains",
-          "notEqual": "neq",
-          "startsWith": "startsWith",
-        },
-        "OPERATION_MAP": {
-          "after": "dateAfter",
-          "afterEq": "dateAfterOrEqual",
-          "before": "dateBefore",
-          "beforeEq": "dateBeforeOrEqual",
-          "blank": "blank",
-          "contains": "contains",
-          "daterange": "dateRange",
-          "endsWith": "endsWith",
-          "eq": "eq",
-          "gt": "greaterThan",
-          "gte": "greaterThanOrEqual",
-          "lt": "lessThan",
-          "lte": "lessThanOrEqual",
-          "neq": "notEqual",
-          "notBlank": "notBlank",
-          "notContains": "notContains",
-          "range": "inRange",
-          "startsWith": "startsWith",
-        },
-      }
-    `)
-  })
-
-  it('keeps the AG Grid mappings, including the legacy key collision', () => {
-    expect({
-      AG_GRID_OPERATION_NAMES: publicApi.AG_GRID_OPERATION_NAMES,
-      REVERSE_AG_GRID_OPERATION_NAMES: publicApi.REVERSE_AG_GRID_OPERATION_NAMES
-    }).toMatchInlineSnapshot(`
-      {
-        "AG_GRID_OPERATION_NAMES": {
-          "blank": "blank",
-          "contains": "contains",
-          "dateAfter": "greaterThan",
-          "dateAfterOrEqual": "greaterThanOrEqual",
-          "dateBefore": "lessThan",
-          "dateBeforeOrEqual": "lessThanOrEqual",
-          "dateRange": "inRange",
-          "endsWith": "endsWith",
-          "eq": "equals",
-          "greaterThan": "greaterThan",
-          "greaterThanOrEqual": "greaterThanOrEqual",
-          "inRange": "inRange",
-          "lessThan": "lessThan",
-          "lessThanOrEqual": "lessThanOrEqual",
-          "notBlank": "notBlank",
-          "notContains": "notContains",
-          "notEqual": "notEqual",
-          "startsWith": "startsWith",
-        },
-        "REVERSE_AG_GRID_OPERATION_NAMES": {
-          "blank": "blank",
-          "contains": "contains",
-          "endsWith": "endsWith",
-          "equals": "eq",
-          "greaterThan": "dateAfter",
-          "greaterThanOrEqual": "dateAfterOrEqual",
-          "inRange": "dateRange",
-          "lessThan": "dateBefore",
-          "lessThanOrEqual": "dateBeforeOrEqual",
-          "notBlank": "notBlank",
-          "notContains": "notContains",
-          "notEqual": "notEqual",
-          "startsWith": "startsWith",
-        },
-      }
-    `)
-  })
-
   it('keeps the type guards', () => {
     const all = [
       ...new Set([
@@ -239,9 +146,7 @@ describe('public operation constants (#217)', () => {
     const guards = {
       isTextFilterOperation: publicApi.isTextFilterOperation,
       isNumberFilterOperation: publicApi.isNumberFilterOperation,
-      isDateFilterOperation: publicApi.isDateFilterOperation,
-      isRangeOperation: publicApi.isRangeOperation,
-      isBlankOperation: publicApi.isBlankOperation
+      isDateFilterOperation: publicApi.isDateFilterOperation
     }
 
     expect(
@@ -253,10 +158,6 @@ describe('public operation constants (#217)', () => {
       )
     ).toMatchInlineSnapshot(`
       {
-        "isBlankOperation": [
-          "blank",
-          "notBlank",
-        ],
         "isDateFilterOperation": [
           "eq",
           "notEqual",
@@ -278,10 +179,6 @@ describe('public operation constants (#217)', () => {
           "greaterThan",
           "greaterThanOrEqual",
           "inRange",
-        ],
-        "isRangeOperation": [
-          "inRange",
-          "dateRange",
         ],
         "isTextFilterOperation": [
           "contains",

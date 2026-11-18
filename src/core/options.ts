@@ -33,6 +33,7 @@ export function resolveOptions(
     serialization: options.serialization ?? DEFAULT_CONFIG.serialization,
     groupedParam: options.groupedParam ?? DEFAULT_CONFIG.groupedParam,
     format: options.format ?? DEFAULT_CONFIG.format,
-    throwOnError: options.throwOnError ?? DEFAULT_CONFIG.throwOnError
+    throwOnError: options.throwOnError ?? DEFAULT_CONFIG.throwOnError,
+    columnTypes: options.columnTypes
   }
 }

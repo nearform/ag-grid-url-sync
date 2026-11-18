@@ -2,9 +2,9 @@ import { StrictMode } from 'react'
 import { renderHook, act } from '@testing-library/react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { FilterModel } from 'ag-grid-community'
-import { useAGGridUrlSync } from './use-ag-grid-url-sync.js'
-import type { UseAGGridUrlSyncOptions } from './types.js'
-import * as classModule from '../core/ag-grid-url-sync.js'
+import { useGridUrlSync } from './use-grid-url-sync.js'
+import type { UseGridUrlSyncOptions } from './types.js'
+import { individual } from '../core/codecs.js'
 import { createViewStore } from '../core/view-storage.js'
 import {
   asGridApi,
@@ -12,16 +12,16 @@ import {
   waitForEffects
 } from '../test-helpers.js'
 
-// The hook reads its state from createGridUrlSync (#222): options take effect
-// after mount, the returned object is stable, and a destroyed grid is like no
-// grid.
+// The hook reads its state from the core sync (#222): options take effect
+// after mount, the result is stable, and a destroyed grid is like no grid.
+// On a grid fake, so a test controls each grid call.
 
 const ANN: FilterModel = {
   name: { filterType: 'text', type: 'contains', filter: 'ann' }
 }
 
 const BAD: FilterModel = {
-  age: { filterType: 'number', type: 'unknownOperation', filter: 1 }
+  age: { filterType: 'number', type: 'equals', filter: 'abc' }
 }
 
 function createGrid(initial: FilterModel = {}) {
@@ -53,6 +53,8 @@ function createGrid(initial: FilterModel = {}) {
   }
 }
 
+type Grid = ReturnType<typeof createGrid>
+
 /** Sets the page URL on test-setup's location mock */
 function setPage(search: string): void {
   Object.assign(window.location, {
@@ -61,20 +63,20 @@ function setPage(search: string): void {
   })
 }
 
+/** The code and the source of each issue that onIssue got */
+const issuesOf = (onIssue: ReturnType<typeof vi.fn>) =>
+  onIssue.mock.calls.map(([event]) => [event.issue.code, event.source])
+
 type Props = {
-  grid: ReturnType<typeof createGrid>
-  options: UseAGGridUrlSyncOptions
+  grid: Grid | null
+  options: Omit<UseGridUrlSyncOptions, 'api'>
 }
 
 const useSync = ({ grid, options }: Props) =>
-  useAGGridUrlSync(asGridApi(grid.api), options)
+  useGridUrlSync({ api: grid ? asGridApi(grid.api) : null, ...options })
 
 function renderSync(props: Props) {
   return renderHook(useSync, { initialProps: props })
-}
-
-function renderStrict(props: Props) {
-  return renderHook(useSync, { initialProps: props, wrapper: StrictMode })
 }
 
 beforeEach(() => {
@@ -86,212 +88,96 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('options after mount (#222)', () => {
-  test('uses a new paramPrefix after mount', async () => {
-    const grid = createGrid(ANN)
+describe('useGridUrlSync: start and stop (#226)', () => {
+  test('becomes active when the grid api arrives', async () => {
+    const { result, rerender } = renderSync({ grid: null, options: {} })
 
-    const { result, rerender } = renderSync({
-      grid,
-      options: { paramPrefix: 'f_' }
-    })
+    expect(result.current.status).toBe('idle')
 
+    rerender({ grid: createGrid(), options: {} })
     await waitForEffects()
 
-    rerender({ grid, options: { paramPrefix: 'g_' } })
-    await waitForEffects()
-
-    expect(result.current.currentUrl).toContain('g_name_contains=ann')
-    expect(result.current.currentUrl).not.toContain('f_name')
+    expect(result.current.status).toBe('active')
   })
 
-  test('does not apply the URL again when an option changes', async () => {
+  test('a failed apply on create is reported one time and not done again on a render', async () => {
     setPage('?f_name_contains=ann')
+    const failure = new Error('cannot apply')
     const grid = createGrid()
+    grid.api.setFilterModel.mockImplementationOnce(() => {
+      throw failure
+    })
+    const onIssue = vi.fn()
 
-    const { rerender } = renderSync({
-      grid,
-      options: { autoApplyOnMount: true }
+    // A new options object and a new onIssue on each render
+    const { rerender } = renderHook(() =>
+      useGridUrlSync({
+        api: asGridApi(grid.api),
+        onIssue: event => onIssue(event)
+      })
+    )
+
+    await waitForEffects()
+    rerender()
+    rerender()
+    await waitForEffects()
+
+    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(1)
+    expect(issuesOf(onIssue)).toEqual([['GRID_ERROR', 'url']])
+    expect(onIssue.mock.calls[0]?.[0].issue.cause).toBe(failure)
+  })
+
+  test('a grid that cannot take a listener is reported, not thrown (#286)', () => {
+    const grid = createGrid()
+    grid.api.addEventListener = vi.fn(() => {
+      throw new Error('Initialization failed')
+    })
+    const onIssue = vi.fn()
+
+    const { result } = renderSync({ grid, options: { onIssue } })
+
+    expect(result.current.status).not.toBe('active')
+    expect(onIssue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issue: expect.objectContaining({ message: 'Initialization failed' })
+      })
+    )
+  })
+
+  test('getUrl reports INVALID_URL for a page URL that does not parse', async () => {
+    const onIssue = vi.fn()
+    const { result } = renderSync({ grid: createGrid(), options: { onIssue } })
+    await waitForEffects()
+
+    Object.defineProperty(window.location, 'href', {
+      value: 'not a url',
+      configurable: true
     })
 
-    await waitForEffects()
-    const writes = grid.api.setFilterModel.mock.calls.length
-
-    rerender({ grid, options: { autoApplyOnMount: true, paramPrefix: 'g_' } })
-    await waitForEffects()
-
-    // The URL was applied one time, on mount
-    expect(writes).toBe(1)
-    expect(grid.api.setFilterModel).toHaveBeenCalledWith(ANN)
-    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
+    expect(() => result.current.getUrl()).not.toThrow()
+    expect(issuesOf(onIssue)).toEqual([['INVALID_URL', 'api']])
   })
 
-  test('makes no new sync for a new options object with the same values', async () => {
-    const grid = createGrid()
-    const { rerender } = renderSync({ grid, options: { paramPrefix: 'f_' } })
-    await waitForEffects()
-    const adds = grid.listeners.addEventListener.mock.calls.length
+  test('writes nothing to the console when no onIssue is set', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    rerender({ grid, options: { paramPrefix: 'f_' } })
-    await waitForEffects()
-
-    expect(grid.listeners.count('gridPreDestroyed')).toBe(1)
-    expect(grid.listeners.addEventListener).toHaveBeenCalledTimes(adds)
-  })
-
-  test('returns the same object across renders', async () => {
-    const grid = createGrid()
-
-    const { result, rerender } = renderSync({
-      grid,
-      options: { paramPrefix: 'f_', onParseError: () => {} }
+    const notReady = renderSync({ grid: null, options: {} })
+    act(() => {
+      notReady.result.current.applyFilters({})
     })
 
-    await waitForEffects()
-    const first = result.current
-
-    rerender({ grid, options: { paramPrefix: 'f_', onParseError: () => {} } })
-    await waitForEffects()
-
-    expect(result.current).toBe(first)
-  })
-
-  test('uses a new onParseError from a later render', async () => {
-    const first = vi.fn()
-    const second = vi.fn()
     const grid = createGrid()
-    const { rerender } = renderSync({ grid, options: { onParseError: first } })
+    renderSync({ grid, options: {} })
     await waitForEffects()
 
-    rerender({ grid, options: { onParseError: second } })
-    await waitForEffects()
-    grid.setModel(BAD)
+    grid.api.getFilterModel.mockImplementation(() => {
+      throw new Error('grid failed')
+    })
     grid.fireFilterChanged()
 
-    expect(second).toHaveBeenCalledOnce()
-    expect(first).not.toHaveBeenCalled()
-  })
-
-  test('keeps activeViewId when an option changes', async () => {
-    const grid = createGrid(ANN)
-
-    const { result, rerender } = renderSync({
-      grid,
-      options: { storageKey: 'hook-sync-views' }
-    })
-
-    await waitForEffects()
-    let id = ''
-
-    act(() => {
-      id = result.current.saveView('v')!.id
-    })
-
-    rerender({
-      grid,
-      options: { storageKey: 'hook-sync-views', paramPrefix: 'g_' }
-    })
-    await waitForEffects()
-
-    expect(result.current.activeViewId).toBe(id)
-  })
-
-  test('an option change does not load a view that another tab deleted', async () => {
-    const onError = vi.fn()
-    const grid = createGrid(ANN)
-    const options = { storageKey: 'hook-sync-views', onError }
-    const { result, rerender } = renderSync({ grid, options })
-    await waitForEffects()
-    let id = ''
-
-    act(() => {
-      id = result.current.saveView('v')!.id
-    })
-    createViewStore('hook-sync-views').deleteView(id)
-    const writes = grid.api.setFilterModel.mock.calls.length
-
-    rerender({ grid, options: { ...options, paramPrefix: 'g_' } })
-    await waitForEffects()
-
-    expect(onError).not.toHaveBeenCalled()
-    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
-  })
-
-  test('autoApplyOnMount from false to true applies the URL one time', async () => {
-    setPage('?f_name_contains=ann')
-    const grid = createGrid()
-    const { rerender } = renderSync({ grid, options: {} })
-    await waitForEffects()
-
-    expect(grid.api.setFilterModel).not.toHaveBeenCalled()
-
-    rerender({ grid, options: { autoApplyOnMount: true } })
-    await waitForEffects()
-
-    expect(grid.api.setFilterModel).toHaveBeenCalledOnce()
-    expect(grid.api.setFilterModel).toHaveBeenCalledWith(ANN)
-
-    // The URL had its say on this grid
-    rerender({ grid, options: { autoApplyOnMount: false } })
-    await waitForEffects()
-    rerender({ grid, options: { autoApplyOnMount: true } })
-    await waitForEffects()
-
-    expect(grid.api.setFilterModel).toHaveBeenCalledOnce()
-  })
-
-  test('a new autoApplyOnMount value makes no new sync', async () => {
-    setPage('?f_name_contains=ann')
-    const grid = createGrid()
-
-    const { rerender } = renderSync({
-      grid,
-      options: { autoApplyOnMount: true }
-    })
-
-    await waitForEffects()
-    const adds = grid.listeners.addEventListener.mock.calls.length
-    const writes = grid.api.setFilterModel.mock.calls.length
-
-    rerender({ grid, options: { autoApplyOnMount: false } })
-    await waitForEffects()
-
-    expect(grid.listeners.addEventListener).toHaveBeenCalledTimes(adds)
-    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
-  })
-
-  test('resets for a new grid when the grid and an option change together', async () => {
-    setPage('?f_name_contains=ann')
-    const oldGrid = createGrid()
-    const newGrid = createGrid()
-
-    const { rerender } = renderSync({
-      grid: oldGrid,
-      options: { autoApplyOnMount: true }
-    })
-
-    await waitForEffects()
-
-    rerender({
-      grid: newGrid,
-      options: { autoApplyOnMount: true, paramPrefix: 'g_' }
-    })
-    await waitForEffects()
-
-    expect(oldGrid.listeners.count('gridPreDestroyed')).toBe(0)
-    expect(newGrid.listeners.count('gridPreDestroyed')).toBe(1)
-    // The URL is applied to each grid. With the g_ prefix the URL has no
-    // filters, so the new grid is cleared.
-    expect(oldGrid.api.setFilterModel).toHaveBeenCalledWith(ANN)
-    expect(newGrid.api.setFilterModel).toHaveBeenCalledWith({})
-  })
-
-  test('makes one live sync in StrictMode', async () => {
-    const grid = createGrid()
-    const { result } = renderStrict({ grid, options: {} })
-    await waitForEffects()
-
-    expect(grid.listeners.count('gridPreDestroyed')).toBe(1)
-    expect(result.current.isReady).toBe(true)
+    expect(consoleError).not.toHaveBeenCalled()
+    expect(consoleWarn).not.toHaveBeenCalled()
   })
 
   test('removes all grid listeners on unmount', async () => {
@@ -304,8 +190,113 @@ describe('options after mount (#222)', () => {
     expect(grid.listeners.count('filterChanged')).toBe(0)
     expect(grid.listeners.count('gridPreDestroyed')).toBe(0)
   })
+})
 
-  test('keeps updating when onParseError throws', async () => {
+describe('options after mount (#222)', () => {
+  test('uses a new codec prefix after mount', async () => {
+    const grid = createGrid(ANN)
+
+    const { result, rerender } = renderSync({
+      grid,
+      options: { codec: individual({ prefix: 'f_' }) }
+    })
+
+    await waitForEffects()
+
+    rerender({ grid, options: { codec: individual({ prefix: 'g_' }) } })
+    await waitForEffects()
+
+    expect(result.current.url).toContain('g_name_contains=ann')
+    expect(result.current.url).not.toContain('f_name')
+  })
+
+  test('returns the same object across renders with inline options', async () => {
+    const grid = createGrid()
+
+    const { result, rerender } = renderSync({
+      grid,
+      options: { codec: individual({ prefix: 'f_' }), onIssue: () => {} }
+    })
+
+    await waitForEffects()
+    const first = result.current
+
+    rerender({
+      grid,
+      options: { codec: individual({ prefix: 'f_' }), onIssue: () => {} }
+    })
+    await waitForEffects()
+
+    expect(result.current).toBe(first)
+  })
+
+  test('an option change does not load a view that another tab deleted', async () => {
+    const onIssue = vi.fn()
+    const grid = createGrid(ANN)
+    const options = { storageKey: 'hook-sync-views', onIssue }
+    const { result, rerender } = renderSync({ grid, options })
+    await waitForEffects()
+    let id = ''
+
+    act(() => {
+      id = result.current.saveView('v')!.id
+    })
+    createViewStore('hook-sync-views').deleteView(id)
+    const writes = grid.api.setFilterModel.mock.calls.length
+
+    rerender({ grid, options: { ...options, history: 'replace' } })
+    await waitForEffects()
+
+    expect(onIssue).not.toHaveBeenCalled()
+    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
+  })
+
+  test('a new applyUrlOnCreate value makes no new sync', async () => {
+    setPage('?f_name_contains=ann')
+    const grid = createGrid()
+
+    const { rerender } = renderSync({
+      grid,
+      options: { applyUrlOnCreate: true }
+    })
+
+    await waitForEffects()
+    const adds = grid.listeners.addEventListener.mock.calls.length
+    const writes = grid.api.setFilterModel.mock.calls.length
+
+    rerender({ grid, options: { applyUrlOnCreate: false } })
+    await waitForEffects()
+
+    expect(grid.listeners.addEventListener).toHaveBeenCalledTimes(adds)
+    expect(grid.api.setFilterModel).toHaveBeenCalledTimes(writes)
+  })
+
+  test('starts again for a new grid when the grid and an option change together', async () => {
+    setPage('?f_name_contains=ann&g_name_contains=bob')
+    const oldGrid = createGrid()
+    const newGrid = createGrid()
+
+    const { rerender } = renderSync({ grid: oldGrid, options: {} })
+
+    await waitForEffects()
+
+    rerender({
+      grid: newGrid,
+      options: { codec: individual({ prefix: 'g_' }) }
+    })
+    await waitForEffects()
+
+    expect(oldGrid.listeners.count('filterChanged')).toBe(0)
+    expect(oldGrid.listeners.count('gridPreDestroyed')).toBe(0)
+    expect(newGrid.listeners.count('gridPreDestroyed')).toBe(1)
+    // The URL is applied to each grid, with the codec of its sync
+    expect(oldGrid.api.setFilterModel).toHaveBeenCalledWith(ANN)
+    expect(newGrid.api.setFilterModel).toHaveBeenCalledWith({
+      name: { filterType: 'text', type: 'contains', filter: 'bob' }
+    })
+  })
+
+  test('keeps updating when onIssue throws', async () => {
     const reportError = vi.fn()
     vi.stubGlobal('reportError', reportError)
     const thrown = new Error('app handler failed')
@@ -314,7 +305,7 @@ describe('options after mount (#222)', () => {
     const { result } = renderSync({
       grid,
       options: {
-        onParseError: () => {
+        onIssue: () => {
           throw thrown
         }
       }
@@ -324,218 +315,59 @@ describe('options after mount (#222)', () => {
     grid.setModel(ANN)
     grid.fireFilterChanged()
 
-    expect(result.current.currentUrl).toContain('f_name_contains=ann')
+    expect(result.current.url).toContain('f_name_contains=ann')
     expect(reportError).toHaveBeenCalledOnce()
     expect(reportError).toHaveBeenCalledWith(thrown)
   })
 })
 
 describe('grid destroyed (#222)', () => {
-  test('isReady is false after the grid is destroyed', async () => {
-    const grid = createGrid(ANN)
-    const { result } = renderSync({ grid, options: {} })
-    await waitForEffects()
-
-    grid.destroyGrid()
-
-    expect(result.current.isReady).toBe(false)
-    expect(result.current.currentUrl).toBe('')
-    expect(result.current.hasFilters).toBe(false)
-  })
-
-  test('reports NOT_READY for an operation on a destroyed grid', async () => {
-    const onError = vi.fn()
+  test('a grid destroyed before mount reports NOT_READY one time', async () => {
+    const onIssue = vi.fn()
     const grid = createGrid()
-    const { result } = renderSync({ grid, options: { onError } })
+    grid.destroyGrid()
+
+    const { result } = renderSync({ grid, options: { onIssue } })
     await waitForEffects()
 
-    grid.destroyGrid()
-    act(() => result.current.applyUrlFilters('?f_a_contains=b'))
-
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'NOT_READY' }),
-      'apply-url-filters'
-    )
+    expect(issuesOf(onIssue)).toEqual([['NOT_READY', 'api']])
     expect(grid.api.setFilterModel).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('destroyed')
   })
 
-  test('a grid destroyed before mount reports NOT_READY as initialization', async () => {
-    const onError = vi.fn()
-    const grid = createGrid()
-    grid.destroyGrid()
-
-    renderSync({ grid, options: { autoApplyOnMount: true, onError } })
-    await waitForEffects()
-
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'NOT_READY' }),
-      'initialization'
-    )
-    expect(onError).not.toHaveBeenCalledWith(
-      expect.anything(),
-      'auto-apply-filters'
-    )
-  })
-
-  test('is ready again with a new grid after the old one is destroyed', async () => {
+  test('is active again with a new grid after the old one is destroyed', async () => {
     const grid = createGrid()
     const { result, rerender } = renderSync({ grid, options: {} })
     await waitForEffects()
 
     grid.destroyGrid()
 
-    expect(result.current.isReady).toBe(false)
+    expect(result.current.status).toBe('destroyed')
 
     rerender({ grid: createGrid(), options: {} })
     await waitForEffects()
 
-    expect(result.current.isReady).toBe(true)
+    expect(result.current.status).toBe('active')
   })
 })
 
-describe('getSerializationMode (#222)', () => {
-  test('returns grouped for serialization grouped', async () => {
-    const grid = createGrid()
-
-    const { result } = renderSync({
-      grid,
-      options: { serialization: 'grouped' }
-    })
-
-    await waitForEffects()
-
-    expect(result.current.getSerializationMode()).toBe('grouped')
-  })
-
-  test('returns individual by default', async () => {
-    const { result } = renderSync({ grid: createGrid(), options: {} })
-    await waitForEffects()
-
-    expect(result.current.getSerializationMode()).toBe('individual')
-  })
-
-  test('getCurrentFormat returns the same as getSerializationMode', async () => {
-    const { result } = renderSync({
-      grid: createGrid(),
-      options: { serialization: 'grouped' }
-    })
-
-    await waitForEffects()
-
-    expect(result.current.getCurrentFormat()).toBe(
-      result.current.getSerializationMode()
-    )
-  })
-})
-
-// Final review of #222: the sync strips the param names that the app set for
-// both modes, the same as the class (I-1), and a sync made again on a
-// destroyed grid is still not ready (I-2)
-describe('final review (#222)', () => {
-  test('keeps the page params of the other mode in grouped mode', async () => {
-    setPage('?f_section=2&tab=1')
-
-    const { result } = renderSync({
-      grid: createGrid(ANN),
-      options: { serialization: 'grouped', paramPrefix: 'gridf_' }
-    })
-
-    await waitForEffects()
-
-    expect(result.current.currentUrl).toContain('f_section=2')
-    expect(result.current.currentUrl).toBe(result.current.shareUrl())
-  })
-
-  test('keeps the page params of the other mode in individual mode', async () => {
-    setPage('?grid_filters=keep&tab=1')
-
-    const { result } = renderSync({
-      grid: createGrid(ANN),
-      options: { groupedParam: 'gf' }
-    })
-
-    await waitForEffects()
-
-    expect(result.current.currentUrl).toContain('grid_filters=keep')
-    expect(result.current.currentUrl).toBe(result.current.shareUrl())
-  })
-
-  test('reports NOT_READY after an option change on a destroyed grid', async () => {
-    const onError = vi.fn()
-    const grid = createGrid()
-
-    const { result, rerender } = renderSync({
-      grid,
-      options: { paramPrefix: 'f_', onError }
-    })
-
-    await waitForEffects()
-    grid.destroyGrid()
-    rerender({ grid, options: { paramPrefix: 'g_', onError } })
-    await waitForEffects()
-    onError.mockClear()
-
-    act(() => result.current.applyUrlFilters('?g_name_contains=ann'))
-
-    expect(result.current.isReady).toBe(false)
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'NOT_READY' }),
-      'apply-url-filters'
-    )
-    expect(grid.api.setFilterModel).not.toHaveBeenCalled()
-  })
-})
-
-// The hook's saved views come from createGridUrlSync (#223). With no sync,
-// `views` still shows what is in storage.
 describe('saved views on the core (#223)', () => {
   const KEY = 'hook-sync-core-views'
 
-  /** Puts 2 views in the store, as an earlier session did */
-  function storeTwoViews(): void {
+  test('views lists the stored views with enabled: false', async () => {
     const store = createViewStore(KEY)
-    store.saveView('A', ANN)
-    store.saveView('B', {})
-  }
-
-  test('views lists the stored views before the grid is ready', async () => {
-    storeTwoViews()
-
-    const { result } = renderHook(() =>
-      useAGGridUrlSync(null, { storageKey: KEY })
-    )
-
-    await waitForEffects()
-
-    expect(result.current.views).toHaveLength(2)
-    expect(result.current.activeViewId).toBeNull()
-  })
-
-  test('views lists the stored views with enabledWhenReady: false', async () => {
-    storeTwoViews()
+    store.saveView('A', { filterModel: ANN })
+    store.saveView('B', { filterModel: {} })
 
     const { result } = renderSync({
       grid: createGrid(),
-      options: { storageKey: KEY, enabledWhenReady: false }
+      options: { storageKey: KEY, enabled: false }
     })
 
     await waitForEffects()
 
     expect(result.current.views).toHaveLength(2)
-    expect(result.current.isReady).toBe(false)
-  })
-
-  test('makes no AGGridUrlSync', async () => {
-    const made = vi.spyOn(classModule, 'AGGridUrlSync')
-
-    renderSync({
-      grid: createGrid(ANN),
-      options: { storageKey: KEY, autoApplyOnMount: true }
-    })
-
-    await waitForEffects()
-
-    expect(made).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('idle')
   })
 })
 
@@ -547,13 +379,13 @@ describe('the stored pointer after a hand edit', () => {
     name: { filterType: 'text', type: 'contains', filter: 'bob' }
   }
 
-  test('a pointer write that fails has the context filter-change', async () => {
-    const onError = vi.fn()
+  test('a pointer write that fails has the source grid', async () => {
+    const onIssue = vi.fn()
     const grid = createGrid(ANN)
 
     const { result } = renderSync({
       grid,
-      options: { storageKey: KEY, onError }
+      options: { storageKey: KEY, onIssue }
     })
 
     await waitForEffects()
@@ -568,89 +400,22 @@ describe('the stored pointer after a hand edit', () => {
     grid.fireFilterChanged()
 
     expect(result.current.activeViewId).toBeNull()
-    expect(onError.mock.calls.map(([, context]) => context)).toEqual([
-      'filter-change'
-    ])
+    expect(issuesOf(onIssue)).toEqual([['STORAGE_FULL', 'grid']])
   })
+})
 
-  test('a hand edit keeps a pointer that another tab moved', async () => {
-    const grid = createGrid(ANN)
-    const { result } = renderSync({ grid, options: { storageKey: KEY } })
-    await waitForEffects()
-
-    act(() => {
-      result.current.saveView('v')
-    })
-
-    // Another tab saves a view, so the pointer names it
-    const other = createViewStore(KEY).saveView('other', OTHER)
-    grid.setModel(OTHER)
-    grid.fireFilterChanged()
-
-    expect(result.current.activeViewId).toBeNull()
-    expect(createViewStore(KEY).getActiveViewId()).toBe(other.id)
-  })
-
-  // 0.5.1 cleared the pointer in its filterChanged listener, also after the
-  // hook's own applyFilters. The sync reports it with source 'api' (#313).
-  test('a pointer write that fails after applyFilters has the context filter-change', async () => {
-    const onError = vi.fn()
-    const grid = createGrid(ANN)
-    grid.api.setFilterModel.mockImplementation((next: FilterModel) => {
-      grid.setModel(next)
-    })
-
-    const { result } = renderSync({
-      grid,
-      options: { storageKey: KEY, onError }
-    })
-
-    await waitForEffects()
-    act(() => {
-      result.current.saveView('v')
-    })
-
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new DOMException('quota', 'QuotaExceededError')
-    })
-    act(() => {
-      result.current.applyFilters({
-        name: { filterType: 'text', type: 'contains', filter: 'bob' }
-      })
-    })
-
-    expect(result.current.activeViewId).toBeNull()
-    expect(onError.mock.calls.map(([, context]) => context)).toEqual([
-      'filter-change'
-    ])
-  })
-
-  test('a grid read that fails after loadView has the context update-state', async () => {
-    const onError = vi.fn()
+describe('StrictMode (#222)', () => {
+  test('makes one live sync', async () => {
     const grid = createGrid()
-    const view = createViewStore(KEY).saveView('v', OTHER)
-    createViewStore(KEY).persistActiveViewId(null)
 
-    const { result } = renderSync({
-      grid,
-      options: { storageKey: KEY, onError }
+    const { result } = renderHook(useSync, {
+      initialProps: { grid, options: {} },
+      wrapper: StrictMode
     })
 
     await waitForEffects()
 
-    // The grid takes the view, but each read after it fails
-    grid.api.setFilterModel.mockImplementation(() => {
-      grid.api.getFilterModel.mockImplementation(() => {
-        throw new Error('Read failed')
-      })
-    })
-
-    act(() => {
-      result.current.loadView(view.id)
-    })
-
-    expect(onError.mock.calls.map(([, context]) => context)).toEqual([
-      'update-state'
-    ])
+    expect(grid.listeners.count('gridPreDestroyed')).toBe(1)
+    expect(result.current.status).toBe('active')
   })
 })

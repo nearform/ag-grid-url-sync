@@ -53,8 +53,8 @@ describe('createGridUrlSync: saved views', () => {
 
   it('the snapshot lists the stored views', () => {
     const store = createViewStore('t')
-    store.saveView('A', NAME_JO)
-    store.saveView('B', NAME_X)
+    store.saveView('A', { filterModel: NAME_JO })
+    store.saveView('B', { filterModel: NAME_X })
 
     const sync = createGridUrlSync({
       api: createTimedGrid('in-call').api,
@@ -77,6 +77,32 @@ describe('createGridUrlSync: saved views', () => {
     expect(sync.getSnapshot().activeViewId).toBe(view?.id)
     expect(store.getActiveViewId()).toBe(view?.id)
     expect(sync.getSnapshot().views.map(v => v.id)).toEqual([view?.id])
+
+    sync.destroy()
+  })
+
+  it('saveView gives a custom store one state object with the grid model', () => {
+    const states: unknown[] = []
+
+    const store: ViewStore = {
+      listViews: () => [],
+      getActiveViewId: () => null,
+      persistActiveViewId: () => undefined,
+      saveView(name, state) {
+        states.push(state)
+
+        return { ...state, id: 'v1', name, updatedAt: 0 }
+      },
+      deleteView: () => undefined
+    }
+
+    const grid = createTimedGrid('in-call', NAME_JO)
+    const sync = createGridUrlSync({ api: grid.api, views: store })
+
+    const view = sync.saveView('Mine')
+
+    expect(states).toEqual([{ filterModel: NAME_JO }])
+    expect(view?.filterModel).toEqual(NAME_JO)
 
     sync.destroy()
   })
@@ -151,8 +177,8 @@ describe('createGridUrlSync: saved views', () => {
 
   it('deleteView removes the view and the snapshot follows', () => {
     const store = createViewStore('t')
-    const a = store.saveView('A', NAME_JO)
-    store.saveView('B', NAME_X)
+    const a = store.saveView('A', { filterModel: NAME_JO })
+    store.saveView('B', { filterModel: NAME_X })
 
     const sync = createGridUrlSync({
       api: createTimedGrid('in-call').api,
@@ -186,7 +212,7 @@ describe('createGridUrlSync: saved views', () => {
 
   it('the snapshot keeps its object when nothing changed', () => {
     const store = createViewStore('t')
-    store.saveView('A', NAME_JO)
+    store.saveView('A', { filterModel: NAME_JO })
 
     const sync = createGridUrlSync({
       api: createTimedGrid('in-call').api,

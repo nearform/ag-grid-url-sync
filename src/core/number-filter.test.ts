@@ -1,18 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { getFilterModel, applyFilterModel } from './grid-integration.js'
-import type { InternalConfig, FilterState } from './types.js'
+import { fromGridModel, toGridModel } from './grid-integration.js'
+import type { ResolvedOptions, FilterState } from './types.js'
 import { asGridApi, createGridApiSpies } from '../test-helpers.js'
 
 describe('Number Filter Operations', () => {
   let mockGridApi: ReturnType<typeof createGridApiSpies>
-  let mockConfig: InternalConfig
+  let mockConfig: ResolvedOptions
   let consoleSpy: ReturnType<typeof vi.spyOn>
+
+  // The grid read and write of the sync: the model of the grid goes through
+  // fromGridModel, and a filter state goes through toGridModel to the grid
+  const readGrid = (options: ResolvedOptions) =>
+    fromGridModel(mockGridApi.getFilterModel(), options)
+
+  const writeGrid = (state: FilterState, options: ResolvedOptions) =>
+    mockGridApi.setFilterModel(
+      toGridModel(state, asGridApi(mockGridApi), options)
+    )
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mockGridApi = createGridApiSpies()
     mockConfig = {
-      gridApi: asGridApi(mockGridApi),
       paramPrefix: 'f_',
       maxValueLength: 200,
       onParseError: vi.fn(),
@@ -46,7 +55,7 @@ describe('Number Filter Operations', () => {
           }
         })
 
-        const result = getFilterModel(mockConfig)
+        const result = readGrid(mockConfig)
 
         expect(result).toEqual({
           testField: {
@@ -69,7 +78,7 @@ describe('Number Filter Operations', () => {
         }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({
         range: {
@@ -96,7 +105,7 @@ describe('Number Filter Operations', () => {
         }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       // The implementation converts null/undefined to 0 for blank operations
       expect(result).toEqual({
@@ -127,7 +136,7 @@ describe('Number Filter Operations', () => {
         }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       // All 3 filters should be preserved
       expect(Object.keys(result)).toHaveLength(3)
@@ -144,7 +153,7 @@ describe('Number Filter Operations', () => {
     })
 
     it('should maintain number filter integrity through apply -> get cycle', () => {
-      // Set up mock for applyFilterModel
+      // Set up the mock for the column type check
       mockGridApi.getColumn.mockReturnValue({
         getColDef: () => ({ filter: 'agNumberColumnFilter' })
       })
@@ -160,7 +169,7 @@ describe('Number Filter Operations', () => {
       }
 
       // Apply the filters
-      applyFilterModel(originalFilterState, mockConfig)
+      writeGrid(originalFilterState, mockConfig)
 
       // Verify setFilterModel was called with correct AG Grid format
       expect(mockGridApi.setFilterModel).toHaveBeenCalledWith({
@@ -185,7 +194,7 @@ describe('Number Filter Operations', () => {
       })
 
       // Get the filters back
-      const retrievedFilterState = getFilterModel(mockConfig)
+      const retrievedFilterState = readGrid(mockConfig)
 
       // Should match the original (no filters dropped)
       expect(retrievedFilterState).toEqual(originalFilterState)
@@ -202,7 +211,7 @@ describe('Number Filter Operations', () => {
         }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       expect(result).toEqual({
         age: {
@@ -223,7 +232,7 @@ describe('Number Filter Operations', () => {
         }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       // Only the valid number filter should remain
       expect(result).toEqual({
@@ -246,7 +255,7 @@ describe('Number Filter Operations', () => {
         }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       // Only the valid filter should remain
       expect(result).toEqual({
@@ -296,7 +305,7 @@ describe('Number Filter Operations', () => {
         }
       })
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       // After the fix, the filter should be included
       expect(result).toEqual({
@@ -330,7 +339,7 @@ describe('Number Filter Operations', () => {
 
       mockGridApi.getFilterModel.mockReturnValue(agGridFilterModel)
 
-      const result = getFilterModel(mockConfig)
+      const result = readGrid(mockConfig)
 
       // Every filter is kept (they were dropped before the fix), and 'equals'
       // maps to 'eq'

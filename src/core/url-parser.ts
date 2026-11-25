@@ -1,10 +1,10 @@
-import type { AGGridUrlSyncConfig, FilterState } from './types.js'
+import type { FilterModel } from 'ag-grid-community'
+import type { AGGridUrlSyncConfig } from './types.js'
+import { stateToModel } from './model-form.js'
 import { InvalidURLError } from './types.js'
-import { parseFilterParam, parseIndividualParams } from './individual-params.js'
+import { parseIndividualParams } from './individual-params.js'
 import { deserializeGrouped } from './serialization/grouped.js'
 import { resolveOptions } from './options.js'
-
-export { parseFilterParam }
 
 /**
  * Base for inputs that are not absolute URLs. Only the query string is read,
@@ -81,7 +81,7 @@ function toUrl(input: string): URL {
 }
 
 /**
- * Converts URL search params into a filter state object.
+ * Converts URL search params into an AG Grid filter model (#225).
  * This function does not need a grid. An option that the config leaves out
  * gets its default.
  *
@@ -97,10 +97,10 @@ function toUrl(input: string): URL {
  * @throws InvalidURLError if the input is an absolute URL that is not valid,
  *   or a host with no scheme
  */
-export function parseUrlFilters(
+export function readUrlFilters(
   url: string,
   config: AGGridUrlSyncConfig = {}
-): FilterState {
+): FilterModel {
   // Handle empty or whitespace-only URLs gracefully
   if (!url || url.trim() === '') {
     return {}
@@ -120,5 +120,5 @@ export function parseUrlFilters(
   }
 
   // Handle individual serialization
-  return parseIndividualParams(urlObj.searchParams, options)
+  return stateToModel(parseIndividualParams(urlObj.searchParams, options))
 }

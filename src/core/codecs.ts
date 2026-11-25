@@ -68,9 +68,9 @@ export function codecOptions(codec: Codec): CodecOptions {
 }
 
 /**
- * A codec with all four settings, for the React hook (#222). Internal: the
- * hook's old options name the params of both modes, and the URL must strip
- * the names that the app set, as the class does. Not exported from the
+ * A codec with all four settings. Internal: `useGridUrlSync` makes its
+ * codec again from the settings of the app's codec, so a new codec object
+ * with the same settings makes no new sync (#271). Not exported from the
  * package.
  */
 export function codecFromOptions(options: CodecOptions): Codec {
